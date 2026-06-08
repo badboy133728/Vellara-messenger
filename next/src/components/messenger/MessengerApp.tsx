@@ -25,9 +25,10 @@ import { usePresenceRealtime } from '@/hooks/usePresenceRealtime';
 import { isOnline } from '@/lib/presence';
 import { CallScreen } from '@/components/CallScreen';
 import { IncomingCallModal } from '@/components/IncomingCallModal';
+import dynamic from 'next/dynamic';
+import { ClientErrorBoundary } from '@/components/ClientErrorBoundary';
 import { ConversationSidebar } from './ConversationSidebar';
 import { ChatPanel } from './ChatPanel';
-import { SettingsPanel } from './SettingsPanel';
 import { ContactsPanel } from './ContactsPanel';
 import { CallsPanel } from './CallsPanel';
 import { DashboardPanel } from './DashboardPanel';
@@ -37,6 +38,11 @@ import { GroupSettingsModal } from './GroupSettingsModal';
 import { GroupInfoPanel } from './GroupInfoPanel';
 import { UserProfilePanel } from './UserProfilePanel';
 import { PushNotificationBanner } from '@/components/PushNotificationBanner';
+
+const SettingsPanel = dynamic(
+  () => import('./SettingsPanel').then((m) => m.SettingsPanel),
+  { ssr: false, loading: () => <div className="settings-page settings-loading"><p>Загрузка…</p></div> },
+);
 
 type Tab = 'chats' | 'calls' | 'contacts' | 'favorites' | 'settings' | 'dashboard';
 
@@ -106,6 +112,9 @@ function MessengerAppInner({ user }: { user: Profile }) {
   const [conversations, setConversations] = useState<ConversationListItem[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [messages, setMessages] = useState<FormattedMessage[]>([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [hasMoreOlder, setHasMoreOlder] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [membersRead, setMembersRead] = useState<MemberRead[]>([]);
   const [savedMessageIds, setSavedMessageIds] = useState<Set<number>>(new Set());
   const [typingUserId, setTypingUserId] = useState<string | null>(null);
@@ -311,6 +320,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
 
   const loadMessages = useCallback(
     async (convId: number, opts?: { silent?: boolean }) => {
+      if (!opts?.silent) setMessagesLoading(true);
       setConversationReadLocal(convId);
       const conv = conversationsRef.current.find((c) => c.id === convId);
       if (conv?.type === 'group') {
@@ -318,30 +328,67 @@ function MessengerAppInner({ user }: { user: Profile }) {
       } else {
         groupMembersRef.current = new Map();
       }
-      const data = await api<{ messages: FormattedMessage[]; members_read: MemberRead[] }>(
-        `/api/chat/${convId}/messages`,
-      );
-      const readState =
-        conv?.type === 'group' && groupMembersRef.current.size
-          ? [...groupMembersRef.current.keys()].map((userId) => {
-              const fromApi = (data.members_read ?? []).find((m) => m.user_id === userId);
-              return { user_id: userId, last_read_at: fromApi?.last_read_at ?? null };
-            })
-          : (data.members_read ?? []);
-      setMembersRead(readState);
-      const enriched = enrichMessageSenders(data.messages ?? [], groupMembersRef.current, userRef.current);
-      const nextMessages = applyGroupReadStatuses(enriched, readState, userRef.current.id);
-      setMessages((prev) => {
-        if (!opts?.silent || prev.length === 0) return nextMessages;
-        const prevLast = prev[prev.length - 1]?.id;
-        const nextLast = nextMessages[nextMessages.length - 1]?.id;
-        if (prev.length === nextMessages.length && prevLast === nextLast) return prev;
-        return nextMessages;
-      });
-      api(`/api/chat/${convId}/messages/read`, { method: 'POST' }).catch(() => {});
+      try {
+        const data = await api<{
+          messages: FormattedMessage[];
+          members_read: MemberRead[];
+          has_more?: boolean;
+        }>(`/api/chat/${convId}/messages`);
+        const readState =
+          conv?.type === 'group' && groupMembersRef.current.size
+            ? [...groupMembersRef.current.keys()].map((userId) => {
+                const fromApi = (data.members_read ?? []).find((m) => m.user_id === userId);
+                return { user_id: userId, last_read_at: fromApi?.last_read_at ?? null };
+              })
+            : (data.members_read ?? []);
+        setMembersRead(readState);
+        const enriched = enrichMessageSenders(data.messages ?? [], groupMembersRef.current, userRef.current);
+        const nextMessages = applyGroupReadStatuses(enriched, readState, userRef.current.id);
+        setHasMoreOlder(data.has_more ?? (nextMessages.length >= 50));
+        setMessages((prev) => {
+          if (!opts?.silent || prev.length === 0) return nextMessages;
+          const prevLast = prev[prev.length - 1]?.id;
+          const nextLast = nextMessages[nextMessages.length - 1]?.id;
+          if (prev.length === nextMessages.length && prevLast === nextLast) return prev;
+          return nextMessages;
+        });
+        api(`/api/chat/${convId}/messages/read`, { method: 'POST' }).catch(() => {});
+      } finally {
+        if (!opts?.silent) setMessagesLoading(false);
+      }
     },
     [setConversationReadLocal, syncGroupMembers],
   );
+
+  const loadOlderMessages = useCallback(async () => {
+    const convId = activeIdRef.current;
+    if (!convId || loadingOlder || !hasMoreOlder) return;
+    let firstId: number | null = null;
+    setMessages((prev) => {
+      firstId = prev[0]?.id ?? null;
+      return prev;
+    });
+    if (!firstId) return;
+    setLoadingOlder(true);
+    try {
+      const data = await api<{
+        messages: FormattedMessage[];
+        has_more?: boolean;
+      }>(`/api/chat/${convId}/messages?before_id=${firstId}&limit=50`);
+      const enriched = enrichMessageSenders(data.messages ?? [], groupMembersRef.current, userRef.current);
+      const readState = membersRead;
+      const older = applyGroupReadStatuses(enriched, readState, userRef.current.id);
+      setHasMoreOlder(data.has_more ?? older.length >= 50);
+      setMessages((prev) => {
+        const seen = new Set(prev.map((m) => m.id));
+        const prepend = older.filter((m) => !seen.has(m.id));
+        if (!prepend.length) return prev;
+        return [...prepend, ...prev];
+      });
+    } finally {
+      setLoadingOlder(false);
+    }
+  }, [hasMoreOlder, loadingOlder, membersRead]);
 
   useEffect(() => {
     loadConversations()
@@ -387,10 +434,15 @@ function MessengerAppInner({ user }: { user: Profile }) {
 
   useEffect(() => {
     if (activeId) {
+      setMessages([]);
+      setHasMoreOlder(false);
+      setMessagesLoading(true);
       loadMessages(activeId);
     } else {
       setMessages([]);
       setMembersRead([]);
+      setHasMoreOlder(false);
+      setMessagesLoading(false);
     }
   }, [activeId, loadMessages]);
 
@@ -708,6 +760,10 @@ function MessengerAppInner({ user }: { user: Profile }) {
                 <ChatPanel
                   conversation={activeConv}
                   messages={messages}
+                  messagesLoading={messagesLoading}
+                  hasMoreOlder={hasMoreOlder}
+                  loadingOlder={loadingOlder}
+                  onLoadOlder={loadOlderMessages}
                   currentUserId={user.id}
                   typingUserId={typingUserId}
                   savedMessageIds={savedMessageIds}
@@ -758,10 +814,21 @@ function MessengerAppInner({ user }: { user: Profile }) {
           ) : tab === 'favorites' ? (
             <FavoritesPanel />
           ) : tab === 'settings' ? (
-            <SettingsPanel
-              showMobileBack={isMobile}
-              onBack={() => setTab('dashboard')}
-            />
+            <ClientErrorBoundary
+              fallback={
+                <div className="settings-page settings-loading">
+                  <p className="profile-alert profile-alert--error">Не удалось открыть настройки</p>
+                  <button type="button" className="profile-btn profile-btn--gold" onClick={() => setTab('dashboard')}>
+                    Назад
+                  </button>
+                </div>
+              }
+            >
+              <SettingsPanel
+                showMobileBack={isMobile}
+                onBack={() => setTab('dashboard')}
+              />
+            </ClientErrorBoundary>
           ) : tab === 'dashboard' ? (
             <DashboardPanel onOpenSettings={() => setTab('settings')} />
           ) : null}

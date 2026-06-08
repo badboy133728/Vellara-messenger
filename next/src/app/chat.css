@@ -872,47 +872,94 @@
   transform: none;
 }
 
-.msg-reply-quote {
-  margin-bottom: 6px;
-  padding: 6px 10px;
-  border-left: 3px solid var(--vellara-gold, #c9a885);
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.18);
+.messages-container--preparing {
+  visibility: hidden;
 }
 
-.msg-reply-quote--mine {
-  background: rgba(0, 0, 0, 0.12);
+.messages-load-older {
+  text-align: center;
+  padding: 8px 0 12px;
+  font-size: 12px;
+  color: var(--vellara-text-muted, #94a3b8);
+}
+
+.msg-reply-quote {
+  margin-bottom: 6px;
+  padding: 6px 10px 6px 8px;
+  border-left: 3px solid #5b8cff;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.22);
 }
 
 .msg-reply-quote__author {
   display: block;
   font-size: 12px;
-  font-weight: 600;
-  color: var(--vellara-gold, #c9a885);
+  font-weight: 700;
+  color: #5b8cff;
   margin-bottom: 2px;
 }
 
 .msg-reply-quote__text {
   display: block;
   font-size: 12px;
-  color: var(--vellara-text-muted, #94a3b8);
+  color: rgba(241, 245, 249, 0.88);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.message-bubble.my .msg-reply-quote {
+  border-left-color: rgba(26, 22, 18, 0.65);
+  background: rgba(26, 22, 18, 0.14);
+}
+
+.message-bubble.my .msg-reply-quote__author {
+  color: rgba(26, 22, 18, 0.92);
+}
+
+.message-bubble.my .msg-reply-quote__text {
+  color: rgba(26, 22, 18, 0.78);
+}
+
+.composer--telegram {
+  align-items: flex-end;
+  gap: 8px;
+  max-width: none;
+}
+
+.composer-field {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: var(--vellara-panel-2, #222);
+  border: 1px solid var(--vellara-border-subtle, #2e2e2e);
+  border-radius: 22px;
+  overflow: hidden;
+}
+
+.composer-input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  padding: 4px 8px 4px 4px;
+}
+
 .composer-reply {
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  margin-bottom: 10px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid var(--vellara-border-subtle, #2e2e2e);
-  background: var(--vellara-panel-2, #222);
-  max-width: 900px;
-  margin-left: auto;
-  margin-right: auto;
+  align-items: stretch;
+  gap: 8px;
+  padding: 8px 10px 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.composer-reply__accent {
+  width: 3px;
+  border-radius: 3px;
+  background: #5b8cff;
+  flex-shrink: 0;
 }
 
 .composer-reply__body {
@@ -923,17 +970,10 @@
   gap: 2px;
 }
 
-.composer-reply__label {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--vellara-gold, #c9a885);
-}
-
 .composer-reply__author {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
+  color: #5b8cff;
 }
 
 .composer-reply__text {
@@ -946,13 +986,89 @@
 
 .composer-reply__close {
   flex-shrink: 0;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border: none;
-  border-radius: 8px;
-  background: #333;
-  color: #fff;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--vellara-text-muted, #94a3b8);
   cursor: pointer;
+  font-size: 16px;
+}
+
+.composer-btn {
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--vellara-text-muted, #94a3b8);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.composer-btn--attach {
+  font-size: 20px;
+}
+
+.composer-btn--emoji {
+  width: 36px;
+  height: 36px;
+  font-size: 20px;
+}
+
+.composer-btn--emoji.composer-btn--active {
+  color: var(--vellara-gold, #c9a885);
+}
+
+.composer-btn--send {
+  background: var(--vellara-gold, #c9a885);
+  color: #1a1612;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.composer-btn--send:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.composer-btn--voice {
+  color: var(--vellara-gold, #c9a885);
+}
+
+.composer--telegram .msg-input {
+  flex: 1;
+  min-width: 0;
+  min-height: 34px;
+  max-height: 120px;
+  padding: 8px 4px 8px 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--vellara-text, #f1f5f9);
+  outline: none;
+  font-size: 16px;
+  line-height: 1.35;
+  font-family: inherit;
+  resize: none;
+  overflow-y: auto;
+  box-shadow: none;
+}
+
+.composer--telegram .msg-input::placeholder {
+  color: #64748b;
+}
+
+.composer--telegram .msg-input:focus {
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .msg-input {
@@ -972,15 +1088,6 @@
   resize: none;
   overflow-y: auto;
   transition: border-color 0.2s, box-shadow 0.2s;
-}
-
-.msg-input::placeholder {
-  color: #64748b;
-}
-
-.msg-input:focus {
-  border-color: var(--vellara-gold, #c9a885);
-  box-shadow: 0 0 0 2px rgba(201, 168, 133, 0.12);
 }
 
 .file-input-hidden {
@@ -1079,46 +1186,16 @@
     max-width: 94%;
   }
 
-  .composer {
-    flex-wrap: wrap;
-    gap: 8px;
-    max-width: none;
-  }
-
-  .composer-actions {
-    order: 2;
-    gap: 4px;
-    width: 100%;
-    justify-content: flex-start;
-  }
-
-  .msg-input {
-    order: 1;
-    flex: 1 1 100%;
-    width: 100%;
-    min-height: 44px;
-    font-size: 16px;
-  }
-
-  .icon-btn--send {
-    order: 3;
-  }
-
   .input-area {
-    padding: 10px 12px calc(12px + env(safe-area-inset-bottom, 0));
+    padding: 8px 10px calc(10px + env(safe-area-inset-bottom, 0));
   }
 
-  .icon-btn {
-    width: 36px;
-    height: 36px;
-    font-size: 16px;
+  .composer-btn {
+    width: 40px;
+    height: 40px;
   }
 
-  .chat-layout {
-    --vellara-btn: 36px;
-  }
-
-  .msg-input {
-    font-size: 14px;
+  .composer-field {
+    border-radius: 20px;
   }
 }

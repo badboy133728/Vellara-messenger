@@ -53,6 +53,10 @@ function isImageAttachment(file: File) {
 export function ChatPanel({
   conversation,
   messages,
+  messagesLoading = false,
+  hasMoreOlder = false,
+  loadingOlder = false,
+  onLoadOlder,
   currentUserId,
   typingUserId,
   savedMessageIds,
@@ -70,6 +74,10 @@ export function ChatPanel({
 }: {
   conversation: ConversationListItem | null;
   messages: FormattedMessage[];
+  messagesLoading?: boolean;
+  hasMoreOlder?: boolean;
+  loadingOlder?: boolean;
+  onLoadOlder?: () => Promise<void>;
   currentUserId: string;
   typingUserId: string | null;
   savedMessageIds: Set<number>;
@@ -101,6 +109,9 @@ export function ChatPanel({
   const stickToBottomRef = useRef(true);
   const prevConvIdRef = useRef<number | null>(null);
   const prevMessageCountRef = useRef(0);
+  const scrollReadyRef = useRef(false);
+  const prependAnchorRef = useRef<number | null>(null);
+  const [scrollReady, setScrollReady] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const inputAreaRef = useRef<HTMLDivElement>(null);
@@ -117,16 +128,25 @@ export function ChatPanel({
   const feed = useMemo(() => buildMessageFeed(messages), [messages]);
   const isOtherTyping = typingUserId && typingUserId !== currentUserId;
 
+  const scrollToBottom = (mode: 'instant' | 'smooth' = 'instant') => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    if (mode === 'instant') {
+      el.scrollTop = el.scrollHeight;
+      return;
+    }
+    bottomRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' });
+  };
+
   useEffect(() => {
     const convId = conversation?.id ?? null;
     if (convId !== prevConvIdRef.current) {
       prevConvIdRef.current = convId;
       prevMessageCountRef.current = 0;
+      scrollReadyRef.current = false;
+      setScrollReady(false);
       stickToBottomRef.current = true;
       setReplyTo(null);
-      requestAnimationFrame(() => {
-        bottomRef.current?.scrollIntoView({ block: 'end' });
-      });
     }
   }, [conversation?.id]);
 
@@ -136,26 +156,59 @@ export function ChatPanel({
     const onScroll = () => {
       const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
       stickToBottomRef.current = distance < 96;
+      if (
+        el.scrollTop < 120 &&
+        hasMoreOlder &&
+        !loadingOlder &&
+        onLoadOlder &&
+        scrollReadyRef.current
+      ) {
+        prependAnchorRef.current = el.scrollHeight;
+        void onLoadOlder();
+      }
     };
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => el.removeEventListener('scroll', onScroll);
-  }, [conversation?.id]);
+  }, [conversation?.id, hasMoreOlder, loadingOlder, onLoadOlder]);
 
   useEffect(() => {
+    const el = messagesContainerRef.current;
+    if (!el || messagesLoading) return;
+
+    if (prependAnchorRef.current != null) {
+      const prevHeight = prependAnchorRef.current;
+      prependAnchorRef.current = null;
+      el.scrollTop = el.scrollHeight - prevHeight;
+      prevMessageCountRef.current = messages.length;
+      return;
+    }
+
     const count = messages.length;
+    if (!count) return;
+
+    if (!scrollReadyRef.current) {
+      requestAnimationFrame(() => {
+        scrollToBottom('instant');
+        requestAnimationFrame(() => {
+          scrollReadyRef.current = true;
+          setScrollReady(true);
+        });
+      });
+      prevMessageCountRef.current = count;
+      return;
+    }
+
     const grew = count > prevMessageCountRef.current;
     prevMessageCountRef.current = count;
     if (!grew) return;
 
     const last = messages[count - 1];
-    const shouldScroll =
-      stickToBottomRef.current || last?.user_id === currentUserId;
+    const shouldScroll = stickToBottomRef.current || last?.user_id === currentUserId;
     if (!shouldScroll) return;
 
-    requestAnimationFrame(() => {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-    });
-  }, [messages, currentUserId]);
+    const mode = last?.user_id === currentUserId ? 'instant' : 'smooth';
+    requestAnimationFrame(() => scrollToBottom(mode));
+  }, [messages, messagesLoading, currentUserId]);
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -486,7 +539,7 @@ export function ChatPanel({
         ) : (
           <>
             {m.reply_to && (
-              <div className={`msg-reply-quote ${mine ? 'msg-reply-quote--mine' : ''}`}>
+              <div className="msg-reply-quote">
                 <span className="msg-reply-quote__author">
                   {senderDisplayName(m.reply_to.sender)}
                 </span>
@@ -635,7 +688,15 @@ export function ChatPanel({
         )}
       </header>
 
-      <div className="messages-container" ref={messagesContainerRef}>
+      <div
+        className={`messages-container ${!scrollReady && messages.length ? 'messages-container--preparing' : ''}`}
+        ref={messagesContainerRef}
+      >
+        {loadingOlder && (
+          <div className="messages-load-older" aria-hidden="true">
+            Загрузка…
+          </div>
+        )}
         {feed.map(renderFeedItem)}
         <div ref={bottomRef} />
       </div>
@@ -674,23 +735,6 @@ export function ChatPanel({
         </div>
       ) : (
         <div className="input-area" ref={inputAreaRef}>
-          {replyTo && !editingMessage && (
-            <div className="composer-reply">
-              <div className="composer-reply__body">
-                <span className="composer-reply__label">Ответ</span>
-                <span className="composer-reply__author">{senderDisplayName(replyTo.sender)}</span>
-                <span className="composer-reply__text">{replyPreviewText(replyTo)}</span>
-              </div>
-              <button
-                type="button"
-                className="composer-reply__close"
-                aria-label="Отменить ответ"
-                onClick={() => setReplyTo(null)}
-              >
-                ✕
-              </button>
-            </div>
-          )}
           {pendingAttachment && (
             <div className="attachments-panel">
               <div className="attachments-panel__head">
@@ -724,85 +768,101 @@ export function ChatPanel({
             </div>
           )}
           <form
-            className="composer"
+            className="composer composer--telegram"
             onSubmit={(e) => {
               void handleSubmit(e);
             }}
           >
-            <div className="composer-actions">
-              <div className="input-tools">
-                <button
-                  type="button"
-                  className={`icon-btn ${showEmojiPicker ? 'icon-btn--active' : ''}`}
-                  title="Смайлики"
-                  onClick={() => setShowEmojiPicker((v) => !v)}
-                >
-                  😊
-                </button>
-                {showEmojiPicker && (
-                  <EmojiPicker
-                    onSelect={insertEmoji}
-                    onClose={() => setShowEmojiPicker(false)}
-                  />
-                )}
-              </div>
-              {canSendVoice && onSendVoice && (
-                <button
-                  type="button"
-                  className="icon-btn"
-                  title="Голосовое сообщение"
-                  onClick={() => void startVoiceRecord()}
-                >
-                  🎤
-                </button>
-              )}
-              <input
-                ref={fileRef}
-                type="file"
-                className="file-input-hidden"
-                accept="image/*,.pdf,.doc,.docx,.webp"
-                onChange={handleFileSelect}
-              />
-              <button
-                type="button"
-                className="icon-btn"
-                title="Прикрепить файл"
-                onClick={() => fileRef.current?.click()}
-              >
-                📎
-              </button>
-            </div>
-            <textarea
-              ref={textareaRef}
-              className="msg-input"
-              rows={1}
-              value={text}
-              onChange={(e) => {
-                setText(e.target.value);
-                onTyping();
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  void handleSubmit();
-                }
-              }}
-              placeholder={editingMessage ? 'Редактирование…' : 'Сообщение…'}
-              maxLength={2000}
+            <input
+              ref={fileRef}
+              type="file"
+              className="file-input-hidden"
+              accept="image/*,.pdf,.doc,.docx,.webp"
+              onChange={handleFileSelect}
             />
-            {editingMessage && (
-              <button type="button" className="icon-btn" title="Отменить" onClick={cancelEdit}>
+            <button
+              type="button"
+              className="composer-btn composer-btn--attach"
+              title="Прикрепить файл"
+              onClick={() => fileRef.current?.click()}
+            >
+              📎
+            </button>
+            <div className="composer-field">
+              {replyTo && !editingMessage && (
+                <div className="composer-reply">
+                  <div className="composer-reply__accent" aria-hidden="true" />
+                  <div className="composer-reply__body">
+                    <span className="composer-reply__author">{senderDisplayName(replyTo.sender)}</span>
+                    <span className="composer-reply__text">{replyPreviewText(replyTo)}</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="composer-reply__close"
+                    aria-label="Отменить ответ"
+                    onClick={() => setReplyTo(null)}
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+              <div className="composer-input-row">
+                <div className="input-tools">
+                  <button
+                    type="button"
+                    className={`composer-btn composer-btn--emoji ${showEmojiPicker ? 'composer-btn--active' : ''}`}
+                    title="Смайлики"
+                    onClick={() => setShowEmojiPicker((v) => !v)}
+                  >
+                    😊
+                  </button>
+                  {showEmojiPicker && (
+                    <EmojiPicker onSelect={insertEmoji} onClose={() => setShowEmojiPicker(false)} />
+                  )}
+                </div>
+                <textarea
+                  ref={textareaRef}
+                  className="msg-input"
+                  rows={1}
+                  value={text}
+                  onChange={(e) => {
+                    setText(e.target.value);
+                    onTyping();
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      void handleSubmit();
+                    }
+                  }}
+                  placeholder={editingMessage ? 'Редактирование…' : 'Сообщение'}
+                  maxLength={2000}
+                />
+              </div>
+            </div>
+            {editingMessage ? (
+              <button type="button" className="composer-btn" title="Отменить" onClick={cancelEdit}>
                 ✕
               </button>
+            ) : canSendVoice && onSendVoice && !text.trim() && !pendingAttachment ? (
+              <button
+                type="button"
+                className="composer-btn composer-btn--voice"
+                title="Голосовое сообщение"
+                onClick={() => void startVoiceRecord()}
+              >
+                🎤
+              </button>
+            ) : (
+              <button
+                type="submit"
+                className="composer-btn composer-btn--send"
+                title="Отправить"
+                disabled={sending || (!editingMessage && !text.trim() && !pendingAttachment)}
+              >
+                ➤
+              </button>
             )}
-            <button
-              type="submit"
-              className="icon-btn icon-btn--send"
-              title="Отправить"
-              disabled={sending || (!editingMessage && !text.trim() && !pendingAttachment)}
-            >
-              ➤
-            </button>
           </form>
         </div>
       )}

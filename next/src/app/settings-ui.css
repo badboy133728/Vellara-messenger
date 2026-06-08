@@ -300,7 +300,7 @@
   cursor: pointer;
 }
 
-.settings-radio:has(input:checked) {
+.settings-radio--checked {
   border-color: var(--vellara-gold, #c9a885);
   background: rgba(201, 168, 133, 0.08);
 }

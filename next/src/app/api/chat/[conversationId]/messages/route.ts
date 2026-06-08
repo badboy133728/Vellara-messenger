@@ -10,7 +10,7 @@ import type { MessageRow, Profile } from '@/lib/types';
 import { applyGroupReadStatuses, type MemberRead } from '@/utils/groupReadStatus';
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ conversationId: string }> },
 ) {
   const auth = await requireAuth();
@@ -23,12 +23,28 @@ export async function GET(
     return Response.json({ message: 'Нет доступа' }, { status: 403 });
   }
 
-  const { data: recent } = await supabase
-    .from('messages')
-    .select('*')
-    .eq('conversation_id', convId)
-    .order('created_at', { ascending: false })
-    .limit(50);
+  const { searchParams } = new URL(request.url);
+  const beforeIdRaw = searchParams.get('before_id');
+  const limit = Math.min(50, Math.max(1, Number(searchParams.get('limit')) || 50));
+
+  let query = supabase.from('messages').select('*').eq('conversation_id', convId);
+
+  if (beforeIdRaw) {
+    const beforeId = Number(beforeIdRaw);
+    if (Number.isFinite(beforeId) && beforeId > 0) {
+      const { data: pivot } = await supabase
+        .from('messages')
+        .select('created_at')
+        .eq('id', beforeId)
+        .eq('conversation_id', convId)
+        .maybeSingle();
+      if (pivot?.created_at) {
+        query = query.lt('created_at', pivot.created_at as string);
+      }
+    }
+  }
+
+  const { data: recent } = await query.order('created_at', { ascending: false }).limit(limit);
 
   const messageRows = [...(recent ?? [])].reverse() as MessageRow[];
   const userIds = [...new Set(messageRows.map((m) => m.user_id))];
@@ -59,7 +75,11 @@ export async function GET(
     applyGroupReadStatuses(formatted, membersRead, user.id);
   }
 
-  return Response.json({ messages: formatted, members_read: membersRead });
+  return Response.json({
+    messages: formatted,
+    members_read: membersRead,
+    has_more: (recent ?? []).length === limit,
+  });
 }
 
 export async function POST(

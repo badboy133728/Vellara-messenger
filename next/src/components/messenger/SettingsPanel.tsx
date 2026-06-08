@@ -9,14 +9,7 @@ import { applyTheme } from '@/lib/applyTheme';
 import { resolveProfileMedia } from '@/lib/profileCover';
 import { AvatarCropModal } from '@/components/AvatarCropModal';
 import { AvatarImg } from '@/components/AvatarImg';
-import dynamic from 'next/dynamic';
-import { ClientErrorBoundary } from '@/components/ClientErrorBoundary';
-
-const PushNotificationsSection = dynamic(
-  () =>
-    import('@/components/PushNotificationsSection').then((m) => m.PushNotificationsSection),
-  { ssr: false },
-);
+import { PushNotificationsSection } from '@/components/PushNotificationsSection';
 
 type SettingsData = {
   name: string;
@@ -327,16 +320,18 @@ export function SettingsPanel({
             if (avatarInput.current) avatarInput.current.value = '';
           }}
         />
-        <AvatarCropModal
-          open={!!cropFile}
-          file={cropFile}
-          onCancel={() => setCropFile(null)}
-          onConfirm={(file) => {
-            setPendingAvatar(file);
-            setAvatarPreview(URL.createObjectURL(file));
-            setCropFile(null);
-          }}
-        />
+        {cropFile && (
+          <AvatarCropModal
+            open
+            file={cropFile}
+            onCancel={() => setCropFile(null)}
+            onConfirm={(file) => {
+              setPendingAvatar(file);
+              setAvatarPreview(URL.createObjectURL(file));
+              setCropFile(null);
+            }}
+          />
+        )}
       </section>
 
       <section className="settings-card">
@@ -433,14 +428,14 @@ export function SettingsPanel({
         </div>
       </section>
 
-      <ClientErrorBoundary>
-        <PushNotificationsSection />
-      </ClientErrorBoundary>
+      <PushNotificationsSection />
 
       <section className="settings-card">
         <h2>Приватность</h2>
         <p className="settings-hint">Кто может видеть ваш профиль, био и фон</p>
-        <label className="settings-radio">
+        <label
+          className={`settings-radio ${form.profile_visibility === 'everyone' ? 'settings-radio--checked' : ''}`}
+        >
           <input
             type="radio"
             name="visibility"
@@ -452,7 +447,9 @@ export function SettingsPanel({
             <small>Любой зарегистрированный пользователь</small>
           </span>
         </label>
-        <label className="settings-radio">
+        <label
+          className={`settings-radio ${form.profile_visibility === 'contacts' ? 'settings-radio--checked' : ''}`}
+        >
           <input
             type="radio"
             name="visibility"

@@ -37,8 +37,16 @@ import { GroupSettingsModal } from './GroupSettingsModal';
 import { GroupInfoPanel } from './GroupInfoPanel';
 import { UserProfilePanel } from './UserProfilePanel';
 import { PushNotificationBanner } from '@/components/PushNotificationBanner';
+import { useMessengerHistory } from '@/hooks/useMessengerHistory';
+import { useSwipeGesture } from '@/hooks/useSwipeGesture';
+import {
+  MOBILE_SWIPE_TABS,
+  tabStep,
+  type MessengerNavState,
+  type MessengerTab,
+} from '@/lib/messengerNav';
 
-type Tab = 'chats' | 'calls' | 'contacts' | 'favorites' | 'settings' | 'dashboard';
+type Tab = MessengerTab;
 
 const MENU_ITEMS: { id: Tab; label: string; icon: string }[] = [
   { id: 'chats', label: 'Чаты', icon: '💬' },
@@ -121,6 +129,95 @@ function MessengerAppInner({ user }: { user: Profile }) {
   const [contactsForGroup, setContactsForGroup] = useState<{ id: string; name: string; last_name: string }[]>([]);
   const [incomingContactCount, setIncomingContactCount] = useState(0);
   const [toast, setToast] = useState('');
+  const [tabAnim, setTabAnim] = useState<'left' | 'right' | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px)');
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+
+  const navStateRef = useRef<MessengerNavState>({
+    tab: 'chats',
+    activeId: null,
+    profileUserId: null,
+    showGroupSettings: false,
+    showGroupPanel: false,
+    showCreateGroup: false,
+  });
+
+  navStateRef.current = {
+    tab,
+    activeId,
+    profileUserId,
+    showGroupSettings,
+    showGroupPanel,
+    showCreateGroup,
+  };
+
+  const applyNavState = useCallback((state: MessengerNavState) => {
+    setTab(state.tab);
+    setActiveId(state.activeId);
+    setProfileUserId(state.profileUserId);
+    setShowGroupSettings(state.showGroupSettings);
+    setShowGroupPanel(state.showGroupPanel);
+    setShowCreateGroup(state.showCreateGroup);
+  }, []);
+
+  const { navigate, goBack } = useMessengerHistory({
+    isMobile,
+    getState: () => navStateRef.current,
+    applyState: applyNavState,
+  });
+
+  const canSwipeTabs =
+    isMobile &&
+    !activeId &&
+    !profileUserId &&
+    tab !== 'settings' &&
+    tab !== 'dashboard' &&
+    !showGroupSettings &&
+    !showGroupPanel &&
+    !showCreateGroup;
+
+  const switchTab = useCallback(
+    (next: Tab, direction: 'left' | 'right', history: 'push' | 'replace' = 'push') => {
+      if (isMobile) {
+        setTabAnim(direction);
+        window.setTimeout(() => setTabAnim(null), 320);
+      }
+      navigate(() => setTab(next), history);
+    },
+    [navigate, isMobile],
+  );
+
+  const tabSwipe = useSwipeGesture({
+    enabled: canSwipeTabs,
+    threshold: 52,
+    onSwipeLeft: () => {
+      const next = tabStep(tab, 1);
+      if (next) switchTab(next, 'left');
+    },
+    onSwipeRight: () => {
+      const next = tabStep(tab, -1);
+      if (next) switchTab(next, 'right');
+    },
+  });
+
+  const edgeBackSwipe = useSwipeGesture({
+    enabled:
+      isMobile &&
+      (Boolean(activeId) ||
+        Boolean(profileUserId) ||
+        tab === 'settings' ||
+        tab === 'dashboard'),
+    edgeWidth: 36,
+    threshold: 64,
+    onSwipeRight: () => goBack(),
+  });
 
   useLastSeenHeartbeat(true);
 
@@ -184,16 +281,6 @@ function MessengerAppInner({ user }: { user: Profile }) {
   const showToast = useCallback((msg: string) => {
     setToast(msg);
     window.setTimeout(() => setToast(''), 3500);
-  }, []);
-
-  const [isMobile, setIsMobile] = useState(false);
-
-  useEffect(() => {
-    const mq = window.matchMedia('(max-width: 768px)');
-    const update = () => setIsMobile(mq.matches);
-    update();
-    mq.addEventListener('change', update);
-    return () => mq.removeEventListener('change', update);
   }, []);
 
   const chatOpen = isMobile && activeId != null;
@@ -397,13 +484,14 @@ function MessengerAppInner({ user }: { user: Profile }) {
       if (!chat) return;
       const id = Number(chat);
       if (!Number.isFinite(id) || id <= 0) return;
-      setActiveId(id);
-      setTab('chats');
-      window.history.replaceState({}, '', '/main');
+      navigate(() => {
+        setActiveId(id);
+        setTab('chats');
+      }, 'replace');
     } catch {
       /* ignore malformed notification url */
     }
-  }, []);
+  }, [navigate]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -664,7 +752,14 @@ function MessengerAppInner({ user }: { user: Profile }) {
               key={item.id}
               type="button"
               className={`nav-item ${tab === item.id ? 'active' : ''}`}
-              onClick={() => setTab(item.id)}
+              onClick={() => {
+                if (item.id === tab) return;
+                const currIdx = MOBILE_SWIPE_TABS.indexOf(tab);
+                const nextIdx = MOBILE_SWIPE_TABS.indexOf(item.id);
+                const direction: 'left' | 'right' =
+                  currIdx >= 0 && nextIdx >= 0 && nextIdx < currIdx ? 'right' : 'left';
+                switchTab(item.id, direction);
+              }}
             >
               <span className="nav-item__icon-wrap">
                 <span className="nav-item__icon" aria-hidden="true">{item.icon}</span>
@@ -687,7 +782,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
           type="button"
           className={`account-card ${tab === 'dashboard' || tab === 'settings' ? 'active' : ''}`}
           aria-label="Профиль и настройки"
-          onClick={() => setTab('dashboard')}
+          onClick={() => navigate(() => setTab('dashboard'), 'push')}
         >
           <div className="account-card__avatar-wrap">
             <ContactAvatar
@@ -707,13 +802,28 @@ function MessengerAppInner({ user }: { user: Profile }) {
       </aside>
 
       <main className="messenger">
-        <div className="messenger-view">
+        <div
+          className={`messenger-view${tabAnim ? ` messenger-view--slide-${tabAnim}` : ''}`}
+          {...(canSwipeTabs
+            ? tabSwipe
+            : isMobile &&
+                (Boolean(activeId) ||
+                  Boolean(profileUserId) ||
+                  tab === 'settings' ||
+                  tab === 'dashboard')
+              ? edgeBackSwipe
+              : {})}
+        >
+          <div
+            key={`${tab}-${activeId ?? 'none'}-${profileUserId ?? 'none'}`}
+            className="messenger-view__panel"
+          >
           {tab === 'chats' && profileUserId ? (
             <div className="chat-profile-view">
               <UserProfilePanel
                 userId={profileUserId}
                 isInContacts={profileInContacts}
-                onBack={() => setProfileUserId(null)}
+                onBack={() => goBack()}
                 onAddToContacts={async () => {
                   await api('/api/contacts/send', {
                     method: 'POST',
@@ -727,13 +837,15 @@ function MessengerAppInner({ user }: { user: Profile }) {
                   try {
                     const res = await api<{ id: number }>(`/api/chat/start/${uid}`);
                     await loadConversations();
-                    setProfileUserId(null);
-                    setActiveId(res.id);
+                    navigate(() => {
+                      setProfileUserId(null);
+                      setActiveId(res.id);
+                    }, 'push');
                   } catch (e) {
                     showToast(e instanceof Error ? e.message : 'Не удалось открыть чат');
                   }
                 }}
-                onOpenSettings={() => setTab('settings')}
+                onOpenSettings={() => navigate(() => setTab('settings'), 'push')}
               />
             </div>
           ) : tab === 'chats' ? (
@@ -742,12 +854,12 @@ function MessengerAppInner({ user }: { user: Profile }) {
                 conversations={conversations}
                 activeId={activeId}
                 loading={loading}
-                onSelect={setActiveId}
+                onSelect={(id) => navigate(() => setActiveId(id), 'push')}
                 onRefresh={loadConversations}
                 onCreateGroup={async () => {
                   const list = await api<{ id: string; name: string; last_name: string }[]>('/api/contacts/my');
                   setContactsForGroup(list);
-                  setShowCreateGroup(true);
+                  navigate(() => setShowCreateGroup(true), 'push');
                 }}
               />
               {activeId ? (
@@ -769,19 +881,22 @@ function MessengerAppInner({ user }: { user: Profile }) {
                   onToggleSave={toggleSaveMessage}
                   onTyping={sendTyping}
                   onOpenGroupInfo={
-                    activeConv?.type === 'group' ? () => setShowGroupPanel(true) : undefined
+                    activeConv?.type === 'group'
+                      ? () => navigate(() => setShowGroupPanel(true), 'push')
+                      : undefined
                   }
                   onOpenPartnerProfile={
                     activeConv?.type !== 'group' && activeConv?.other_user?.id
-                      ? () => setProfileUserId(activeConv.other_user!.id)
+                      ? () =>
+                          navigate(() => setProfileUserId(activeConv.other_user!.id), 'push')
                       : undefined
                   }
                   onOpenGroupSettings={
                     activeConv?.type === 'group' && activeConv.my_role === 'admin'
-                      ? () => setShowGroupSettings(true)
+                      ? () => navigate(() => setShowGroupSettings(true), 'push')
                       : undefined
                   }
-                  onBack={isMobile ? () => setActiveId(null) : undefined}
+                  onBack={isMobile ? () => goBack() : undefined}
                 />
               ) : (
                 !isMobile && (
@@ -796,8 +911,10 @@ function MessengerAppInner({ user }: { user: Profile }) {
                 try {
                   const res = await api<{ id: number }>(`/api/chat/start/${contactId}`);
                   await loadConversations();
-                  setActiveId(res.id);
-                  setTab('chats');
+                  navigate(() => {
+                    setActiveId(res.id);
+                    setTab('chats');
+                  }, 'push');
                 } catch (e) {
                   showToast(e instanceof Error ? e.message : 'Не удалось открыть чат');
                 }
@@ -810,22 +927,25 @@ function MessengerAppInner({ user }: { user: Profile }) {
           ) : tab === 'settings' ? (
             <SettingsPanel
               showMobileBack={isMobile}
-              onBack={() => setTab('dashboard')}
+              onBack={() => goBack()}
             />
           ) : tab === 'dashboard' ? (
-            <DashboardPanel onOpenSettings={() => setTab('settings')} />
+            <DashboardPanel onOpenSettings={() => navigate(() => setTab('settings'), 'push')} />
           ) : null}
+          </div>
         </div>
       </main>
 
       {showCreateGroup && (
         <CreateGroupModal
           contacts={contactsForGroup}
-          onClose={() => setShowCreateGroup(false)}
+          onClose={() => goBack()}
           onCreated={async (id) => {
             await loadConversations();
-            setActiveId(id);
-            setTab('chats');
+            navigate(() => {
+              setActiveId(id);
+              setTab('chats');
+            }, 'replace');
           }}
         />
       )}
@@ -833,7 +953,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
         <GroupInfoPanel
           conversationId={activeId}
           currentUserId={user.id}
-          onClose={() => setShowGroupPanel(false)}
+          onClose={() => goBack()}
           onUpdated={async (payload) => {
             if (payload?.title) {
               setConversations((prev) =>
@@ -852,8 +972,10 @@ function MessengerAppInner({ user }: { user: Profile }) {
             );
           }}
           onLeft={() => {
-            setShowGroupPanel(false);
-            setActiveId(null);
+            navigate(() => {
+              setShowGroupPanel(false);
+              setActiveId(null);
+            }, 'replace');
             loadConversations();
           }}
         />
@@ -861,7 +983,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
       {showGroupSettings && activeId && (
         <GroupSettingsModal
           conversationId={activeId}
-          onClose={() => setShowGroupSettings(false)}
+          onClose={() => goBack()}
           onSaved={({ allow_voice_messages }) => {
             setConversations((prev) =>
               prev.map((c) =>
@@ -902,8 +1024,10 @@ function MessengerAppInner({ user }: { user: Profile }) {
           className="msg-notification"
           onClick={() => {
             dismissNotification();
-            setTab('chats');
-            setActiveId(messageNotification.conversationId);
+            navigate(() => {
+              setTab('chats');
+              setActiveId(messageNotification.conversationId);
+            }, 'push');
           }}
         >
           <span className="msg-notification__icon">💬</span>

@@ -28,7 +28,7 @@ export default function RegisterPage() {
     try {
       await register(form);
       setSuccess('Аккаунт создан! Переход в мессенджер…');
-      setTimeout(() => router.push('/main'), 600);
+      setTimeout(() => router.replace('/main'), 600);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка регистрации');
     } finally {

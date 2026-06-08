@@ -27,6 +27,12 @@
   overflow: hidden;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
   animation: group-settings-pop 0.22s ease;
+  touch-action: pan-y;
+  will-change: transform;
+}
+
+.group-settings-card__grab {
+  display: none;
 }
 
 .group-settings-card__head {
@@ -474,6 +480,17 @@
     border-right: none;
     border-bottom: none;
     animation: group-settings-sheet 0.24s ease;
+    padding-top: 6px;
+  }
+
+  .group-settings-card__grab {
+    display: block;
+    width: 36px;
+    height: 4px;
+    margin: 0 auto 4px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.22);
+    flex-shrink: 0;
   }
 
   .group-settings-toggle {

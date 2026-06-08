@@ -330,6 +330,63 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
+}
+
+.messenger-view__panel {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+@media (max-width: 768px) {
+  .messenger-view__panel {
+    animation: messenger-panel-in 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .messenger-view--slide-left .messenger-view__panel {
+    animation: messenger-tab-slide-left 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .messenger-view--slide-right .messenger-view__panel {
+    animation: messenger-tab-slide-right 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+}
+
+@keyframes messenger-panel-in {
+  from {
+    opacity: 0.88;
+    transform: translateX(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes messenger-tab-slide-left {
+  from {
+    opacity: 0.92;
+    transform: translateX(28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes messenger-tab-slide-right {
+  from {
+    opacity: 0.92;
+    transform: translateX(-28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 .messenger-view > * {

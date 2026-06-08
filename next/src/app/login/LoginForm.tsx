@@ -24,7 +24,7 @@ export function LoginForm() {
     try {
       await login(email, password);
       const redirect = searchParams.get('redirect') || '/main';
-      router.push(redirect);
+      router.replace(redirect);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка входа');
     } finally {

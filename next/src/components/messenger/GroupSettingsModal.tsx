@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '@/lib/api';
+import { useSwipeDismiss, useSwipeGesture } from '@/hooks/useSwipeGesture';
 
 export function GroupSettingsModal({
   conversationId,
@@ -65,16 +66,41 @@ export function GroupSettingsModal({
     }
   };
 
+  const sheetDismiss = useSwipeDismiss({ enabled: mounted, onDismiss: onClose });
+  const sheetSwipe = useSwipeGesture({
+    enabled: mounted,
+    threshold: 64,
+    onSwipeDown: onClose,
+  });
+
   if (!mounted) return null;
 
   return createPortal(
     <div className="group-settings-backdrop" onClick={onClose} role="presentation">
       <div
+        ref={sheetDismiss.bindRef}
         className="group-settings-card"
         onClick={(e) => e.stopPropagation()}
+        onTouchStart={(e) => {
+          sheetDismiss.handlers.onTouchStart(e);
+          sheetSwipe.onTouchStart(e);
+        }}
+        onTouchMove={(e) => {
+          sheetDismiss.handlers.onTouchMove(e);
+          sheetSwipe.onTouchMove(e);
+        }}
+        onTouchEnd={(e) => {
+          sheetDismiss.handlers.onTouchEnd();
+          sheetSwipe.onTouchEnd(e);
+        }}
+        onTouchCancel={() => {
+          sheetDismiss.handlers.onTouchCancel();
+          sheetSwipe.onTouchCancel();
+        }}
         role="dialog"
         aria-labelledby="group-settings-title"
       >
+        <div className="group-settings-card__grab" aria-hidden="true" />
         <header className="group-settings-card__head">
           <h2 id="group-settings-title">Настройки группы</h2>
           <button type="button" className="group-settings-close" aria-label="Закрыть" onClick={onClose}>

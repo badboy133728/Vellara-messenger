@@ -6,10 +6,36 @@ import { useAuth } from '@/hooks/useAuth';
 import { APP_THEMES } from '@/lib/data/themes';
 import { PROFILE_GRADIENTS } from '@/lib/data/gradients';
 import { applyTheme } from '@/lib/applyTheme';
-import { resolveProfileMedia } from '@/lib/profileCover';
-import { AvatarCropModal } from '@/components/AvatarCropModal';
+import dynamic from 'next/dynamic';
+import { resolveProfileMedia, coverStyleFromMedia } from '@/lib/profileCover';
 import { AvatarImg } from '@/components/AvatarImg';
-import { PushNotificationsSection } from '@/components/PushNotificationsSection';
+
+const AvatarCropModal = dynamic(
+  () => import('@/components/AvatarCropModal').then((m) => ({ default: m.AvatarCropModal })),
+  { ssr: false },
+);
+
+const PushNotificationsSection = dynamic(
+  () =>
+    import('@/components/PushNotificationsSection').then((m) => ({
+      default: m.PushNotificationsSection,
+    })),
+  { ssr: false },
+);
+
+function normalizeSettings(data: Partial<SettingsData>): SettingsData {
+  return {
+    name: data.name ?? '',
+    last_name: data.last_name ?? '',
+    email: data.email ?? '',
+    bio: data.bio ?? '',
+    theme: data.theme ?? 'gold-dark',
+    profile_visibility: data.profile_visibility ?? 'everyone',
+    background_gradient: data.background_gradient ?? null,
+    avatar: data.avatar ?? null,
+    background: data.background ?? null,
+  };
+}
 
 type SettingsData = {
   name: string;
@@ -77,12 +103,13 @@ export function SettingsPanel({
     setLoading(true);
     api<SettingsData>('/api/settings')
       .then((data) => {
-        setForm(data);
-        setSavedProfile(data);
+        const normalized = normalizeSettings(data);
+        setForm(normalized);
+        setSavedProfile(normalized);
         if (data.background) setBgMode('image');
         else if (data.background_gradient) setBgMode('gradient');
         else setBgMode('default');
-        applyTheme(data.theme);
+        applyTheme(normalized.theme);
       })
       .catch(() => setErrorMessage('Не удалось загрузить настройки'))
       .finally(() => setLoading(false));
@@ -124,8 +151,9 @@ export function SettingsPanel({
       if (hadPendingAvatar && !updated.avatar) {
         throw new Error('Фото не сохранилось. Проверьте bucket avatars в Supabase.');
       }
-      setForm(updated);
-      setSavedProfile(updated);
+      const normalized = normalizeSettings(updated);
+      setForm(normalized);
+      setSavedProfile(normalized);
       setPendingAvatar(null);
       setPendingBg(null);
       setAvatarPreview(null);
@@ -133,7 +161,7 @@ export function SettingsPanel({
       setAvatarMarkedForRemoval(false);
       await refresh();
       setSaveMessage('Настройки сохранены');
-      applyTheme(updated.theme);
+      applyTheme(normalized.theme);
     } catch (err) {
       if (prevTheme) applyTheme(prevTheme);
       setErrorMessage(err instanceof Error ? err.message : 'Ошибка сохранения');
@@ -173,9 +201,10 @@ export function SettingsPanel({
             setLoading(true);
             api<SettingsData>('/api/settings')
               .then((data) => {
-                setForm(data);
-                setSavedProfile(data);
-                applyTheme(data.theme);
+                const normalized = normalizeSettings(data);
+                setForm(normalized);
+                setSavedProfile(normalized);
+                applyTheme(normalized.theme);
               })
               .catch(() => setErrorMessage('Не удалось загрузить настройки'))
               .finally(() => setLoading(false));
@@ -196,10 +225,7 @@ export function SettingsPanel({
       </header>
 
       <section className="settings-preview" aria-label="Предпросмотр профиля">
-        <div
-          className="settings-preview__cover"
-          style={{ backgroundImage: media.coverBackgroundImage }}
-        >
+        <div className="settings-preview__cover" style={coverStyleFromMedia(media)}>
           <div className="settings-preview__shade" />
         </div>
         <div className="settings-preview__row">
@@ -256,10 +282,10 @@ export function SettingsPanel({
               className="profile-field"
               rows={3}
               maxLength={500}
-              value={form.bio}
+              value={form.bio ?? ''}
               onChange={(e) => setForm({ ...form, bio: e.target.value })}
             />
-            <span className="profile-char-count">{form.bio.length} / 500</span>
+            <span className="profile-char-count">{(form.bio ?? '').length} / 500</span>
           </label>
         </div>
       </section>
@@ -376,10 +402,7 @@ export function SettingsPanel({
         )}
         {bgMode === 'image' && (
           <div className="settings-media-row">
-            <div
-              className="settings-thumb settings-thumb--wide"
-              style={{ backgroundImage: media.coverBackgroundImage }}
-            />
+            <div className="settings-thumb settings-thumb--wide" style={coverStyleFromMedia(media)} />
             <div className="settings-media-actions">
               <button type="button" className="profile-btn profile-btn--gold" onClick={() => bgInput.current?.click()}>
                 Выбрать фото

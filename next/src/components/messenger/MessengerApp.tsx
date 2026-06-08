@@ -25,10 +25,9 @@ import { usePresenceRealtime } from '@/hooks/usePresenceRealtime';
 import { isOnline } from '@/lib/presence';
 import { CallScreen } from '@/components/CallScreen';
 import { IncomingCallModal } from '@/components/IncomingCallModal';
-import dynamic from 'next/dynamic';
-import { ClientErrorBoundary } from '@/components/ClientErrorBoundary';
 import { ConversationSidebar } from './ConversationSidebar';
 import { ChatPanel } from './ChatPanel';
+import { SettingsPanel } from './SettingsPanel';
 import { ContactsPanel } from './ContactsPanel';
 import { CallsPanel } from './CallsPanel';
 import { DashboardPanel } from './DashboardPanel';
@@ -38,11 +37,6 @@ import { GroupSettingsModal } from './GroupSettingsModal';
 import { GroupInfoPanel } from './GroupInfoPanel';
 import { UserProfilePanel } from './UserProfilePanel';
 import { PushNotificationBanner } from '@/components/PushNotificationBanner';
-
-const SettingsPanel = dynamic(
-  () => import('./SettingsPanel').then((m) => m.SettingsPanel),
-  { ssr: false, loading: () => <div className="settings-page settings-loading"><p>Загрузка…</p></div> },
-);
 
 type Tab = 'chats' | 'calls' | 'contacts' | 'favorites' | 'settings' | 'dashboard';
 
@@ -814,21 +808,10 @@ function MessengerAppInner({ user }: { user: Profile }) {
           ) : tab === 'favorites' ? (
             <FavoritesPanel />
           ) : tab === 'settings' ? (
-            <ClientErrorBoundary
-              fallback={
-                <div className="settings-page settings-loading">
-                  <p className="profile-alert profile-alert--error">Не удалось открыть настройки</p>
-                  <button type="button" className="profile-btn profile-btn--gold" onClick={() => setTab('dashboard')}>
-                    Назад
-                  </button>
-                </div>
-              }
-            >
-              <SettingsPanel
-                showMobileBack={isMobile}
-                onBack={() => setTab('dashboard')}
-              />
-            </ClientErrorBoundary>
+            <SettingsPanel
+              showMobileBack={isMobile}
+              onBack={() => setTab('dashboard')}
+            />
           ) : tab === 'dashboard' ? (
             <DashboardPanel onOpenSettings={() => setTab('settings')} />
           ) : null}

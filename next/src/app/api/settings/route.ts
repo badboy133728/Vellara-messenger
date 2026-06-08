@@ -92,14 +92,14 @@ export async function POST(request: Request) {
 function formatSettings(p: Record<string, unknown>) {
   return {
     id: p.id,
-    name: p.name,
-    last_name: p.last_name,
-    email: p.email,
-    bio: p.bio,
-    theme: p.theme,
-    profile_visibility: p.profile_visibility,
-    background_gradient: p.background_gradient,
-    avatar: p.avatar,
-    background: p.background,
+    name: String(p.name ?? ''),
+    last_name: String(p.last_name ?? ''),
+    email: String(p.email ?? ''),
+    bio: String(p.bio ?? ''),
+    theme: String(p.theme ?? 'gold-dark'),
+    profile_visibility: String(p.profile_visibility ?? 'everyone'),
+    background_gradient: (p.background_gradient as string | null) ?? null,
+    avatar: (p.avatar as string | null) ?? null,
+    background: (p.background as string | null) ?? null,
   };
 }

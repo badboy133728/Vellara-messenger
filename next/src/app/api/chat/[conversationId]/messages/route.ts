@@ -2,6 +2,7 @@ import { requireAuth } from '@/lib/auth';
 import { ensureMember } from '@/lib/chat/conversations';
 import { formatMessage } from '@/lib/chat/formatters';
 import { canManageGroup } from '@/lib/chat/permissions';
+import { broadcastToConversation } from '@/lib/realtime/broadcast';
 import { uploadMessageFile } from '@/lib/storage-server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { MessageRow, Profile } from '@/lib/types';
@@ -155,8 +156,11 @@ export async function POST(
     .update({ updated_at: new Date().toISOString() })
     .eq('id', convId);
 
-  return Response.json(
-    formatMessage(message as MessageRow, profile),
-    { status: 201 },
-  );
+  const formatted = formatMessage(message as MessageRow, profile);
+  void broadcastToConversation(supabase, convId, 'NewMessage', {
+    ...formatted,
+    conversation_id: convId,
+  });
+
+  return Response.json(formatted, { status: 201 });
 }

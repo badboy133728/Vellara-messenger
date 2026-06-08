@@ -10,6 +10,7 @@ import { VoiceMessagePlayer } from '@/components/VoiceMessagePlayer';
 import { useLongPress } from '@/hooks/useLongPress';
 import { useSwipeBack } from '@/hooks/useSwipeGesture';
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
+import { prepareChatImageFile } from '@/lib/chatImageUpload';
 import { storageDisplayUrl } from '@/lib/storage';
 import type { ConversationListItem, FormattedMessage, MessageReplyPreview } from '@/lib/types';
 import { buildMessageFeed, formatMessageTime, type ChatFeedItem } from '@/utils/chatDates';
@@ -292,7 +293,7 @@ export function ChatPanel({
     if (fileRef.current) fileRef.current.value = '';
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
@@ -302,12 +303,22 @@ export function ChatPanel({
       return;
     }
 
+    let uploadFile = file;
+    if (isImageAttachment(file)) {
+      try {
+        uploadFile = await prepareChatImageFile(file);
+      } catch (err) {
+        window.alert(err instanceof Error ? err.message : 'Не удалось обработать фото');
+        return;
+      }
+    }
+
     if (pendingAttachment?.previewUrl) URL.revokeObjectURL(pendingAttachment.previewUrl);
-    const isImage = isImageAttachment(file);
+    const isImage = isImageAttachment(uploadFile);
     setPendingAttachment({
-      file,
+      file: uploadFile,
       isImage,
-      previewUrl: isImage ? URL.createObjectURL(file) : null,
+      previewUrl: isImage ? URL.createObjectURL(uploadFile) : null,
     });
     onTyping();
   };

@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/client';
+import { syncSupabaseRealtimeAuth } from '@/lib/realtime/clientAuth';
 
 export function usePresenceRealtime(
   userIds: string[],
@@ -18,12 +19,7 @@ export function usePresenceRealtime(
     if (uniqueIds.length === 0) return;
 
     const supabase = createClient();
-    void (async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.access_token) {
-        await supabase.realtime.setAuth(session.access_token);
-      }
-    })();
+    void syncSupabaseRealtimeAuth(supabase);
     const channels = uniqueIds.map((userId) =>
       supabase
         .channel(`presence:${userId}`)

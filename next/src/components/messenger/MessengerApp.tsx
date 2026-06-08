@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
-import { useChatRealtime, useUserRealtime } from '@/hooks/useChatRealtime';
+import { useChatRealtime, useActiveConversationRealtime, useUserRealtime } from '@/hooks/useChatRealtime';
 import { CallProvider, useCall } from '@/hooks/useCallManager';
 import { ContactAvatar } from '@/components/ContactAvatar';
+import { prepareChatImageFile } from '@/lib/chatImageUpload';
 import type { ConversationListItem, FormattedMessage, Profile } from '@/lib/types';
 import { applyGroupReadStatuses, type MemberRead } from '@/utils/groupReadStatus';
 import {
@@ -599,8 +600,8 @@ function MessengerAppInner({ user }: { user: Profile }) {
     return () => window.clearInterval(listTimer);
   }, [loadConversations]);
 
-  useChatRealtime(realtimeConvIdsKey, {
-    onMessage: (msg) => {
+  const handleListRealtimeMessage = useCallback(
+    (msg: FormattedMessage) => {
       const convId = msg.conversation_id;
       if (!convId) return;
 
@@ -626,11 +627,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
             prev,
           );
           if (prev.some((m) => m.id === enriched.id)) return prev;
-          return applyGroupRead(
-            [...prev, enriched],
-            membersReadRef.current,
-            convId,
-          );
+          return applyGroupRead([...prev, enriched], membersReadRef.current, convId);
         });
         api(`/api/chat/${convId}/messages/read`, { method: 'POST' }).catch(() => {});
         setConversationReadLocal(convId);
@@ -640,6 +637,24 @@ function MessengerAppInner({ user }: { user: Profile }) {
       if (fromOther && !isSystem && !viewing) {
         notifyIncomingMessage(msg);
       }
+    },
+    [
+      user.id,
+      isViewingConversation,
+      loadConversations,
+      notifyIncomingMessage,
+      setConversationReadLocal,
+    ],
+  );
+
+  useChatRealtime(realtimeConvIdsKey, {
+    onMessage: handleListRealtimeMessage,
+  });
+
+  useActiveConversationRealtime(activeId, {
+    onMessage: (msg) => {
+      if (msg.conversation_id !== activeIdRef.current) return;
+      handleListRealtimeMessage(msg);
     },
     onMessageUpdate: (msg) => {
       const convId = activeIdRef.current;
@@ -688,9 +703,17 @@ function MessengerAppInner({ user }: { user: Profile }) {
 
   const sendMessage = async (text: string, file?: File, replyToId?: number) => {
     if (!activeId) return;
+    let uploadFile = file;
+    if (file) {
+      try {
+        uploadFile = await prepareChatImageFile(file);
+      } catch {
+        uploadFile = file;
+      }
+    }
     const form = new FormData();
     if (text) form.append('content', text);
-    if (file) form.append('file', file);
+    if (uploadFile) form.append('file', uploadFile);
     if (replyToId) form.append('reply_to_id', String(replyToId));
     const msg = await api<FormattedMessage>(`/api/chat/${activeId}/messages`, {
       method: 'POST',

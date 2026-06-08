@@ -9,6 +9,8 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import type { MessageRow, Profile } from '@/lib/types';
 import { applyGroupReadStatuses, type MemberRead } from '@/utils/groupReadStatus';
 
+export const maxDuration = 60;
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ conversationId: string }> },

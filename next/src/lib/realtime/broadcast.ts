@@ -1,61 +1,71 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
+import { createAdminClient } from '@/lib/supabase/admin';
 
-/** Ephemeral events: typing, call signaling (client-to-client via broadcast channel) */
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Ephemeral events: typing, new message fan-out (client-to-client via broadcast channel). */
 export async function broadcastToConversation(
-  supabase: SupabaseClient,
+  _supabase: unknown,
   conversationId: number,
   event: string,
   payload: Record<string, unknown>,
 ) {
+  const supabase = createAdminClient();
   const channel = supabase.channel(`conversation:${conversationId}`, {
-    config: { broadcast: { self: false } },
+    config: { broadcast: { ack: true, self: false } },
   });
 
   await new Promise<void>((resolve) => {
-    const done = () => {
+    const done = async () => {
+      await wait(120);
       supabase.removeChannel(channel);
       resolve();
     };
-    const timer = setTimeout(done, 4000);
+    const timer = setTimeout(() => void done(), 5000);
     channel.subscribe((status) => {
       if (status === 'SUBSCRIBED') {
-        channel.send({ type: 'broadcast', event, payload });
-        clearTimeout(timer);
-        done();
+        void channel.send({ type: 'broadcast', event, payload }).finally(() => {
+          clearTimeout(timer);
+          void done();
+        });
       }
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
         clearTimeout(timer);
-        done();
+        void done();
       }
     });
   });
 }
 
 export async function broadcastToUser(
-  supabase: SupabaseClient,
+  _supabase: unknown,
   userId: string,
   event: string,
   payload: Record<string, unknown>,
 ) {
+  const supabase = createAdminClient();
   const channel = supabase.channel(`user:${userId}`, {
-    config: { broadcast: { self: false } },
+    config: { broadcast: { ack: true, self: false } },
   });
 
   await new Promise<void>((resolve) => {
-    const done = () => {
+    const done = async () => {
+      await wait(120);
       supabase.removeChannel(channel);
       resolve();
     };
-    const timer = setTimeout(done, 4000);
+    const timer = setTimeout(() => void done(), 5000);
     channel.subscribe((status) => {
       if (status === 'SUBSCRIBED') {
-        channel.send({ type: 'broadcast', event, payload });
-        clearTimeout(timer);
-        done();
+        void channel.send({ type: 'broadcast', event, payload }).finally(() => {
+          clearTimeout(timer);
+          void done();
+        });
       }
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
         clearTimeout(timer);
-        done();
+        void done();
       }
     });
   });

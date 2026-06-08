@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 import type {
   AuthChangeEvent,
   RealtimeChannel,
@@ -9,6 +9,7 @@ import type {
   Session,
 } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/client';
+import { syncSupabaseRealtimeAuth } from '@/lib/realtime/clientAuth';
 import type { FormattedMessage } from '@/lib/types';
 
 type Handlers = {
@@ -45,8 +46,121 @@ function rowToMessage(row: Record<string, unknown>, convId: number): FormattedMe
   };
 }
 
-/** Comma-separated sorted conversation ids — stable dependency for subscriptions. */
-export function useChatRealtime(conversationIdsKey: string, handlers: Handlers) {
+function subscribeConversation(
+  supabase: ReturnType<typeof createClient>,
+  convId: number,
+  handlersRef: RefObject<Handlers>,
+  onResubscribe: (channel: RealtimeChannel) => void,
+): RealtimeChannel {
+  const channel = supabase
+    .channel(`conversation:${convId}`, {
+      config: { broadcast: { self: false } },
+    })
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${convId}` },
+      (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
+        handlersRef.current?.onMessage?.(
+          rowToMessage(payload.new as Record<string, unknown>, convId),
+        );
+      },
+    )
+    .on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'messages', filter: `conversation_id=eq.${convId}` },
+      (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
+        handlersRef.current?.onMessageUpdate?.(
+          rowToMessage(payload.new as Record<string, unknown>, convId),
+        );
+      },
+    )
+    .on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'conversation_members', filter: `conversation_id=eq.${convId}` },
+      (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
+        const row = payload.new as Record<string, unknown>;
+        const lastReadAt = row.last_read_at as string | null;
+        if (!lastReadAt) return;
+        handlersRef.current?.onMemberRead?.({
+          conversation_id: convId,
+          user_id: row.user_id as string,
+          last_read_at: lastReadAt,
+        });
+      },
+    )
+    .on('broadcast', { event: 'UserTyping' }, (message: { payload: { conversation_id: number; user_id: string } }) => {
+      handlersRef.current?.onTyping?.(message.payload);
+    })
+    .on('broadcast', { event: 'NewMessage' }, (message: { payload: FormattedMessage }) => {
+      const msg = message.payload;
+      if (msg?.conversation_id === convId) {
+        handlersRef.current?.onMessage?.(msg);
+      }
+    })
+    .subscribe((status: `${REALTIME_SUBSCRIBE_STATES}`) => {
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        window.setTimeout(() => {
+          supabase.removeChannel(channel);
+          onResubscribe(subscribeConversation(supabase, convId, handlersRef, onResubscribe));
+        }, 2000);
+      }
+    });
+
+  return channel;
+}
+
+/** Realtime for the open chat only (reliable: one channel + server JWT). */
+export function useActiveConversationRealtime(activeId: number | null, handlers: Handlers) {
+  const handlersRef = useRef(handlers);
+  handlersRef.current = handlers;
+
+  useEffect(() => {
+    if (!activeId) return;
+
+    const supabase = createClient();
+    let disposed = false;
+    let channel: RealtimeChannel | null = null;
+
+    const attach = (ch: RealtimeChannel) => {
+      channel = ch;
+    };
+
+    const resubscribe = (ch: RealtimeChannel) => {
+      if (disposed) return;
+      attach(ch);
+    };
+
+    void (async () => {
+      await syncSupabaseRealtimeAuth(supabase);
+      if (disposed) return;
+      attach(subscribeConversation(supabase, activeId, handlersRef, resubscribe));
+    })();
+
+    const {
+      data: { subscription: authSubscription },
+    } = supabase.auth.onAuthStateChange((_event: AuthChangeEvent, session: Session | null) => {
+      if (session?.access_token) {
+        void supabase.realtime.setAuth(session.access_token);
+      } else {
+        void syncSupabaseRealtimeAuth(supabase);
+      }
+    });
+
+    const refreshAuth = window.setInterval(() => {
+      void syncSupabaseRealtimeAuth(supabase);
+    }, 4 * 60 * 1000);
+
+    return () => {
+      disposed = true;
+      window.clearInterval(refreshAuth);
+      authSubscription.unsubscribe();
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, [activeId]);
+}
+
+/** Lightweight list updates: postgres INSERT on all user conversations. */
+export function useChatRealtime(conversationIdsKey: string, handlers: Pick<Handlers, 'onMessage'>) {
   const handlersRef = useRef(handlers);
   handlersRef.current = handlers;
 
@@ -60,94 +174,35 @@ export function useChatRealtime(conversationIdsKey: string, handlers: Handlers) 
     let disposed = false;
     const channels: RealtimeChannel[] = [];
 
-    const syncRealtimeAuth = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (session?.access_token) {
-        await supabase.realtime.setAuth(session.access_token);
-      }
-    };
-
-    const subscribeConversation = (convId: number) => {
-      const channel = supabase
-        .channel(`conversation:${convId}`)
-        .on(
-          'postgres_changes',
-          { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${convId}` },
-          (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
-            handlersRef.current.onMessage?.(
-              rowToMessage(payload.new as Record<string, unknown>, convId),
-            );
-          },
-        )
-        .on(
-          'postgres_changes',
-          { event: 'UPDATE', schema: 'public', table: 'messages', filter: `conversation_id=eq.${convId}` },
-          (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
-            handlersRef.current.onMessageUpdate?.(
-              rowToMessage(payload.new as Record<string, unknown>, convId),
-            );
-          },
-        )
-        .on(
-          'postgres_changes',
-          { event: 'UPDATE', schema: 'public', table: 'conversation_members', filter: `conversation_id=eq.${convId}` },
-          (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
-            const row = payload.new as Record<string, unknown>;
-            const lastReadAt = row.last_read_at as string | null;
-            if (!lastReadAt) return;
-            handlersRef.current.onMemberRead?.({
-              conversation_id: convId,
-              user_id: row.user_id as string,
-              last_read_at: lastReadAt,
-            });
-          },
-        )
-        .on('broadcast', { event: 'UserTyping' }, (message: { payload: { conversation_id: number; user_id: string } }) => {
-          handlersRef.current.onTyping?.(message.payload);
-        })
-        .on('broadcast', { event: 'NewMessage' }, (message: { payload: FormattedMessage }) => {
-          const msg = message.payload;
-          if (msg?.conversation_id === convId) {
-            handlersRef.current.onMessage?.(msg);
-          }
-        })
-        .subscribe((status: `${REALTIME_SUBSCRIBE_STATES}`) => {
-          if (disposed) return;
-          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-            window.setTimeout(() => {
-              if (disposed) return;
-              supabase.removeChannel(channel);
-              const idx = channels.indexOf(channel);
-              if (idx >= 0) channels.splice(idx, 1);
-              channels.push(subscribeConversation(convId));
-            }, 2500);
-          }
-        });
-
-      return channel;
-    };
-
     void (async () => {
-      await syncRealtimeAuth();
+      await syncSupabaseRealtimeAuth(supabase);
       if (disposed) return;
+
       conversationIds.forEach((convId) => {
-        channels.push(subscribeConversation(convId));
+        const channel = supabase
+          .channel(`conversation-list:${convId}`)
+          .on(
+            'postgres_changes',
+            { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${convId}` },
+            (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
+              handlersRef.current.onMessage?.(
+                rowToMessage(payload.new as Record<string, unknown>, convId),
+              );
+            },
+          )
+          .on('broadcast', { event: 'NewMessage' }, (message: { payload: FormattedMessage }) => {
+            const msg = message.payload;
+            if (msg?.conversation_id === convId) {
+              handlersRef.current.onMessage?.(msg);
+            }
+          })
+          .subscribe();
+        channels.push(channel);
       });
     })();
 
-    const {
-      data: { subscription: authSubscription },
-    } = supabase.auth.onAuthStateChange((_event: AuthChangeEvent, session: Session | null) => {
-      if (session?.access_token) {
-        void supabase.realtime.setAuth(session.access_token);
-      }
-    });
-
     return () => {
       disposed = true;
-      authSubscription.unsubscribe();
       channels.forEach((ch) => supabase.removeChannel(ch));
     };
   }, [conversationIdsKey]);
@@ -170,11 +225,8 @@ export function useUserRealtime(userId: string | undefined, handlers: UserRealti
     const notifyContacts = () => handlersRef.current.onContactsChanged?.();
 
     void (async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+      await syncSupabaseRealtimeAuth(supabase);
       if (disposed) return;
-      if (session?.access_token) {
-        await supabase.realtime.setAuth(session.access_token);
-      }
     })();
 
     const channel = supabase
@@ -230,6 +282,8 @@ export function useUserRealtime(userId: string | undefined, handlers: UserRealti
     } = supabase.auth.onAuthStateChange((_event: AuthChangeEvent, session: Session | null) => {
       if (session?.access_token) {
         void supabase.realtime.setAuth(session.access_token);
+      } else {
+        void syncSupabaseRealtimeAuth(supabase);
       }
     });
 

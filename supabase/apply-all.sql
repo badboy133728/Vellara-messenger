@@ -361,3 +361,7 @@ alter table public.messages
   add column if not exists reply_to_id bigint references public.messages (id) on delete set null;
 
 create index if not exists messages_reply_to_idx on public.messages (reply_to_id);
+
+-- ========== 008_realtime_replica_identity.sql ==========
+alter table public.messages replica identity full;
+alter table public.conversation_members replica identity full;

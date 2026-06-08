@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ContactAvatar } from '@/components/ContactAvatar';
 import { EmojiPicker } from '@/components/EmojiPicker';
 import { ImageLightbox } from '@/components/ImageLightbox';
@@ -176,6 +176,17 @@ export function ChatPanel({
     }
   }, [conversation?.id]);
 
+  useLayoutEffect(() => {
+    if (messagesLoading) return;
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    scrollToBottom('instant');
+    if (messages.length === 0) {
+      scrollReadyRef.current = true;
+      setScrollReady(true);
+    }
+  }, [conversation?.id, messagesLoading, messages.length]);
+
   useEffect(() => {
     const el = messagesContainerRef.current;
     if (!el) return;
@@ -235,7 +246,7 @@ export function ChatPanel({
       });
       ro.observe(el);
 
-      const maxWait = window.setTimeout(finalizeInitialScroll, 2500);
+      const maxWait = window.setTimeout(finalizeInitialScroll, isMobile ? 600 : 2500);
 
       prevMessageCountRef.current = count;
       return () => {
@@ -254,7 +265,7 @@ export function ChatPanel({
 
     const mode = last?.user_id === currentUserId ? 'instant' : 'smooth';
     requestAnimationFrame(() => scrollToBottom(mode));
-  }, [messages, messagesLoading, currentUserId]);
+  }, [messages, messagesLoading, currentUserId, isMobile]);
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -326,7 +337,7 @@ export function ChatPanel({
 
   const showMessages = !messagesLoading;
   const chatReady = showMessages && (messages.length === 0 || scrollReady);
-  const showComposerArea = chatReady || Boolean(pendingAttachment);
+  const showComposerArea = showMessages;
 
   const swipeBack = useSwipeBack({
     enabled: Boolean(isMobile && onBack && chatReady),
@@ -800,7 +811,7 @@ export function ChatPanel({
             <span className="typing-text">печатает…</span>
           </div>
 
-          {chatReady && isRecording ? (
+          {showMessages && isRecording ? (
             <div className="voice-record-bar">
               <button type="button" className="btn-voice-cancel" title="Отмена" onClick={cancelRecording}>
                 ✕

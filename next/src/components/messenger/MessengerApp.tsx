@@ -6,7 +6,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useChatRealtime, useActiveConversationRealtime, useUserRealtime } from '@/hooks/useChatRealtime';
 import { CallProvider, useCall } from '@/hooks/useCallManager';
 import { ContactAvatar } from '@/components/ContactAvatar';
-import { prepareChatImageFile } from '@/lib/chatImageUpload';
+import { prepareChatImageForUpload } from '@/lib/chatImageUpload';
 import type { ConversationListItem, FormattedMessage, Profile } from '@/lib/types';
 import { applyGroupReadStatuses, type MemberRead } from '@/utils/groupReadStatus';
 import {
@@ -703,14 +703,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
 
   const sendMessage = async (text: string, file?: File, replyToId?: number) => {
     if (!activeId) return;
-    let uploadFile = file;
-    if (file) {
-      try {
-        uploadFile = await prepareChatImageFile(file);
-      } catch {
-        uploadFile = file;
-      }
-    }
+    const uploadFile = file ? await prepareChatImageForUpload(file) : file;
     const form = new FormData();
     if (text) form.append('content', text);
     if (uploadFile) form.append('file', uploadFile);

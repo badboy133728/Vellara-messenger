@@ -131,7 +131,10 @@ export async function POST(
       return Response.json({ message: 'Файл слишком большой' }, { status: 422 });
     }
 
-    const uploaded = await uploadMessageFile(user.id, file);
+    const uploaded = await uploadMessageFile(user.id, file).catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : 'Не удалось загрузить файл';
+      throw new Error(msg.includes('Payload') || msg.includes('413') ? 'Файл слишком большой для отправки' : msg);
+    });
     insert.file_path = uploaded.path;
     insert.file_type = uploaded.fileType;
     insert.file_original_name = uploaded.originalName;

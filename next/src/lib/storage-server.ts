@@ -1,3 +1,4 @@
+import { compressMessageImageBuffer } from '@/lib/chatImageCompressServer';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 const BUCKET_AVATARS = 'avatars';
@@ -65,18 +66,29 @@ export async function uploadMessageFile(
   userId: string,
   file: File,
 ): Promise<{ path: string; fileType: string; originalName: string }> {
-  const ext = file.name.split('.').pop()?.toLowerCase() ?? 'bin';
-  const key = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
   const fileType = resolveFileTypeFromFile(file);
-  const body = Buffer.from(await file.arrayBuffer());
+  let ext = file.name.split('.').pop()?.toLowerCase() ?? 'bin';
+  let body: Buffer = Buffer.from(await file.arrayBuffer());
+  let contentType = file.type || contentTypeForExtension(ext);
 
   if (!body.byteLength) {
     throw new Error('Пустой файл');
   }
 
+  if (fileType === 'image') {
+    const compressed = await compressMessageImageBuffer(body);
+    if (compressed) {
+      body = Buffer.from(compressed.buffer);
+      ext = compressed.ext;
+      contentType = compressed.contentType;
+    }
+  }
+
+  const key = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+
   const admin = createAdminClient();
   const { error } = await admin.storage.from(BUCKET_MESSAGES).upload(key, body, {
-    contentType: file.type || contentTypeForExtension(ext),
+    contentType,
     upsert: false,
   });
 

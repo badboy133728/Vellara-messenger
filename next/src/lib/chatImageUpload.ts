@@ -1,11 +1,17 @@
 import { canvasToFile, loadOrientedImage } from '@/lib/imageOrientation';
 
-const MAX_UPLOAD_BYTES = 3.5 * 1024 * 1024;
+/** Лимит тела запроса Vercel ~4.5 MB — оставляем запас. */
+export const CHAT_UPLOAD_MAX_BYTES = 3.5 * 1024 * 1024;
 const MAX_EDGE = 2048;
 
 function isChatImage(file: File) {
   if (file.type.startsWith('image/')) return true;
   return /\.(jpe?g|png|gif|webp|bmp|heic|heif)$/i.test(file.name);
+}
+
+function isHeicLike(file: File) {
+  if (/heic|heif/i.test(file.type)) return true;
+  return /\.(heic|heif)$/i.test(file.name);
 }
 
 function resizeCanvas(source: HTMLCanvasElement, maxEdge: number): HTMLCanvasElement {
@@ -25,7 +31,7 @@ function resizeCanvas(source: HTMLCanvasElement, maxEdge: number): HTMLCanvasEle
   return out;
 }
 
-/** Сжимает фото для отправки (Vercel лимит ~4.5MB, EXIF orientation). */
+/** Сжимает фото в браузере перед отправкой (JPEG, EXIF). */
 export async function prepareChatImageFile(file: File): Promise<File> {
   if (!isChatImage(file)) return file;
 
@@ -35,14 +41,31 @@ export async function prepareChatImageFile(file: File): Promise<File> {
   let quality = 0.88;
   let result = await canvasToFile(resized, 'photo.jpg', 'image/jpeg', quality);
 
-  while (result.size > MAX_UPLOAD_BYTES && quality > 0.52) {
+  while (result.size > CHAT_UPLOAD_MAX_BYTES && quality > 0.52) {
     quality -= 0.08;
     result = await canvasToFile(resized, 'photo.jpg', 'image/jpeg', quality);
   }
 
-  if (result.size > MAX_UPLOAD_BYTES) {
+  if (result.size > CHAT_UPLOAD_MAX_BYTES) {
     throw new Error('Фото слишком большое. Попробуйте другое изображение.');
   }
 
   return result;
+}
+
+/** Подготовка файла к отправке: HEIC отдаём серверу, иначе сжимаем в браузере. */
+export async function prepareChatImageForUpload(file: File): Promise<File> {
+  if (!isChatImage(file)) return file;
+
+  if (isHeicLike(file)) {
+    if (file.size <= CHAT_UPLOAD_MAX_BYTES) return file;
+    throw new Error('Фото слишком большое. Сохраните как JPEG или выберите другое.');
+  }
+
+  try {
+    return await prepareChatImageFile(file);
+  } catch {
+    if (file.size <= CHAT_UPLOAD_MAX_BYTES) return file;
+    throw new Error('Не удалось обработать фото. Попробуйте другое изображение.');
+  }
 }

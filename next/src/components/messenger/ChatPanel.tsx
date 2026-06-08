@@ -10,7 +10,6 @@ import { VoiceMessagePlayer } from '@/components/VoiceMessagePlayer';
 import { useLongPress } from '@/hooks/useLongPress';
 import { useSwipeBack } from '@/hooks/useSwipeGesture';
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
-import { prepareChatImageFile } from '@/lib/chatImageUpload';
 import { storageDisplayUrl } from '@/lib/storage';
 import type { ConversationListItem, FormattedMessage, MessageReplyPreview } from '@/lib/types';
 import { buildMessageFeed, formatMessageTime, type ChatFeedItem } from '@/utils/chatDates';
@@ -40,6 +39,7 @@ const emptyMenu: MsgMenuState = {
 };
 
 const MAX_FILE_BYTES = 15 * 1024 * 1024;
+const CHAT_FILE_INPUT_ID = 'chat-attach-input';
 
 type PendingAttachment = {
   file: File;
@@ -293,9 +293,9 @@ export function ChatPanel({
     if (fileRef.current) fileRef.current.value = '';
   };
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    e.target.value = '';
+    if (fileRef.current) fileRef.current.value = '';
     if (!file) return;
 
     if (file.size > MAX_FILE_BYTES) {
@@ -303,22 +303,12 @@ export function ChatPanel({
       return;
     }
 
-    let uploadFile = file;
-    if (isImageAttachment(file)) {
-      try {
-        uploadFile = await prepareChatImageFile(file);
-      } catch (err) {
-        window.alert(err instanceof Error ? err.message : 'Не удалось обработать фото');
-        return;
-      }
-    }
-
     if (pendingAttachment?.previewUrl) URL.revokeObjectURL(pendingAttachment.previewUrl);
-    const isImage = isImageAttachment(uploadFile);
+    const isImage = isImageAttachment(file);
     setPendingAttachment({
-      file: uploadFile,
+      file,
       isImage,
-      previewUrl: isImage ? URL.createObjectURL(uploadFile) : null,
+      previewUrl: isImage ? URL.createObjectURL(file) : null,
     });
     onTyping();
   };
@@ -821,6 +811,14 @@ export function ChatPanel({
         </div>
       ) : chatReady ? (
         <div className="input-area input-area--ready" ref={inputAreaRef}>
+          <input
+            id={CHAT_FILE_INPUT_ID}
+            ref={fileRef}
+            type="file"
+            className="composer-file-input"
+            accept="image/*,.heic,.heif,.pdf,.doc,.docx,.webp"
+            onChange={handleFileSelect}
+          />
           {pendingAttachment && (
             <div className="attachments-panel">
               <div className="attachments-panel__head">
@@ -859,25 +857,15 @@ export function ChatPanel({
               void handleSubmit(e);
             }}
           >
-            <input
-              ref={fileRef}
-              type="file"
-              className="file-input-hidden"
-              accept="image/*,.pdf,.doc,.docx,.webp"
-              onChange={handleFileSelect}
-            />
-            <button
-              type="button"
+            <label
+              htmlFor={CHAT_FILE_INPUT_ID}
               className="composer-btn composer-btn--attach"
               title="Прикрепить файл"
               onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation();
-                fileRef.current?.click();
-              }}
+              onClick={(e) => e.stopPropagation()}
             >
               📎
-            </button>
+            </label>
             <div className="composer-field">
               {replyTo && !editingMessage && (
                 <div className="composer-reply">

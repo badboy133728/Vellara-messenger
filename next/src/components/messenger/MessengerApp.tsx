@@ -9,6 +9,7 @@ import { ContactAvatar } from '@/components/ContactAvatar';
 import type { ConversationListItem, FormattedMessage, Profile } from '@/lib/types';
 import { applyGroupReadStatuses, type MemberRead } from '@/utils/groupReadStatus';
 import {
+  enrichMessageReply,
   enrichMessageSender,
   enrichMessageSenders,
   membersMapFromGroupApi,
@@ -309,7 +310,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
   }, []);
 
   const loadMessages = useCallback(
-    async (convId: number) => {
+    async (convId: number, opts?: { silent?: boolean }) => {
       setConversationReadLocal(convId);
       const conv = conversationsRef.current.find((c) => c.id === convId);
       if (conv?.type === 'group') {
@@ -329,7 +330,14 @@ function MessengerAppInner({ user }: { user: Profile }) {
           : (data.members_read ?? []);
       setMembersRead(readState);
       const enriched = enrichMessageSenders(data.messages ?? [], groupMembersRef.current, userRef.current);
-      setMessages(applyGroupReadStatuses(enriched, readState, userRef.current.id));
+      const nextMessages = applyGroupReadStatuses(enriched, readState, userRef.current.id);
+      setMessages((prev) => {
+        if (!opts?.silent || prev.length === 0) return nextMessages;
+        const prevLast = prev[prev.length - 1]?.id;
+        const nextLast = nextMessages[nextMessages.length - 1]?.id;
+        if (prev.length === nextMessages.length && prevLast === nextLast) return prev;
+        return nextMessages;
+      });
       api(`/api/chat/${convId}/messages/read`, { method: 'POST' }).catch(() => {});
     },
     [setConversationReadLocal, syncGroupMembers],
@@ -341,17 +349,37 @@ function MessengerAppInner({ user }: { user: Profile }) {
       .finally(() => setLoading(false));
   }, [loadConversations, user.id]);
 
+  const openChatFromPath = useCallback((path: string) => {
+    try {
+      const url = new URL(path, window.location.origin);
+      const chat = url.searchParams.get('chat');
+      if (!chat) return;
+      const id = Number(chat);
+      if (!Number.isFinite(id) || id <= 0) return;
+      setActiveId(id);
+      setTab('chats');
+      window.history.replaceState({}, '', '/main');
+    } catch {
+      /* ignore malformed notification url */
+    }
+  }, []);
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const params = new URLSearchParams(window.location.search);
-    const chat = params.get('chat');
-    if (!chat) return;
-    const id = Number(chat);
-    if (!Number.isFinite(id) || id <= 0) return;
-    setActiveId(id);
-    setTab('chats');
-    window.history.replaceState({}, '', '/main');
-  }, []);
+    openChatFromPath(window.location.pathname + window.location.search);
+  }, [openChatFromPath]);
+
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data as { type?: string; url?: string } | null;
+      if (data?.type === 'notification-open' && data.url) {
+        openChatFromPath(data.url);
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', onMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', onMessage);
+  }, [openChatFromPath]);
 
   useEffect(() => {
     loadSavedIds();
@@ -393,9 +421,9 @@ function MessengerAppInner({ user }: { user: Profile }) {
     if (!activeId || tab !== 'chats') return;
     const pollMessages = () => {
       if (document.visibilityState !== 'visible') return;
-      loadMessages(activeId).catch(() => {});
+      loadMessages(activeId, { silent: true }).catch(() => {});
     };
-    const messageTimer = window.setInterval(pollMessages, 5000);
+    const messageTimer = window.setInterval(pollMessages, 12000);
     return () => window.clearInterval(messageTimer);
   }, [activeId, tab, loadMessages]);
 
@@ -429,8 +457,11 @@ function MessengerAppInner({ user }: { user: Profile }) {
       });
 
       if (viewing && activeIdRef.current === convId) {
-        const enriched = enrichMessageSender(msg, groupMembersRef.current, user);
         setMessages((prev) => {
+          const enriched = enrichMessageReply(
+            enrichMessageSender(msg, groupMembersRef.current, user),
+            prev,
+          );
           if (prev.some((m) => m.id === enriched.id)) return prev;
           return applyGroupRead([...prev, enriched], membersRead, convId);
         });
@@ -482,18 +513,22 @@ function MessengerAppInner({ user }: { user: Profile }) {
 
   const activeConv = conversations.find((c) => c.id === activeId) ?? null;
 
-  const sendMessage = async (text: string, file?: File) => {
+  const sendMessage = async (text: string, file?: File, replyToId?: number) => {
     if (!activeId) return;
     const form = new FormData();
     if (text) form.append('content', text);
     if (file) form.append('file', file);
+    if (replyToId) form.append('reply_to_id', String(replyToId));
     const msg = await api<FormattedMessage>(`/api/chat/${activeId}/messages`, {
       method: 'POST',
       body: form,
       headers: {},
     });
-    const enriched = enrichMessageSender(msg, groupMembersRef.current, user);
     setMessages((prev) => {
+      const enriched = enrichMessageReply(
+        enrichMessageSender(msg, groupMembersRef.current, user),
+        prev,
+      );
       if (prev.some((m) => m.id === enriched.id)) return prev;
       return applyGroupRead([...prev, enriched], membersRead, activeId);
     });

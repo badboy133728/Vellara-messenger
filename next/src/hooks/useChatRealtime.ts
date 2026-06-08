@@ -36,6 +36,7 @@ function rowToMessage(row: Record<string, unknown>, convId: number): FormattedMe
     file_original_name: row.file_original_name as string | null,
     voice_duration: row.voice_duration as number | null,
     album_group_id: row.album_group_id as string | null,
+    reply_to_id: (row.reply_to_id as number | null) ?? null,
     is_edited: !!row.is_edited,
     edited_at: row.edited_at as string | null,
     is_deleted: !!row.deleted_at,

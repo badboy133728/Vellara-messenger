@@ -10,7 +10,7 @@ import { VoiceMessagePlayer } from '@/components/VoiceMessagePlayer';
 import { useLongPress } from '@/hooks/useLongPress';
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
 import { storageDisplayUrl } from '@/lib/storage';
-import type { ConversationListItem, FormattedMessage } from '@/lib/types';
+import type { ConversationListItem, FormattedMessage, MessageReplyPreview } from '@/lib/types';
 import { buildMessageFeed, formatMessageTime, type ChatFeedItem } from '@/utils/chatDates';
 import { formatVoiceDuration } from '@/utils/messagePreview';
 import { senderColorForUserId, senderDisplayName } from '@/utils/senderColor';
@@ -74,7 +74,7 @@ export function ChatPanel({
   typingUserId: string | null;
   savedMessageIds: Set<number>;
   isMobile?: boolean;
-  onSend: (text: string, file?: File) => Promise<void>;
+  onSend: (text: string, file?: File, replyToId?: number) => Promise<void>;
   onSendVoice?: (blob: Blob, duration: number, mimeType: string) => Promise<void>;
   onEditMessage?: (messageId: number, content: string) => Promise<void>;
   onDeleteMessage?: (messageId: number) => Promise<void>;
@@ -93,9 +93,14 @@ export function ChatPanel({
   const [editingMessage, setEditingMessage] = useState<FormattedMessage | null>(null);
   const [msgMenu, setMsgMenu] = useState<MsgMenuState>(emptyMenu);
   const [pendingAttachment, setPendingAttachment] = useState<PendingAttachment | null>(null);
+  const [replyTo, setReplyTo] = useState<FormattedMessage | null>(null);
   const menuCloseLockRef = useRef(0);
 
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);
+  const prevConvIdRef = useRef<number | null>(null);
+  const prevMessageCountRef = useRef(0);
   const fileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const inputAreaRef = useRef<HTMLDivElement>(null);
@@ -113,8 +118,44 @@ export function ChatPanel({
   const isOtherTyping = typingUserId && typingUserId !== currentUserId;
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isOtherTyping, isRecording]);
+    const convId = conversation?.id ?? null;
+    if (convId !== prevConvIdRef.current) {
+      prevConvIdRef.current = convId;
+      prevMessageCountRef.current = 0;
+      stickToBottomRef.current = true;
+      setReplyTo(null);
+      requestAnimationFrame(() => {
+        bottomRef.current?.scrollIntoView({ block: 'end' });
+      });
+    }
+  }, [conversation?.id]);
+
+  useEffect(() => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+      stickToBottomRef.current = distance < 96;
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [conversation?.id]);
+
+  useEffect(() => {
+    const count = messages.length;
+    const grew = count > prevMessageCountRef.current;
+    prevMessageCountRef.current = count;
+    if (!grew) return;
+
+    const last = messages[count - 1];
+    const shouldScroll =
+      stickToBottomRef.current || last?.user_id === currentUserId;
+    if (!shouldScroll) return;
+
+    requestAnimationFrame(() => {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    });
+  }, [messages, currentUserId]);
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -238,10 +279,44 @@ export function ChatPanel({
   const startEditMessage = () => {
     const msg = msgMenu.message;
     if (!msg) return;
+    setReplyTo(null);
     setEditingMessage(msg);
     setText(msg.content || '');
     closeMessageMenu();
     window.setTimeout(() => textareaRef.current?.focus(), 0);
+  };
+
+  const startReplyMessage = () => {
+    const msg = msgMenu.message;
+    if (!msg || msg.is_deleted) return;
+    setEditingMessage(null);
+    setReplyTo(msg);
+    closeMessageMenu();
+    window.setTimeout(() => textareaRef.current?.focus(), 0);
+  };
+
+  const replyPreviewText = (msg: FormattedMessage | MessageReplyPreview) => {
+    if (msg.is_deleted) return 'Сообщение удалено';
+    if (msg.file_type === 'voice') return 'Голосовое сообщение';
+    if (msg.file_type === 'image') return 'Фото';
+    if (msg.file_type === 'document') return 'Файл';
+    const text = (msg.content || '').trim();
+    return text.length > 80 ? `${text.slice(0, 80)}…` : text || 'Сообщение';
+  };
+
+  const openImageLightbox = (m: FormattedMessage) => {
+    const url = storageDisplayUrl(m.file_path) ?? '';
+    if (!url) return;
+    let urls = [url];
+    let index = 0;
+    if (m.album_group_id) {
+      urls = messages
+        .filter((x) => x.album_group_id === m.album_group_id && x.file_type === 'image')
+        .map((x) => storageDisplayUrl(x.file_path))
+        .filter((u): u is string => !!u);
+      index = Math.max(0, urls.indexOf(url));
+    }
+    setLightbox({ urls, index });
   };
 
   const cancelEdit = () => {
@@ -358,9 +433,11 @@ export function ChatPanel({
     if (!content && !pendingAttachment) return;
     setSending(true);
     try {
-      await onSend(content, pendingAttachment?.file);
+      await onSend(content, pendingAttachment?.file, replyTo?.id);
       setText('');
       clearAttachment();
+      setReplyTo(null);
+      stickToBottomRef.current = true;
     } finally {
       setSending(false);
     }
@@ -408,14 +485,19 @@ export function ChatPanel({
           <span className="msg-deleted">Сообщение удалено</span>
         ) : (
           <>
+            {m.reply_to && (
+              <div className={`msg-reply-quote ${mine ? 'msg-reply-quote--mine' : ''}`}>
+                <span className="msg-reply-quote__author">
+                  {senderDisplayName(m.reply_to.sender)}
+                </span>
+                <span className="msg-reply-quote__text">{replyPreviewText(m.reply_to)}</span>
+              </div>
+            )}
             {m.file_path && m.file_type === 'image' && storageDisplayUrl(m.file_path) && (
               <button
                 type="button"
                 className="msg-image-btn"
-                onClick={() => {
-                  const url = storageDisplayUrl(m.file_path) ?? '';
-                  if (url) setLightbox({ urls: [url], index: 0 });
-                }}
+                onClick={() => openImageLightbox(m)}
               >
                 <img src={storageDisplayUrl(m.file_path) ?? ''} alt="Фото" loading="lazy" />
               </button>
@@ -553,19 +635,21 @@ export function ChatPanel({
         )}
       </header>
 
-      <div className="messages-container">
+      <div className="messages-container" ref={messagesContainerRef}>
         {feed.map(renderFeedItem)}
         <div ref={bottomRef} />
       </div>
 
-      {isOtherTyping && (
-        <div className="chat-typing-bar" aria-live="polite">
-          <span className="dot" />
-          <span className="dot" />
-          <span className="dot" />
-          <span className="typing-text">печатает…</span>
-        </div>
-      )}
+      <div
+        className={`chat-typing-bar ${isOtherTyping ? 'chat-typing-bar--visible' : ''}`}
+        aria-live="polite"
+        aria-hidden={!isOtherTyping}
+      >
+        <span className="dot" />
+        <span className="dot" />
+        <span className="dot" />
+        <span className="typing-text">печатает…</span>
+      </div>
 
       {lightbox && (
         <ImageLightbox urls={lightbox.urls} index={lightbox.index} onClose={() => setLightbox(null)} />
@@ -590,6 +674,23 @@ export function ChatPanel({
         </div>
       ) : (
         <div className="input-area" ref={inputAreaRef}>
+          {replyTo && !editingMessage && (
+            <div className="composer-reply">
+              <div className="composer-reply__body">
+                <span className="composer-reply__label">Ответ</span>
+                <span className="composer-reply__author">{senderDisplayName(replyTo.sender)}</span>
+                <span className="composer-reply__text">{replyPreviewText(replyTo)}</span>
+              </div>
+              <button
+                type="button"
+                className="composer-reply__close"
+                aria-label="Отменить ответ"
+                onClick={() => setReplyTo(null)}
+              >
+                ✕
+              </button>
+            </div>
+          )}
           {pendingAttachment && (
             <div className="attachments-panel">
               <div className="attachments-panel__head">
@@ -711,10 +812,12 @@ export function ChatPanel({
         x={msgMenu.x}
         y={msgMenu.y}
         isMobile={isMobile}
+        canReply={!!msgMenu.message && !msgMenu.message.is_deleted}
         canEdit={msgMenu.canEdit}
         canDelete={msgMenu.canDelete}
         canSave={msgMenu.canSave}
         isSaved={msgMenu.isSaved}
+        onReply={startReplyMessage}
         onSave={() => void handleToggleSave()}
         onEdit={startEditMessage}
         onDelete={() => void handleDeleteMessage()}

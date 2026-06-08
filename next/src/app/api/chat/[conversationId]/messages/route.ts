@@ -1,6 +1,6 @@
 import { requireAuth } from '@/lib/auth';
 import { ensureMember } from '@/lib/chat/conversations';
-import { formatMessage } from '@/lib/chat/formatters';
+import { formatMessagesWithReplies } from '@/lib/chat/messageList';
 import { canManageGroup } from '@/lib/chat/permissions';
 import { broadcastToConversation } from '@/lib/realtime/broadcast';
 import { notifyConversationPush } from '@/lib/push/notify';
@@ -23,24 +23,22 @@ export async function GET(
     return Response.json({ message: 'Нет доступа' }, { status: 403 });
   }
 
-  const { data: messages } = await supabase
+  const { data: recent } = await supabase
     .from('messages')
     .select('*')
     .eq('conversation_id', convId)
-    .order('created_at', { ascending: true })
-    .limit(100);
+    .order('created_at', { ascending: false })
+    .limit(50);
 
-  const userIds = [...new Set((messages ?? []).map((m) => m.user_id))];
+  const messageRows = [...(recent ?? [])].reverse() as MessageRow[];
+  const userIds = [...new Set(messageRows.map((m) => m.user_id))];
   const admin = createAdminClient();
   const { data: profiles } = userIds.length
     ? await admin.from('profiles').select('id, name, last_name, avatar').in('id', userIds)
     : { data: [] };
 
   const profileMap = new Map((profiles ?? []).map((p) => [p.id, p as Profile]));
-
-  const formatted = (messages ?? []).map((m) =>
-    formatMessage(m as MessageRow, profileMap.get(m.user_id) ?? null),
-  );
+  const formatted = await formatMessagesWithReplies(messageRows, profileMap, admin);
 
   const { data: conv } = await supabase
     .from('conversations')
@@ -83,12 +81,28 @@ export async function POST(
   const file = formData.get('file') as File | null;
   const voiceDuration = formData.get('voice_duration');
   const albumGroupId = formData.get('album_group_id') as string | null;
+  const replyToRaw = formData.get('reply_to_id');
 
   const insert: Record<string, unknown> = {
     conversation_id: convId,
     user_id: user.id,
     content,
   };
+
+  if (replyToRaw) {
+    const replyToId = Number(replyToRaw);
+    if (Number.isFinite(replyToId) && replyToId > 0) {
+      const { data: replyMsg } = await supabase
+        .from('messages')
+        .select('id, conversation_id')
+        .eq('id', replyToId)
+        .maybeSingle();
+      if (!replyMsg || replyMsg.conversation_id !== convId) {
+        return Response.json({ message: 'Сообщение для ответа не найдено' }, { status: 422 });
+      }
+      insert.reply_to_id = replyToId;
+    }
+  }
 
   if (file && file.size > 0) {
     if (file.size > 15 * 1024 * 1024) {
@@ -157,7 +171,13 @@ export async function POST(
     .update({ updated_at: new Date().toISOString() })
     .eq('id', convId);
 
-  const formatted = formatMessage(message as MessageRow, profile);
+  const admin = createAdminClient();
+  const profileMap = new Map([[profile.id, profile]]);
+  const [formatted] = await formatMessagesWithReplies(
+    [message as MessageRow],
+    profileMap,
+    admin,
+  );
   void broadcastToConversation(supabase, convId, 'NewMessage', {
     ...formatted,
     conversation_id: convId,

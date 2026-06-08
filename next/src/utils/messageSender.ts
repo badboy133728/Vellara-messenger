@@ -1,4 +1,4 @@
-import type { FormattedMessage } from '@/lib/types';
+import type { FormattedMessage, MessageReplyPreview } from '@/lib/types';
 
 export type SenderProfile = {
   id: string;
@@ -53,6 +53,27 @@ export function enrichMessageSenders(
   self?: Pick<SenderProfile, 'id' | 'name' | 'last_name' | 'avatar'>,
 ) {
   return messages.map((m) => enrichMessageSender(m, membersById, self));
+}
+
+function replyPreviewFromMessage(msg: FormattedMessage): MessageReplyPreview {
+  return {
+    id: msg.id,
+    user_id: msg.user_id,
+    content: msg.is_deleted ? '' : msg.content,
+    file_type: msg.is_deleted ? null : msg.file_type,
+    is_deleted: msg.is_deleted,
+    sender: msg.sender,
+  };
+}
+
+export function enrichMessageReply(
+  message: FormattedMessage,
+  existingMessages: FormattedMessage[],
+): FormattedMessage {
+  if (!message.reply_to_id || message.reply_to) return message;
+  const ref = existingMessages.find((m) => m.id === message.reply_to_id);
+  if (!ref) return message;
+  return { ...message, reply_to: replyPreviewFromMessage(ref) };
 }
 
 export function membersMapFromGroupApi(

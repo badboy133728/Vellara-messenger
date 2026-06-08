@@ -16,11 +16,16 @@ export function PushNotificationsSection() {
   const [blockReason, setBlockReason] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const support = getPushSupport();
-    setSupported(support.supported);
-    setBlockReason(support.reason ?? null);
-    if (support.supported) {
-      setSubscribed(await isPushSubscribed());
+    try {
+      const support = getPushSupport();
+      setSupported(support.supported);
+      setBlockReason(support.reason ?? null);
+      if (support.supported) {
+        setSubscribed(await isPushSubscribed());
+      }
+    } catch {
+      setSupported(false);
+      setBlockReason('Не удалось проверить push-уведомления');
     }
   }, []);
 

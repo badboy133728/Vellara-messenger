@@ -28,13 +28,11 @@ export async function sendPushToUser(userId: string, payload: PushPayload): Prom
   const subscriptions = (rows ?? []) as PushSubscriptionRow[];
   if (subscriptions.length === 0) return;
 
-  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/$/, '');
+  const url = payload.url?.startsWith('/') ? payload.url : payload.url || '/main';
   const body = JSON.stringify({
     title: payload.title,
     body: payload.body,
-    url: payload.url?.startsWith('http')
-      ? payload.url
-      : `${appUrl}${payload.url || '/main'}`,
+    url,
     tag: payload.tag,
   });
 
@@ -47,6 +45,10 @@ export async function sendPushToUser(userId: string, payload: PushPayload): Prom
             keys: { p256dh: row.p256dh, auth: row.auth },
           },
           body,
+          {
+            TTL: 120,
+            urgency: 'high' as const,
+          },
         );
       } catch (err) {
         const status = (err as { statusCode?: number }).statusCode;

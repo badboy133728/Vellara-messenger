@@ -9,7 +9,14 @@ import { applyTheme } from '@/lib/applyTheme';
 import { resolveProfileMedia } from '@/lib/profileCover';
 import { AvatarCropModal } from '@/components/AvatarCropModal';
 import { AvatarImg } from '@/components/AvatarImg';
-import { PushNotificationsSection } from '@/components/PushNotificationsSection';
+import dynamic from 'next/dynamic';
+import { ClientErrorBoundary } from '@/components/ClientErrorBoundary';
+
+const PushNotificationsSection = dynamic(
+  () =>
+    import('@/components/PushNotificationsSection').then((m) => m.PushNotificationsSection),
+  { ssr: false },
+);
 
 type SettingsData = {
   name: string;
@@ -156,6 +163,33 @@ export function SettingsPanel({
       <div className="settings-page settings-loading">
         {mobileBar}
         <p>Загрузка…</p>
+      </div>
+    );
+  }
+
+  if (errorMessage && !form.email && !form.name) {
+    return (
+      <div className="settings-page settings-loading">
+        {mobileBar}
+        <p className="profile-alert profile-alert--error">{errorMessage}</p>
+        <button
+          type="button"
+          className="profile-btn profile-btn--gold"
+          onClick={() => {
+            setErrorMessage('');
+            setLoading(true);
+            api<SettingsData>('/api/settings')
+              .then((data) => {
+                setForm(data);
+                setSavedProfile(data);
+                applyTheme(data.theme);
+              })
+              .catch(() => setErrorMessage('Не удалось загрузить настройки'))
+              .finally(() => setLoading(false));
+          }}
+        >
+          Повторить
+        </button>
       </div>
     );
   }
@@ -399,7 +433,9 @@ export function SettingsPanel({
         </div>
       </section>
 
-      <PushNotificationsSection />
+      <ClientErrorBoundary>
+        <PushNotificationsSection />
+      </ClientErrorBoundary>
 
       <section className="settings-card">
         <h2>Приватность</h2>

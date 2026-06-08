@@ -1,4 +1,22 @@
-/* Vellara Messenger — Web Push service worker */
+/* Vellara Messenger — Web Push service worker v3 */
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(self.skipWaiting());
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.clients.claim());
+});
+
+function normalizeUrl(url) {
+  if (!url) return '/main';
+  try {
+    const parsed = new URL(url, self.location.origin);
+    return `${parsed.pathname}${parsed.search}`;
+  } catch {
+    return url.startsWith('/') ? url : '/main';
+  }
+}
 
 self.addEventListener('push', (event) => {
   let data = { title: 'Vellara', body: 'Новое сообщение', url: '/main', tag: 'vellara' };
@@ -10,6 +28,8 @@ self.addEventListener('push', (event) => {
     /* ignore malformed payload */
   }
 
+  const targetPath = normalizeUrl(data.url);
+
   event.waitUntil(
     self.registration.showNotification(data.title || 'Vellara', {
       body: data.body || '',
@@ -17,29 +37,39 @@ self.addEventListener('push', (event) => {
       badge: '/icon-192.png',
       tag: data.tag || 'vellara-message',
       renotify: true,
-      data: { url: data.url || '/main' },
+      vibrate: [180, 80, 180],
+      requireInteraction: false,
+      silent: false,
+      data: { url: targetPath },
     }),
   );
 });
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const targetUrl = event.notification.data?.url || '/main';
+  const targetPath = normalizeUrl(event.notification.data?.url);
+  const targetUrl = new URL(targetPath, self.location.origin).href;
 
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (clientList) => {
       for (const client of clientList) {
-        if ('focus' in client) {
-          if ('navigate' in client) {
-            return client.navigate(targetUrl).then(() => client.focus());
+        if (!client.url.startsWith(self.location.origin)) continue;
+        const focused = await client.focus();
+        if ('navigate' in focused) {
+          try {
+            await focused.navigate(targetPath);
+            return;
+          } catch {
+            focused.postMessage({ type: 'notification-open', url: targetPath });
+            return;
           }
-          return client.focus();
         }
+        focused.postMessage({ type: 'notification-open', url: targetPath });
+        return;
       }
       if (self.clients.openWindow) {
-        return self.clients.openWindow(targetUrl);
+        await self.clients.openWindow(targetUrl);
       }
-      return undefined;
     }),
   );
 });

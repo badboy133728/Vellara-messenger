@@ -37,7 +37,10 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
   if (!support.supported) return null;
 
   try {
-    return await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+    return await navigator.serviceWorker.register('/sw.js', {
+      scope: '/',
+      updateViaCache: 'none',
+    });
   } catch {
     return null;
   }
@@ -113,9 +116,13 @@ export async function unsubscribeFromPush(): Promise<void> {
 }
 
 export async function isPushSubscribed(): Promise<boolean> {
-  const support = getPushSupport();
-  if (!support.supported) return false;
-  const registration = await navigator.serviceWorker.getRegistration('/');
-  const subscription = await registration?.pushManager.getSubscription();
-  return Boolean(subscription);
+  try {
+    const support = getPushSupport();
+    if (!support.supported) return false;
+    const registration = await navigator.serviceWorker.getRegistration('/');
+    const subscription = await registration?.pushManager.getSubscription();
+    return Boolean(subscription);
+  } catch {
+    return false;
+  }
 }

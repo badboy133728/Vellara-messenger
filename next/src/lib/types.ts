@@ -26,11 +26,26 @@ export type MessageRow = {
   file_original_name: string | null;
   voice_duration: number | null;
   album_group_id: string | null;
+  reply_to_id: number | null;
   is_edited: boolean;
   edited_at: string | null;
   deleted_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type MessageReplyPreview = {
+  id: number;
+  user_id: string;
+  content: string;
+  file_type: string | null;
+  is_deleted: boolean;
+  sender: {
+    id: string;
+    name: string;
+    last_name: string;
+    avatar: string | null;
+  } | null;
 };
 
 export type ConversationRow = {
@@ -77,6 +92,8 @@ export type FormattedMessage = {
     avatar: string | null;
   } | null;
   group_read_status?: 'sent' | 'partial' | 'all';
+  reply_to_id?: number | null;
+  reply_to?: MessageReplyPreview | null;
 };
 
 export type ConversationListItem = {

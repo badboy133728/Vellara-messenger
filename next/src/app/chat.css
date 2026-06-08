@@ -653,6 +653,7 @@
 
 .chat-typing-bar {
   flex-shrink: 0;
+  min-height: 28px;
   padding: 6px 24px 4px;
   display: flex;
   align-items: center;
@@ -660,6 +661,14 @@
   font-size: 13px;
   color: var(--vellara-text-muted, #94a3b8);
   background: #0f0f0f;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.chat-typing-bar--visible {
+  visibility: visible;
+  opacity: 1;
 }
 
 .chat-typing-bar .dot {
@@ -863,6 +872,89 @@
   transform: none;
 }
 
+.msg-reply-quote {
+  margin-bottom: 6px;
+  padding: 6px 10px;
+  border-left: 3px solid var(--vellara-gold, #c9a885);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.msg-reply-quote--mine {
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.msg-reply-quote__author {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vellara-gold, #c9a885);
+  margin-bottom: 2px;
+}
+
+.msg-reply-quote__text {
+  display: block;
+  font-size: 12px;
+  color: var(--vellara-text-muted, #94a3b8);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-reply {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--vellara-border-subtle, #2e2e2e);
+  background: var(--vellara-panel-2, #222);
+  max-width: 900px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.composer-reply__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.composer-reply__label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vellara-gold, #c9a885);
+}
+
+.composer-reply__author {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.composer-reply__text {
+  font-size: 12px;
+  color: var(--vellara-text-muted, #94a3b8);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-reply__close {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: #333;
+  color: #fff;
+  cursor: pointer;
+}
+
 .msg-input {
   flex: 1;
   min-width: 0;
@@ -988,11 +1080,32 @@
   }
 
   .composer {
-    gap: 6px;
+    flex-wrap: wrap;
+    gap: 8px;
+    max-width: none;
   }
 
   .composer-actions {
+    order: 2;
     gap: 4px;
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .msg-input {
+    order: 1;
+    flex: 1 1 100%;
+    width: 100%;
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .icon-btn--send {
+    order: 3;
+  }
+
+  .input-area {
+    padding: 10px 12px calc(12px + env(safe-area-inset-bottom, 0));
   }
 
   .icon-btn {

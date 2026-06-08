@@ -7,10 +7,12 @@ export function MessageContextMenu({
   x,
   y,
   isMobile,
+  canReply,
   canEdit,
   canDelete,
   canSave,
   isSaved,
+  onReply,
   onSave,
   onEdit,
   onDelete,
@@ -20,10 +22,12 @@ export function MessageContextMenu({
   x: number;
   y: number;
   isMobile: boolean;
+  canReply?: boolean;
   canEdit: boolean;
   canDelete: boolean;
   canSave: boolean;
   isSaved: boolean;
+  onReply?: () => void;
   onSave: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -38,6 +42,11 @@ export function MessageContextMenu({
         style={isMobile ? undefined : { top: y, left: x }}
         onClick={(e) => e.stopPropagation()}
       >
+        {canReply && onReply && (
+          <button type="button" onClick={onReply}>
+            ↩ Ответить
+          </button>
+        )}
         {canSave && (
           <button type="button" onClick={onSave}>
             {isSaved ? '★ Убрать из избранного' : '☆ Сохранить в избранное'}

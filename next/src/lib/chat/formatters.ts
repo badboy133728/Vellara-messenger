@@ -1,5 +1,31 @@
 import { isOnline } from '@/lib/presence';
-import type { ConversationListItem, FormattedMessage, MemberRow, MessageRow, Profile } from '@/lib/types';
+import type {
+  ConversationListItem,
+  FormattedMessage,
+  MemberRow,
+  MessageReplyPreview,
+  MessageRow,
+  Profile,
+} from '@/lib/types';
+
+function buildReplyPreview(
+  row: MessageRow | undefined,
+  profileMap: Map<string, Profile>,
+): MessageReplyPreview | null {
+  if (!row) return null;
+  const deleted = !!row.deleted_at;
+  const sender = profileMap.get(row.user_id) ?? null;
+  return {
+    id: row.id,
+    user_id: row.user_id,
+    content: deleted ? '' : (row.content ?? ''),
+    file_type: deleted ? null : row.file_type,
+    is_deleted: deleted,
+    sender: sender
+      ? { id: sender.id, name: sender.name, last_name: sender.last_name, avatar: sender.avatar }
+      : null,
+  };
+}
 
 export function messagePreview(msg: MessageRow, viewerId: string, albumCount = 1): string {
   if (msg.deleted_at) return 'Сообщение удалено';
@@ -18,8 +44,13 @@ export function formatMessage(
   message: MessageRow,
   sender: Profile | null,
   isDeleted = false,
+  replyRows?: Map<number, MessageRow>,
+  replyProfiles?: Map<string, Profile>,
 ): FormattedMessage {
   const deleted = isDeleted || !!message.deleted_at;
+  const replyRow =
+    message.reply_to_id && replyRows ? replyRows.get(message.reply_to_id) : undefined;
+  const replyProfileMap = replyProfiles ?? new Map(sender ? [[sender.id, sender]] : []);
   return {
     id: message.id,
     message_type: message.message_type || 'user',
@@ -32,6 +63,8 @@ export function formatMessage(
     file_original_name: message.file_original_name,
     voice_duration: message.voice_duration,
     album_group_id: message.album_group_id,
+    reply_to_id: message.reply_to_id ?? null,
+    reply_to: replyRow ? buildReplyPreview(replyRow, replyProfileMap) : null,
     is_edited: message.is_edited,
     edited_at: message.edited_at,
     is_deleted: deleted,

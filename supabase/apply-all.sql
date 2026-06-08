@@ -355,3 +355,9 @@ drop policy if exists "push_update_own" on public.push_subscriptions;
 create policy "push_update_own" on public.push_subscriptions for update using (user_id = auth.uid());
 drop policy if exists "push_delete_own" on public.push_subscriptions;
 create policy "push_delete_own" on public.push_subscriptions for delete using (user_id = auth.uid());
+
+-- ========== 007_message_replies.sql ==========
+alter table public.messages
+  add column if not exists reply_to_id bigint references public.messages (id) on delete set null;
+
+create index if not exists messages_reply_to_idx on public.messages (reply_to_id);

@@ -264,7 +264,13 @@ export function ChatPanel({
   }, [text]);
 
   useEffect(() => {
-    if (!showEmojiPicker) return;
+    if (!text.trim()) return;
+    onTyping();
+    const id = window.setInterval(() => onTyping(), 2000);
+    return () => window.clearInterval(id);
+  }, [text, onTyping]);
+
+  useEffect(() => {
     const onDocPointerDown = (e: PointerEvent) => {
       const target = e.target as Node;
       if (inputAreaRef.current?.contains(target)) return;

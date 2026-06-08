@@ -282,6 +282,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
   const userRef = useRef(user);
   const membersReadRef = useRef(membersRead);
   const typingTimeoutRef = useRef<number | null>(null);
+  const lastTypingSentRef = useRef(0);
   const loadMessagesRef = useRef<
     (convId: number, opts?: { silent?: boolean }) => Promise<void>
   >(async () => {});
@@ -701,7 +702,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
       typingTimeoutRef.current = window.setTimeout(() => {
         setTypingUserId(null);
         typingTimeoutRef.current = null;
-      }, 2500);
+      }, 3500);
     },
     onMemberRead: (data) => {
       if (data.conversation_id !== activeIdRef.current) return;
@@ -814,10 +815,13 @@ function MessengerAppInner({ user }: { user: Profile }) {
     });
   };
 
-  const sendTyping = () => {
+  const sendTyping = useCallback(() => {
     if (!activeId) return;
+    const now = Date.now();
+    if (now - lastTypingSentRef.current < 1200) return;
+    lastTypingSentRef.current = now;
     api(`/api/chat/${activeId}/typing`, { method: 'POST' }).catch(() => {});
-  };
+  }, [activeId]);
 
   return (
     <div className="app-shell">

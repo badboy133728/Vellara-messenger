@@ -130,7 +130,10 @@ function MessengerAppInner({ user }: { user: Profile }) {
   const [incomingContactCount, setIncomingContactCount] = useState(0);
   const [toast, setToast] = useState('');
   const [tabAnim, setTabAnim] = useState<'left' | 'right' | null>(null);
+  const [chatEnterAnim, setChatEnterAnim] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const suppressTabSwipeUntilRef = useRef(0);
+  const prevActiveIdRef = useRef<number | null>(null);
 
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 768px)');
@@ -173,6 +176,29 @@ function MessengerAppInner({ user }: { user: Profile }) {
     applyState: applyNavState,
   });
 
+  const closeChat = useCallback(() => {
+    suppressTabSwipeUntilRef.current = Date.now() + 600;
+    navigate(() => {
+      setActiveId(null);
+      setTab('chats');
+    }, 'replace');
+  }, [navigate]);
+
+  useEffect(() => {
+    if (!isMobile) {
+      prevActiveIdRef.current = activeId;
+      return;
+    }
+    if (activeId != null && prevActiveIdRef.current == null) {
+      setChatEnterAnim(true);
+      const timer = window.setTimeout(() => setChatEnterAnim(false), 440);
+      prevActiveIdRef.current = activeId;
+      return () => window.clearTimeout(timer);
+    }
+    prevActiveIdRef.current = activeId;
+    if (activeId == null) setChatEnterAnim(false);
+  }, [activeId, isMobile]);
+
   const canSwipeTabs =
     isMobile &&
     !activeId &&
@@ -198,10 +224,12 @@ function MessengerAppInner({ user }: { user: Profile }) {
     enabled: canSwipeTabs,
     threshold: 52,
     onSwipeLeft: () => {
+      if (Date.now() < suppressTabSwipeUntilRef.current) return;
       const next = tabStep(tab, 1);
       if (next) switchTab(next, 'left');
     },
     onSwipeRight: () => {
+      if (Date.now() < suppressTabSwipeUntilRef.current) return;
       const next = tabStep(tab, -1);
       if (next) switchTab(next, 'right');
     },
@@ -809,7 +837,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
               : {})}
         >
           <div
-            key={`${tab}-${activeId ?? 'none'}-${profileUserId ?? 'none'}`}
+            key={`${tab}-${profileUserId ?? 'none'}`}
             className="messenger-view__panel"
           >
           {tab === 'chats' && profileUserId ? (
@@ -868,6 +896,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
                   typingUserId={typingUserId}
                   savedMessageIds={savedMessageIds}
                   isMobile={isMobile}
+                  enterAnim={chatEnterAnim}
                   onSend={sendMessage}
                   onSendVoice={sendVoiceMessage}
                   onEditMessage={editMessage}
@@ -890,7 +919,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
                       ? () => navigate(() => setShowGroupSettings(true), 'push')
                       : undefined
                   }
-                  onBack={isMobile ? () => goBack() : undefined}
+                  onBack={isMobile ? closeChat : undefined}
                 />
               ) : (
                 !isMobile && (

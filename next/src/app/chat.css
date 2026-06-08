@@ -1224,11 +1224,15 @@
     flex: 1;
     min-height: 0;
     height: 100%;
-    animation: chat-enter 0.42s cubic-bezier(0.32, 0.72, 0, 1);
     will-change: transform;
   }
 
-  .chat-area--dragging {
+  .chat-area--enter {
+    animation: chat-enter 0.42s cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  .chat-area--dragging,
+  .chat-area--closing {
     animation: none !important;
   }
 

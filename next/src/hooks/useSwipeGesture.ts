@@ -148,8 +148,10 @@ export function useSwipeBack({
 }: SwipeBackOptions) {
   const startRef = useRef<{ x: number; y: number } | null>(null);
   const draggingRef = useRef(false);
+  const closingRef = useRef(false);
   const nodeRef = useRef<HTMLElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
 
   const setOffset = (value: number, animate = false) => {
     if (!nodeRef.current) return;
@@ -169,7 +171,7 @@ export function useSwipeBack({
   const handlers = useMemo(
     () => ({
       onTouchStart: (event: TouchEvent) => {
-        if (!enabled || event.touches.length !== 1) return;
+        if (!enabled || closingRef.current || event.touches.length !== 1) return;
         const touch = event.touches[0];
         startRef.current = { x: touch.clientX, y: touch.clientY };
         draggingRef.current = false;
@@ -205,11 +207,12 @@ export function useSwipeBack({
           : 0;
 
         if (offset >= threshold) {
+          closingRef.current = true;
+          setIsClosing(true);
           setOffset(window.innerWidth, true);
           window.setTimeout(() => {
-            setOffset(0, false);
             onBack();
-          }, 280);
+          }, 300);
           return;
         }
 
@@ -225,5 +228,5 @@ export function useSwipeBack({
     [enabled, threshold, maxVerticalDrift, onBack],
   );
 
-  return { bindRef, handlers, isDragging };
+  return { bindRef, handlers, isDragging, isClosing };
 }

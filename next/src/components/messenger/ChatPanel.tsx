@@ -62,6 +62,7 @@ export function ChatPanel({
   typingUserId,
   savedMessageIds,
   isMobile = false,
+  enterAnim = false,
   onSend,
   onSendVoice,
   onEditMessage,
@@ -83,6 +84,7 @@ export function ChatPanel({
   typingUserId: string | null;
   savedMessageIds: Set<number>;
   isMobile?: boolean;
+  enterAnim?: boolean;
   onSend: (text: string, file?: File, replyToId?: number) => Promise<void>;
   onSendVoice?: (blob: Blob, duration: number, mimeType: string) => Promise<void>;
   onEditMessage?: (messageId: number, content: string) => Promise<void>;
@@ -658,7 +660,7 @@ export function ChatPanel({
   return (
     <section
       ref={swipeBack.bindRef}
-      className={`chat-area${!chatReady ? ' chat-area--loading' : ''}${swipeBack.isDragging ? ' chat-area--dragging' : ''}`}
+      className={`chat-area${!chatReady ? ' chat-area--loading' : ''}${enterAnim ? ' chat-area--enter' : ''}${swipeBack.isDragging ? ' chat-area--dragging' : ''}${swipeBack.isClosing ? ' chat-area--closing' : ''}`}
       onTouchStart={swipeBack.handlers.onTouchStart}
       onTouchMove={swipeBack.handlers.onTouchMove}
       onTouchEnd={swipeBack.handlers.onTouchEnd}

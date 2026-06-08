@@ -344,7 +344,7 @@
 
 @media (max-width: 768px) {
   .messenger-view__panel {
-    animation: messenger-panel-in 0.42s cubic-bezier(0.32, 0.72, 0, 1);
+    animation: none;
   }
 
   .messenger-view--slide-left .messenger-view__panel {
@@ -353,17 +353,6 @@
 
   .messenger-view--slide-right .messenger-view__panel {
     animation: messenger-tab-slide-right 0.44s cubic-bezier(0.32, 0.72, 0, 1);
-  }
-}
-
-@keyframes messenger-panel-in {
-  from {
-    opacity: 0.82;
-    transform: translateX(18px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
   }
 }
 

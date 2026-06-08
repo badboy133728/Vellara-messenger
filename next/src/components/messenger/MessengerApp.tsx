@@ -194,6 +194,11 @@ function MessengerAppInner({ user }: { user: Profile }) {
   const chatOpen = isMobile && activeId != null;
   const hideMobileNav = tab === 'chats' && (chatOpen || profileUserId != null);
 
+  const navItems = useMemo(
+    () => (isMobile ? MENU_ITEMS.filter((item) => item.id !== 'settings') : MENU_ITEMS),
+    [isMobile],
+  );
+
   useEffect(() => {
     setShowGroupPanel(false);
     setShowGroupSettings(false);
@@ -537,7 +542,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
 
         <p className="side-menu__section-label">Навигация</p>
         <nav className="side-menu__nav" aria-label="Основное меню">
-          {MENU_ITEMS.map((item) => (
+          {navItems.map((item) => (
             <button
               key={item.id}
               type="button"
@@ -563,7 +568,8 @@ function MessengerAppInner({ user }: { user: Profile }) {
 
         <button
           type="button"
-          className={`account-card ${tab === 'dashboard' ? 'active' : ''}`}
+          className={`account-card ${tab === 'dashboard' || tab === 'settings' ? 'active' : ''}`}
+          aria-label="Профиль и настройки"
           onClick={() => setTab('dashboard')}
         >
           <div className="account-card__avatar-wrap">
@@ -679,8 +685,15 @@ function MessengerAppInner({ user }: { user: Profile }) {
         </div>
         {tab === 'calls' && <CallsPanel />}
         {tab === 'favorites' && <FavoritesPanel />}
-        {tab === 'settings' && <SettingsPanel />}
-        {tab === 'dashboard' && <DashboardPanel onOpenSettings={() => setTab('settings')} />}
+        <div hidden={tab !== 'settings'} className="messenger-tab-panel">
+          <SettingsPanel
+            showMobileBack={isMobile}
+            onBack={() => setTab('dashboard')}
+          />
+        </div>
+        <div hidden={tab !== 'dashboard'} className="messenger-tab-panel">
+          <DashboardPanel onOpenSettings={() => setTab('settings')} />
+        </div>
       </main>
 
       {showCreateGroup && (

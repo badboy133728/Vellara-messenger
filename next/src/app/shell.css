@@ -371,18 +371,26 @@
     gap: 0;
     padding: 0;
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .side-menu__nav::-webkit-scrollbar {
+    display: none;
   }
 
   .nav-item {
     flex: 1;
-    min-width: 56px;
-    max-width: 76px;
+    min-width: 52px;
+    max-width: 72px;
     flex-direction: column;
     gap: 3px;
     padding: 6px 4px;
     font-size: 10px;
     text-align: center;
     overflow: visible;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
   }
 
   .nav-item__icon {

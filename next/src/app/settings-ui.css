@@ -314,9 +314,45 @@
   display: none;
 }
 
-@media (max-width: 560px) {
+.settings-page__mobile-bar {
+  display: none;
+}
+
+@media (max-width: 768px) {
   .settings-page {
-    padding: 16px;
+    padding: 12px 16px calc(88px + env(safe-area-inset-bottom, 0));
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  .settings-page__mobile-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 0 auto 16px;
+    max-width: 720px;
+  }
+
+  .settings-page__back {
+    flex-shrink: 0;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 12px;
+    border: 1px solid var(--vellara-border-subtle, #2e2e2e);
+    border-radius: 10px;
+    background: var(--vellara-panel-2, #222);
+    color: var(--vellara-text, #f1f5f9);
+    font-size: 15px;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+
+  .settings-footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    padding: 12px 0 calc(8px + env(safe-area-inset-bottom, 0));
+    background: linear-gradient(to top, var(--vellara-bg, #121212) 70%, transparent);
   }
 
   .settings-grid {

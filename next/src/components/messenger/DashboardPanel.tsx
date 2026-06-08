@@ -31,8 +31,12 @@ export function DashboardPanel({
         )}
       </section>
       <div className="profile-actions profile-actions--stack">
-        <button type="button" className="profile-btn profile-btn--gold profile-btn--full" onClick={onOpenSettings}>
-          ⚙️ Настройки
+        <button
+          type="button"
+          className="profile-btn profile-btn--gold profile-btn--full"
+          onClick={onOpenSettings}
+        >
+          ⚙️ Редактировать профиль и настройки
         </button>
         <button type="button" className="profile-btn profile-btn--danger profile-btn--full" onClick={() => logout()}>
           Выйти из аккаунта

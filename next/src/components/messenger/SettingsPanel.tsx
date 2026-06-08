@@ -22,7 +22,13 @@ type SettingsData = {
   background: string | null;
 };
 
-export function SettingsPanel() {
+export function SettingsPanel({
+  showMobileBack = false,
+  onBack,
+}: {
+  showMobileBack?: boolean;
+  onBack?: () => void;
+} = {}) {
   const { refresh, isAuthenticated } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -135,12 +141,27 @@ export function SettingsPanel() {
     }
   };
 
+  const mobileBar =
+    showMobileBack && onBack ? (
+      <div className="settings-page__mobile-bar">
+        <button type="button" className="settings-page__back" onClick={onBack}>
+          ← Назад
+        </button>
+      </div>
+    ) : null;
+
   if (loading) {
-    return <div className="settings-page settings-loading">Загрузка…</div>;
+    return (
+      <div className="settings-page settings-loading">
+        {mobileBar}
+        <p>Загрузка…</p>
+      </div>
+    );
   }
 
   return (
     <div className="settings-page">
+      {mobileBar}
       <header className="settings-header">
         <h1>Настройки</h1>
         <p>Аккаунт, оформление профиля и приватность</p>

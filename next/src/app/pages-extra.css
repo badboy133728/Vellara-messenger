@@ -4,8 +4,15 @@
   height: 100%;
   min-height: 0;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: 16px;
   background: var(--vellara-bg, #121212);
+}
+
+@media (max-width: 768px) {
+  .profile-page {
+    padding: 16px 16px calc(80px + env(safe-area-inset-bottom, 0));
+  }
 }
 
 .profile-page--state {

@@ -1,0 +1,77 @@
+/* Глобальные темы — data-theme на <html> (из Laravel themes.css) */
+
+html[data-theme='gold-dark'],
+html:not([data-theme]) {
+  --vellara-bg: #121212;
+  --vellara-panel: #1a1a1a;
+  --vellara-panel-2: #222222;
+  --vellara-border: rgba(201, 168, 133, 0.38);
+  --vellara-border-subtle: #2e2e2e;
+  --vellara-gold: #c9a885;
+  --vellara-gold-soft: #d9c4a3;
+  --vellara-text: #f1f5f9;
+  --vellara-text-muted: #94a3b8;
+  --vellara-bubble-other: #2a2a2a;
+  --vellara-accent-text: #1a1612;
+}
+
+html[data-theme='midnight'] {
+  --vellara-bg: #0a0f1a;
+  --vellara-panel: #111827;
+  --vellara-panel-2: #1e293b;
+  --vellara-border: rgba(59, 130, 246, 0.35);
+  --vellara-border-subtle: #1e293b;
+  --vellara-gold: #60a5fa;
+  --vellara-gold-soft: #93c5fd;
+  --vellara-text: #e2e8f0;
+  --vellara-text-muted: #94a3b8;
+  --vellara-bubble-other: #1e293b;
+  --vellara-accent-text: #0f172a;
+}
+
+html[data-theme='forest'] {
+  --vellara-bg: #0d1410;
+  --vellara-panel: #142018;
+  --vellara-panel-2: #1c2e24;
+  --vellara-border: rgba(52, 211, 153, 0.35);
+  --vellara-border-subtle: #1c2e24;
+  --vellara-gold: #34d399;
+  --vellara-gold-soft: #6ee7b7;
+  --vellara-text: #ecfdf5;
+  --vellara-text-muted: #86efac;
+  --vellara-bubble-other: #1c2e24;
+  --vellara-accent-text: #052e16;
+}
+
+html[data-theme='rose'] {
+  --vellara-bg: #140c10;
+  --vellara-panel: #1f1218;
+  --vellara-panel-2: #2a1a22;
+  --vellara-border: rgba(244, 114, 182, 0.35);
+  --vellara-border-subtle: #2a1a22;
+  --vellara-gold: #f472b6;
+  --vellara-gold-soft: #f9a8d4;
+  --vellara-text: #fce7f3;
+  --vellara-text-muted: #f9a8d4;
+  --vellara-bubble-other: #2a1a22;
+  --vellara-accent-text: #500724;
+}
+
+html[data-theme='light'] {
+  --vellara-bg: #f4f4f5;
+  --vellara-panel: #ffffff;
+  --vellara-panel-2: #f1f5f9;
+  --vellara-border: rgba(168, 132, 95, 0.45);
+  --vellara-border-subtle: #e2e8f0;
+  --vellara-gold: #a8845f;
+  --vellara-gold-soft: #c9a885;
+  --vellara-text: #0f172a;
+  --vellara-text-muted: #64748b;
+  --vellara-bubble-other: #e2e8f0;
+  --vellara-accent-text: #ffffff;
+}
+
+html[data-theme='light'] .side-menu,
+html[data-theme='light'] .chat-layout {
+  color-scheme: light;
+}

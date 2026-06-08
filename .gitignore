@@ -1,0 +1,16 @@
+# Dependencies & build
+next/node_modules/
+next/.next/
+next/out/
+next/.vercel/
+
+# Secrets
+next/.env
+next/.env.local
+next/.env*.local
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+*.log

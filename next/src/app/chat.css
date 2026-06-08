@@ -487,6 +487,12 @@
   overflow: hidden;
 }
 
+.emoji-picker--portal {
+  position: fixed;
+  bottom: auto;
+  z-index: 10050;
+}
+
 .emoji-picker-header {
   display: flex;
   align-items: center;
@@ -983,7 +989,7 @@
   background: var(--vellara-panel-2, #222);
   border: 1px solid var(--vellara-border-subtle, #2e2e2e);
   border-radius: 22px;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .composer-input-row {

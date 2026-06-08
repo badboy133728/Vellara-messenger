@@ -118,6 +118,7 @@ export function ChatPanel({
   const fileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const inputAreaRef = useRef<HTMLDivElement>(null);
+  const emojiBtnRef = useRef<HTMLButtonElement>(null);
 
   const {
     isRecording,
@@ -226,12 +227,14 @@ export function ChatPanel({
 
   useEffect(() => {
     if (!showEmojiPicker) return;
-    const onDocClick = (e: MouseEvent) => {
-      if (inputAreaRef.current?.contains(e.target as Node)) return;
+    const onDocPointerDown = (e: PointerEvent) => {
+      const target = e.target as Node;
+      if (inputAreaRef.current?.contains(target)) return;
+      if (target instanceof Element && target.closest('.emoji-picker')) return;
       setShowEmojiPicker(false);
     };
-    document.addEventListener('click', onDocClick);
-    return () => document.removeEventListener('click', onDocClick);
+    document.addEventListener('pointerdown', onDocPointerDown);
+    return () => document.removeEventListener('pointerdown', onDocPointerDown);
   }, [showEmojiPicker]);
 
   useEffect(() => {
@@ -841,15 +844,24 @@ export function ChatPanel({
               <div className="composer-input-row">
                 <div className="input-tools">
                   <button
+                    ref={emojiBtnRef}
                     type="button"
                     className={`composer-btn composer-btn--emoji ${showEmojiPicker ? 'composer-btn--active' : ''}`}
                     title="Смайлики"
-                    onClick={() => setShowEmojiPicker((v) => !v)}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowEmojiPicker((v) => !v);
+                    }}
                   >
                     😊
                   </button>
                   {showEmojiPicker && (
-                    <EmojiPicker onSelect={insertEmoji} onClose={() => setShowEmojiPicker(false)} />
+                    <EmojiPicker
+                      anchorRef={emojiBtnRef}
+                      onSelect={insertEmoji}
+                      onClose={() => setShowEmojiPicker(false)}
+                    />
                   )}
                 </div>
                 <textarea

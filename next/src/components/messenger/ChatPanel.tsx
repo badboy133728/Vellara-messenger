@@ -788,41 +788,37 @@ export function ChatPanel({
       </div>
 
       {showMessages && (
-        <div
-          className={`chat-typing-bar ${isOtherTyping ? 'chat-typing-bar--visible' : ''}`}
-          aria-live="polite"
-          aria-hidden={!isOtherTyping}
-        >
-          <span className="dot" />
-          <span className="dot" />
-          <span className="dot" />
-          <span className="typing-text">печатает…</span>
-        </div>
-      )}
-
-      {lightbox && (
-        <ImageLightbox urls={lightbox.urls} index={lightbox.index} onClose={() => setLightbox(null)} />
-      )}
-
-      {chatReady && isRecording ? (
-        <div className="voice-record-bar">
-          <button type="button" className="btn-voice-cancel" title="Отмена" onClick={cancelRecording}>
-            ✕
-          </button>
-          <span className="record-dot" />
-          <span className="record-timer">{formatVoiceDuration(recordingSeconds)}</span>
-          <span className="record-hint">Запись…</span>
-          <button
-            type="button"
-            className="btn-voice-send"
-            disabled={isSendingVoice}
-            onClick={() => void finishVoiceRecord()}
+        <div className="chat-composer-dock">
+          <div
+            className={`chat-typing-bar ${isOtherTyping ? 'chat-typing-bar--visible' : ''}`}
+            aria-live="polite"
+            aria-hidden={!isOtherTyping}
           >
-            {isSendingVoice ? '⏳' : '📤'}
-          </button>
-        </div>
-      ) : showComposerArea ? (
-        <div className="input-area input-area--ready" ref={inputAreaRef}>
+            <span className="dot" />
+            <span className="dot" />
+            <span className="dot" />
+            <span className="typing-text">печатает…</span>
+          </div>
+
+          {chatReady && isRecording ? (
+            <div className="voice-record-bar">
+              <button type="button" className="btn-voice-cancel" title="Отмена" onClick={cancelRecording}>
+                ✕
+              </button>
+              <span className="record-dot" />
+              <span className="record-timer">{formatVoiceDuration(recordingSeconds)}</span>
+              <span className="record-hint">Запись…</span>
+              <button
+                type="button"
+                className="btn-voice-send"
+                disabled={isSendingVoice}
+                onClick={() => void finishVoiceRecord()}
+              >
+                {isSendingVoice ? '⏳' : '📤'}
+              </button>
+            </div>
+          ) : showComposerArea ? (
+            <div className="input-area input-area--ready" ref={inputAreaRef}>
           <input
             id={CHAT_FILE_INPUT_ID}
             ref={fileRef}
@@ -971,8 +967,14 @@ export function ChatPanel({
               </button>
             )}
           </form>
+            </div>
+          ) : null}
         </div>
-      ) : null}
+      )}
+
+      {lightbox && (
+        <ImageLightbox urls={lightbox.urls} index={lightbox.index} onClose={() => setLightbox(null)} />
+      )}
 
       <MessageContextMenu
         show={msgMenu.show}

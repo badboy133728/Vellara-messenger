@@ -603,6 +603,32 @@ function MessengerAppInner({ user }: { user: Profile }) {
 
   useEffect(() => {
     if (!activeId || tab !== 'chats') return;
+    const pollTyping = () => {
+      if (document.visibilityState !== 'visible') return;
+      api<{ typing_user_id: string | null }>(`/api/chat/${activeId}/typing`, {
+        allowUnauthorized: false,
+      })
+        .then((data) => {
+          if (data.typing_user_id && data.typing_user_id !== user.id) {
+            setTypingUserId(data.typing_user_id);
+            if (typingTimeoutRef.current != null) {
+              window.clearTimeout(typingTimeoutRef.current);
+            }
+            typingTimeoutRef.current = window.setTimeout(() => {
+              setTypingUserId(null);
+              typingTimeoutRef.current = null;
+            }, 3500);
+          }
+        })
+        .catch(() => {});
+    };
+    void pollTyping();
+    const typingTimer = window.setInterval(pollTyping, 2000);
+    return () => window.clearInterval(typingTimer);
+  }, [activeId, tab, user.id]);
+
+  useEffect(() => {
+    if (!activeId || tab !== 'chats') return;
     const pollMessages = () => {
       if (document.visibilityState !== 'visible') return;
       loadMessages(activeId, { silent: true }).catch(() => {});

@@ -82,13 +82,24 @@ function subscribeConversation(
       { event: 'UPDATE', schema: 'public', table: 'conversation_members', filter: `conversation_id=eq.${convId}` },
       (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
         const row = payload.new as Record<string, unknown>;
+        const old = payload.old as Record<string, unknown> | undefined;
+
         const lastReadAt = row.last_read_at as string | null;
-        if (!lastReadAt) return;
-        handlersRef.current?.onMemberRead?.({
-          conversation_id: convId,
-          user_id: row.user_id as string,
-          last_read_at: lastReadAt,
-        });
+        if (lastReadAt && lastReadAt !== (old?.last_read_at as string | null | undefined)) {
+          handlersRef.current?.onMemberRead?.({
+            conversation_id: convId,
+            user_id: row.user_id as string,
+            last_read_at: lastReadAt,
+          });
+        }
+
+        const lastTypingAt = row.last_typing_at as string | null;
+        if (lastTypingAt && lastTypingAt !== (old?.last_typing_at as string | null | undefined)) {
+          handlersRef.current?.onTyping?.({
+            conversation_id: convId,
+            user_id: row.user_id as string,
+          });
+        }
       },
     )
     .on('broadcast', { event: 'UserTyping' }, (message: { payload: { conversation_id: number; user_id: string } }) => {

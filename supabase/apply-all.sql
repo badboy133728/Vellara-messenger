@@ -365,3 +365,7 @@ create index if not exists messages_reply_to_idx on public.messages (reply_to_id
 -- ========== 008_realtime_replica_identity.sql ==========
 alter table public.messages replica identity full;
 alter table public.conversation_members replica identity full;
+
+-- ========== 009_typing_at.sql ==========
+alter table public.conversation_members
+  add column if not exists last_typing_at timestamptz;

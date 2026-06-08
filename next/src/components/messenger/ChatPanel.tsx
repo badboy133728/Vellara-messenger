@@ -74,6 +74,8 @@ export function ChatPanel({
   onOpenGroupInfo,
   onOpenPartnerProfile,
   onBack,
+  onFilePickerOpen,
+  onFilePickerDone,
 }: {
   conversation: ConversationListItem | null;
   messages: FormattedMessage[];
@@ -96,6 +98,8 @@ export function ChatPanel({
   onOpenGroupInfo?: () => void;
   onOpenPartnerProfile?: () => void;
   onBack?: () => void;
+  onFilePickerOpen?: () => void;
+  onFilePickerDone?: () => void;
 }) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
@@ -296,6 +300,7 @@ export function ChatPanel({
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (fileRef.current) fileRef.current.value = '';
+    onFilePickerDone?.();
     if (!file) return;
 
     if (file.size > MAX_FILE_BYTES) {
@@ -308,13 +313,14 @@ export function ChatPanel({
     setPendingAttachment({
       file,
       isImage,
-      previewUrl: isImage ? URL.createObjectURL(file) : null,
+      // На мобильных не грузим multi-MB blob в <img> — иначе WebView может перезагрузить вкладку.
+      previewUrl: isImage && !isMobile ? URL.createObjectURL(file) : null,
     });
-    onTyping();
   };
 
   const showMessages = !messagesLoading;
   const chatReady = showMessages && (messages.length === 0 || scrollReady);
+  const showComposerArea = chatReady || Boolean(pendingAttachment);
 
   const swipeBack = useSwipeBack({
     enabled: Boolean(isMobile && onBack && chatReady),
@@ -809,7 +815,7 @@ export function ChatPanel({
             {isSendingVoice ? '⏳' : '📤'}
           </button>
         </div>
-      ) : chatReady ? (
+      ) : showComposerArea ? (
         <div className="input-area input-area--ready" ref={inputAreaRef}>
           <input
             id={CHAT_FILE_INPUT_ID}
@@ -818,6 +824,7 @@ export function ChatPanel({
             className="composer-file-input"
             accept="image/*,.heic,.heif,.pdf,.doc,.docx,.webp"
             onChange={handleFileSelect}
+            onClick={() => onFilePickerOpen?.()}
           />
           {pendingAttachment && (
             <div className="attachments-panel">
@@ -833,6 +840,10 @@ export function ChatPanel({
                 >
                   {pendingAttachment.isImage && pendingAttachment.previewUrl ? (
                     <img src={pendingAttachment.previewUrl} alt="" className="attachment-thumb" />
+                  ) : pendingAttachment.isImage ? (
+                    <div className="attachment-item-photo-placeholder" aria-hidden="true">
+                      📷
+                    </div>
                   ) : (
                     <div className="attachment-doc">
                       <span>📄</span>
@@ -862,7 +873,10 @@ export function ChatPanel({
               className="composer-btn composer-btn--attach"
               title="Прикрепить файл"
               onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onFilePickerOpen?.();
+              }}
             >
               📎
             </label>

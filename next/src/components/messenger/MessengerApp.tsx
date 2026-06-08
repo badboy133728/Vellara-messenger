@@ -282,6 +282,11 @@ function MessengerAppInner({ user }: { user: Profile }) {
   const userRef = useRef(user);
   const membersReadRef = useRef(membersRead);
   const typingTimeoutRef = useRef<number | null>(null);
+  const loadMessagesRef = useRef<
+    (convId: number, opts?: { silent?: boolean }) => Promise<void>
+  >(async () => {});
+  const filePickerGraceUntilRef = useRef(0);
+  const visibilityRefreshTimerRef = useRef<number | null>(null);
   activeIdRef.current = activeId;
   tabRef.current = tab;
   conversationsRef.current = conversations;
@@ -470,6 +475,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
     },
     [setConversationReadLocal, syncGroupMembers],
   );
+  loadMessagesRef.current = loadMessages;
 
   const loadOlderMessages = useCallback(async () => {
     const convId = activeIdRef.current;
@@ -549,14 +555,14 @@ function MessengerAppInner({ user }: { user: Profile }) {
       setMessages([]);
       setHasMoreOlder(false);
       setMessagesLoading(true);
-      loadMessages(activeId);
+      void loadMessagesRef.current(activeId);
     } else {
       setMessages([]);
       setMembersRead([]);
       setHasMoreOlder(false);
       setMessagesLoading(false);
     }
-  }, [activeId, loadMessages]);
+  }, [activeId]);
 
   useEffect(() => {
     syncConversations(conversations);
@@ -570,16 +576,29 @@ function MessengerAppInner({ user }: { user: Profile }) {
 
   useEffect(() => {
     const onVisible = () => {
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState !== 'visible') return;
+
+      if (visibilityRefreshTimerRef.current != null) {
+        window.clearTimeout(visibilityRefreshTimerRef.current);
+      }
+
+      visibilityRefreshTimerRef.current = window.setTimeout(() => {
+        visibilityRefreshTimerRef.current = null;
+        if (Date.now() < filePickerGraceUntilRef.current) return;
         loadConversations().catch(() => {});
         if (activeIdRef.current) {
-          loadMessages(activeIdRef.current).catch(() => {});
+          void loadMessagesRef.current(activeIdRef.current, { silent: true });
         }
-      }
+      }, 350);
     };
     document.addEventListener('visibilitychange', onVisible);
-    return () => document.removeEventListener('visibilitychange', onVisible);
-  }, [loadConversations, loadMessages]);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      if (visibilityRefreshTimerRef.current != null) {
+        window.clearTimeout(visibilityRefreshTimerRef.current);
+      }
+    };
+  }, [loadConversations]);
 
   useEffect(() => {
     if (!activeId || tab !== 'chats') return;
@@ -950,6 +969,12 @@ function MessengerAppInner({ user }: { user: Profile }) {
                       : undefined
                   }
                   onBack={isMobile ? closeChat : undefined}
+                  onFilePickerOpen={() => {
+                    filePickerGraceUntilRef.current = Date.now() + 120_000;
+                  }}
+                  onFilePickerDone={() => {
+                    filePickerGraceUntilRef.current = Date.now() + 800;
+                  }}
                 />
               ) : (
                 !isMobile && (

@@ -357,22 +357,45 @@ function MessengerAppInner({ user }: { user: Profile }) {
     syncConversations(conversations);
   }, [conversations, syncConversations]);
 
-  const realtimeConvIds = useMemo(
-    () => conversations.map((c) => c.id),
-    [conversations],
-  );
+  const realtimeConvIdsKey = useMemo(() => {
+    const ids = conversations.map((c) => c.id);
+    if (ids.length === 0) return '';
+    return [...ids].sort((a, b) => a - b).join(',');
+  }, [conversations]);
 
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState === 'visible') {
         loadConversations().catch(() => {});
+        if (activeIdRef.current) {
+          loadMessages(activeIdRef.current).catch(() => {});
+        }
       }
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [loadConversations, loadMessages]);
+
+  useEffect(() => {
+    if (!activeId || tab !== 'chats') return;
+    const pollMessages = () => {
+      if (document.visibilityState !== 'visible') return;
+      loadMessages(activeId).catch(() => {});
+    };
+    const messageTimer = window.setInterval(pollMessages, 5000);
+    return () => window.clearInterval(messageTimer);
+  }, [activeId, tab, loadMessages]);
+
+  useEffect(() => {
+    const pollConversations = () => {
+      if (document.visibilityState !== 'visible') return;
+      loadConversations().catch(() => {});
+    };
+    const listTimer = window.setInterval(pollConversations, 15000);
+    return () => window.clearInterval(listTimer);
   }, [loadConversations]);
 
-  useChatRealtime(realtimeConvIds, {
+  useChatRealtime(realtimeConvIdsKey, {
     onMessage: (msg) => {
       const convId = msg.conversation_id;
       if (!convId) return;

@@ -344,22 +344,22 @@
 
 @media (max-width: 768px) {
   .messenger-view__panel {
-    animation: messenger-panel-in 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+    animation: messenger-panel-in 0.42s cubic-bezier(0.32, 0.72, 0, 1);
   }
 
   .messenger-view--slide-left .messenger-view__panel {
-    animation: messenger-tab-slide-left 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+    animation: messenger-tab-slide-left 0.44s cubic-bezier(0.32, 0.72, 0, 1);
   }
 
   .messenger-view--slide-right .messenger-view__panel {
-    animation: messenger-tab-slide-right 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+    animation: messenger-tab-slide-right 0.44s cubic-bezier(0.32, 0.72, 0, 1);
   }
 }
 
 @keyframes messenger-panel-in {
   from {
-    opacity: 0.88;
-    transform: translateX(14px);
+    opacity: 0.82;
+    transform: translateX(18px);
   }
   to {
     opacity: 1;
@@ -369,8 +369,8 @@
 
 @keyframes messenger-tab-slide-left {
   from {
-    opacity: 0.92;
-    transform: translateX(28px);
+    opacity: 0.9;
+    transform: translateX(36px);
   }
   to {
     opacity: 1;
@@ -380,8 +380,8 @@
 
 @keyframes messenger-tab-slide-right {
   from {
-    opacity: 0.92;
-    transform: translateX(-28px);
+    opacity: 0.9;
+    transform: translateX(-36px);
   }
   to {
     opacity: 1;

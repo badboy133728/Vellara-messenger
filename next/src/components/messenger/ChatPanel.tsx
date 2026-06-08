@@ -8,6 +8,7 @@ import { MessageContextMenu } from '@/components/MessageContextMenu';
 import { StatusDot } from '@/components/StatusDot';
 import { VoiceMessagePlayer } from '@/components/VoiceMessagePlayer';
 import { useLongPress } from '@/hooks/useLongPress';
+import { useSwipeBack } from '@/hooks/useSwipeGesture';
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
 import { storageDisplayUrl } from '@/lib/storage';
 import type { ConversationListItem, FormattedMessage, MessageReplyPreview } from '@/lib/types';
@@ -184,7 +185,11 @@ export function ChatPanel({
     }
 
     const count = messages.length;
-    if (!count) return;
+    if (!count) {
+      scrollReadyRef.current = true;
+      setScrollReady(true);
+      return;
+    }
 
     if (!scrollReadyRef.current) {
       requestAnimationFrame(() => {
@@ -268,6 +273,14 @@ export function ChatPanel({
     });
     onTyping();
   };
+
+  const showMessages = !messagesLoading;
+  const chatReady = showMessages && (messages.length === 0 || scrollReady);
+
+  const swipeBack = useSwipeBack({
+    enabled: Boolean(isMobile && onBack && chatReady),
+    onBack: () => onBack?.(),
+  });
 
   const isGroup = conversation?.type === 'group';
   const isGroupAdmin = conversation?.my_role === 'admin';
@@ -643,7 +656,14 @@ export function ChatPanel({
   };
 
   return (
-    <section className="chat-area">
+    <section
+      ref={swipeBack.bindRef}
+      className={`chat-area${!chatReady ? ' chat-area--loading' : ''}${swipeBack.isDragging ? ' chat-area--dragging' : ''}`}
+      onTouchStart={swipeBack.handlers.onTouchStart}
+      onTouchMove={swipeBack.handlers.onTouchMove}
+      onTouchEnd={swipeBack.handlers.onTouchEnd}
+      onTouchCancel={swipeBack.handlers.onTouchCancel}
+    >
       <header className="chat-header">
         {onBack && (
           <button type="button" className="btn-back-chat" aria-label="Назад к списку" onClick={onBack}>
@@ -689,34 +709,44 @@ export function ChatPanel({
       </header>
 
       <div
-        className={`messages-container ${!scrollReady && messages.length ? 'messages-container--preparing' : ''}`}
+        className={`messages-container${showMessages && messages.length && !scrollReady ? ' messages-container--preparing' : ''}`}
         ref={messagesContainerRef}
       >
-        {loadingOlder && (
-          <div className="messages-load-older" aria-hidden="true">
-            Загрузка…
+        {!showMessages ? (
+          <div className="chat-loading" aria-busy="true" aria-label="Загрузка сообщений">
+            <div className="chat-loading__spinner" />
           </div>
+        ) : (
+          <>
+            {loadingOlder && (
+              <div className="messages-load-older" aria-hidden="true">
+                Загрузка…
+              </div>
+            )}
+            {feed.map(renderFeedItem)}
+            <div ref={bottomRef} />
+          </>
         )}
-        {feed.map(renderFeedItem)}
-        <div ref={bottomRef} />
       </div>
 
-      <div
-        className={`chat-typing-bar ${isOtherTyping ? 'chat-typing-bar--visible' : ''}`}
-        aria-live="polite"
-        aria-hidden={!isOtherTyping}
-      >
-        <span className="dot" />
-        <span className="dot" />
-        <span className="dot" />
-        <span className="typing-text">печатает…</span>
-      </div>
+      {chatReady && (
+        <div
+          className={`chat-typing-bar ${isOtherTyping ? 'chat-typing-bar--visible' : ''}`}
+          aria-live="polite"
+          aria-hidden={!isOtherTyping}
+        >
+          <span className="dot" />
+          <span className="dot" />
+          <span className="dot" />
+          <span className="typing-text">печатает…</span>
+        </div>
+      )}
 
       {lightbox && (
         <ImageLightbox urls={lightbox.urls} index={lightbox.index} onClose={() => setLightbox(null)} />
       )}
 
-      {isRecording ? (
+      {chatReady && isRecording ? (
         <div className="voice-record-bar">
           <button type="button" className="btn-voice-cancel" title="Отмена" onClick={cancelRecording}>
             ✕
@@ -733,8 +763,8 @@ export function ChatPanel({
             {isSendingVoice ? '⏳' : '📤'}
           </button>
         </div>
-      ) : (
-        <div className="input-area" ref={inputAreaRef}>
+      ) : chatReady ? (
+        <div className="input-area input-area--ready" ref={inputAreaRef}>
           {pendingAttachment && (
             <div className="attachments-panel">
               <div className="attachments-panel__head">
@@ -865,7 +895,7 @@ export function ChatPanel({
             )}
           </form>
         </div>
-      )}
+      ) : null}
 
       <MessageContextMenu
         show={msgMenu.show}

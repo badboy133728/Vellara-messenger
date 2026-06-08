@@ -187,7 +187,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
     (next: Tab, direction: 'left' | 'right', history: 'push' | 'replace' = 'push') => {
       if (isMobile) {
         setTabAnim(direction);
-        window.setTimeout(() => setTabAnim(null), 320);
+        window.setTimeout(() => setTabAnim(null), 420);
       }
       navigate(() => setTab(next), history);
     },
@@ -210,10 +210,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
   const edgeBackSwipe = useSwipeGesture({
     enabled:
       isMobile &&
-      (Boolean(activeId) ||
-        Boolean(profileUserId) ||
-        tab === 'settings' ||
-        tab === 'dashboard'),
+      (Boolean(profileUserId) || tab === 'settings' || tab === 'dashboard'),
     edgeWidth: 36,
     threshold: 64,
     onSwipeRight: () => goBack(),
@@ -807,10 +804,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
           {...(canSwipeTabs
             ? tabSwipe
             : isMobile &&
-                (Boolean(activeId) ||
-                  Boolean(profileUserId) ||
-                  tab === 'settings' ||
-                  tab === 'dashboard')
+                (Boolean(profileUserId) || tab === 'settings' || tab === 'dashboard')
               ? edgeBackSwipe
               : {})}
         >

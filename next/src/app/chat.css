@@ -705,22 +705,22 @@
 
 .chat-typing-bar {
   flex-shrink: 0;
-  min-height: 28px;
-  padding: 6px 24px 4px;
-  display: flex;
+  display: none;
   align-items: center;
   gap: 6px;
+  padding: 4px 16px 2px;
   font-size: 13px;
+  line-height: 1.2;
   color: var(--vellara-text-muted, #94a3b8);
   background: #0f0f0f;
-  visibility: hidden;
-  opacity: 0;
-  pointer-events: none;
 }
 
 .chat-typing-bar--visible {
-  visibility: visible;
-  opacity: 1;
+  display: flex;
+}
+
+.chat-typing-bar .typing-text {
+  flex-shrink: 0;
 }
 
 .chat-typing-bar .dot {
@@ -1288,7 +1288,16 @@
   }
 
   .input-area {
-    padding: 8px 10px calc(10px + env(safe-area-inset-bottom, 0));
+    padding: 6px 10px max(4px, env(safe-area-inset-bottom, 0px));
+  }
+
+  .chat-layout.chat-open .input-area,
+  .chat-layout.chat-open .voice-record-bar {
+    padding-bottom: max(4px, env(safe-area-inset-bottom, 0px));
+  }
+
+  .chat-layout.chat-open .chat-header {
+    padding-top: max(10px, env(safe-area-inset-top, 0px));
   }
 
   .composer-btn {

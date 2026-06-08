@@ -142,6 +142,23 @@ export function ChatPanel({
     bottomRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' });
   };
 
+  const finalizeInitialScroll = () => {
+    if (scrollReadyRef.current) return;
+    scrollToBottom('instant');
+    scrollReadyRef.current = true;
+    setScrollReady(true);
+  };
+
+  const handleMessageMediaLoad = () => {
+    if (!scrollReadyRef.current) {
+      scrollToBottom('instant');
+      return;
+    }
+    if (stickToBottomRef.current) {
+      scrollToBottom('instant');
+    }
+  };
+
   useEffect(() => {
     const convId = conversation?.id ?? null;
     if (convId !== prevConvIdRef.current) {
@@ -195,15 +212,31 @@ export function ChatPanel({
     }
 
     if (!scrollReadyRef.current) {
-      requestAnimationFrame(() => {
+      scrollToBottom('instant');
+      let stableFrames = 0;
+      let lastHeight = el.scrollHeight;
+
+      const ro = new ResizeObserver(() => {
+        if (scrollReadyRef.current) return;
         scrollToBottom('instant');
-        requestAnimationFrame(() => {
-          scrollReadyRef.current = true;
-          setScrollReady(true);
-        });
+        const height = el.scrollHeight;
+        if (height === lastHeight) {
+          stableFrames += 1;
+          if (stableFrames >= 2) finalizeInitialScroll();
+        } else {
+          stableFrames = 0;
+          lastHeight = height;
+        }
       });
+      ro.observe(el);
+
+      const maxWait = window.setTimeout(finalizeInitialScroll, 2500);
+
       prevMessageCountRef.current = count;
-      return;
+      return () => {
+        ro.disconnect();
+        window.clearTimeout(maxWait);
+      };
     }
 
     const grew = count > prevMessageCountRef.current;
@@ -509,6 +542,8 @@ export function ChatPanel({
       clearAttachment();
       setReplyTo(null);
       stickToBottomRef.current = true;
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Не удалось отправить сообщение');
     } finally {
       setSending(false);
     }
@@ -570,7 +605,12 @@ export function ChatPanel({
                 className="msg-image-btn"
                 onClick={() => openImageLightbox(m)}
               >
-                <img src={storageDisplayUrl(m.file_path) ?? ''} alt="Фото" loading="lazy" />
+                <img
+                  src={storageDisplayUrl(m.file_path) ?? ''}
+                  alt="Фото"
+                  decoding="async"
+                  onLoad={handleMessageMediaLoad}
+                />
               </button>
             )}
             {m.file_path && m.file_type === 'voice' && (
@@ -734,7 +774,7 @@ export function ChatPanel({
         )}
       </div>
 
-      {chatReady && (
+      {showMessages && (
         <div
           className={`chat-typing-bar ${isOtherTyping ? 'chat-typing-bar--visible' : ''}`}
           aria-live="polite"
@@ -819,7 +859,11 @@ export function ChatPanel({
               type="button"
               className="composer-btn composer-btn--attach"
               title="Прикрепить файл"
-              onClick={() => fileRef.current?.click()}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                fileRef.current?.click();
+              }}
             >
               📎
             </button>

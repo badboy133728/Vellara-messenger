@@ -172,6 +172,15 @@ export function useSwipeBack({
     () => ({
       onTouchStart: (event: TouchEvent) => {
         if (!enabled || closingRef.current || event.touches.length !== 1) return;
+        const target = event.target;
+        if (
+          target instanceof Element &&
+          target.closest(
+            'button, a, input, textarea, select, label, .emoji-picker, .input-area, .msg-image-btn',
+          )
+        ) {
+          return;
+        }
         const touch = event.touches[0];
         startRef.current = { x: touch.clientX, y: touch.clientY };
         draggingRef.current = false;

@@ -279,10 +279,13 @@ function MessengerAppInner({ user }: { user: Profile }) {
   const conversationsRef = useRef(conversations);
   const groupMembersRef = useRef<Map<string, SenderProfile>>(new Map());
   const userRef = useRef(user);
+  const membersReadRef = useRef(membersRead);
+  const typingTimeoutRef = useRef<number | null>(null);
   activeIdRef.current = activeId;
   tabRef.current = tab;
   conversationsRef.current = conversations;
   userRef.current = user;
+  membersReadRef.current = membersRead;
 
   const {
     notification: messageNotification,
@@ -453,9 +456,10 @@ function MessengerAppInner({ user }: { user: Profile }) {
         setHasMoreOlder(data.has_more ?? (nextMessages.length >= 50));
         setMessages((prev) => {
           if (!opts?.silent || prev.length === 0) return nextMessages;
-          const prevLast = prev[prev.length - 1]?.id;
-          const nextLast = nextMessages[nextMessages.length - 1]?.id;
-          if (prev.length === nextMessages.length && prevLast === nextLast) return prev;
+          const prevLast = prev[prev.length - 1]?.id ?? 0;
+          const nextLast = nextMessages[nextMessages.length - 1]?.id ?? 0;
+          if (nextLast < prevLast) return prev;
+          if (nextLast === prevLast && prev.length >= nextMessages.length) return prev;
           return nextMessages;
         });
         api(`/api/chat/${convId}/messages/read`, { method: 'POST' }).catch(() => {});
@@ -618,11 +622,15 @@ function MessengerAppInner({ user }: { user: Profile }) {
       if (viewing && activeIdRef.current === convId) {
         setMessages((prev) => {
           const enriched = enrichMessageReply(
-            enrichMessageSender(msg, groupMembersRef.current, user),
+            enrichMessageSender(msg, groupMembersRef.current, userRef.current),
             prev,
           );
           if (prev.some((m) => m.id === enriched.id)) return prev;
-          return applyGroupRead([...prev, enriched], membersRead, convId);
+          return applyGroupRead(
+            [...prev, enriched],
+            membersReadRef.current,
+            convId,
+          );
         });
         api(`/api/chat/${convId}/messages/read`, { method: 'POST' }).catch(() => {});
         setConversationReadLocal(convId);
@@ -634,8 +642,9 @@ function MessengerAppInner({ user }: { user: Profile }) {
       }
     },
     onMessageUpdate: (msg) => {
-      if (!activeId || msg.conversation_id !== activeId) return;
-      const enriched = enrichMessageSender(msg, groupMembersRef.current, user);
+      const convId = activeIdRef.current;
+      if (!convId || msg.conversation_id !== convId) return;
+      const enriched = enrichMessageSender(msg, groupMembersRef.current, userRef.current);
       setMessages((prev) => {
         const next = prev.map((m) => {
           if (m.id !== enriched.id) return m;
@@ -646,17 +655,22 @@ function MessengerAppInner({ user }: { user: Profile }) {
             sender: enriched.sender ?? m.sender,
           };
         });
-        return applyGroupRead(next, membersRead, activeId);
+        return applyGroupRead(next, membersReadRef.current, convId);
       });
     },
     onTyping: (data) => {
-      if (data.conversation_id === activeId) {
-        setTypingUserId(data.user_id);
-        setTimeout(() => setTypingUserId(null), 2500);
+      if (data.conversation_id !== activeIdRef.current) return;
+      setTypingUserId(data.user_id);
+      if (typingTimeoutRef.current != null) {
+        window.clearTimeout(typingTimeoutRef.current);
       }
+      typingTimeoutRef.current = window.setTimeout(() => {
+        setTypingUserId(null);
+        typingTimeoutRef.current = null;
+      }, 2500);
     },
     onMemberRead: (data) => {
-      if (data.conversation_id !== activeId) return;
+      if (data.conversation_id !== activeIdRef.current) return;
       setMembersRead((prev) => {
         const next = prev.map((m) =>
           m.user_id === data.user_id ? { ...m, last_read_at: data.last_read_at } : m,
@@ -664,7 +678,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
         if (!next.some((m) => m.user_id === data.user_id)) {
           next.push({ user_id: data.user_id, last_read_at: data.last_read_at });
         }
-        setMessages((msgs) => applyGroupRead(msgs, next, activeId));
+        setMessages((msgs) => applyGroupRead(msgs, next, activeIdRef.current!));
         return next;
       });
     },

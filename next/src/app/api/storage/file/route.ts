@@ -9,6 +9,9 @@ function contentTypeForKey(key: string): string {
   if (ext === 'webp') return 'image/webp';
   if (ext === 'gif') return 'image/gif';
   if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+  if (ext === 'heic') return 'image/heic';
+  if (ext === 'heif') return 'image/heif';
+  if (ext === 'bmp') return 'image/bmp';
   return 'application/octet-stream';
 }
 

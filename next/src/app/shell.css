@@ -18,6 +18,8 @@
   display: flex;
   flex-direction: row;
   height: 100%;
+  height: 100dvh;
+  height: -webkit-fill-available;
   max-height: 100dvh;
   overflow: hidden;
   background: var(--v-bg);
@@ -321,7 +323,16 @@
   background: var(--v-bg);
 }
 
-.messenger > * {
+.messenger-view {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.messenger-view > * {
   flex: 1;
   min-height: 0;
   min-width: 0;

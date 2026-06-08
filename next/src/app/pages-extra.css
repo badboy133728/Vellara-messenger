@@ -756,8 +756,7 @@
   .auth-row-2 { grid-template-columns: 1fr; }
 }
 
-.messenger-tab-panel { height: 100%; min-height: 0; }
-.messenger-tab-panel[hidden] { display: none !important; }
+.messenger-view { height: 100%; }
 .account-card__avatar-wrap .contact-avatar-wrap { width: 44px; height: 44px; }
 .account-card__avatar-wrap .contact-avatar { width: 44px; height: 44px; font-size: 14px; }
 .contact-avatar--lg { width: 96px; height: 96px; font-size: 2rem; }

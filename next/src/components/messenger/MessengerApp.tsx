@@ -590,109 +590,110 @@ function MessengerAppInner({ user }: { user: Profile }) {
       </aside>
 
       <main className="messenger">
-        {tab === 'chats' && profileUserId ? (
-          <div className="chat-profile-view">
-            <UserProfilePanel
-              userId={profileUserId}
-              isInContacts={profileInContacts}
-              onBack={() => setProfileUserId(null)}
-              onAddToContacts={async () => {
-                await api('/api/contacts/send', {
-                  method: 'POST',
-                  body: JSON.stringify({ contact_id: profileUserId }),
-                });
-                onContactsChanged();
-                showToast('Заявка отправлена');
-                setProfileUserId(null);
-              }}
-              onStartChat={async (uid) => {
-                try {
-                  const res = await api<{ id: number }>(`/api/chat/start/${uid}`);
-                  await loadConversations();
+        <div className="messenger-view">
+          {tab === 'chats' && profileUserId ? (
+            <div className="chat-profile-view">
+              <UserProfilePanel
+                userId={profileUserId}
+                isInContacts={profileInContacts}
+                onBack={() => setProfileUserId(null)}
+                onAddToContacts={async () => {
+                  await api('/api/contacts/send', {
+                    method: 'POST',
+                    body: JSON.stringify({ contact_id: profileUserId }),
+                  });
+                  onContactsChanged();
+                  showToast('Заявка отправлена');
                   setProfileUserId(null);
+                }}
+                onStartChat={async (uid) => {
+                  try {
+                    const res = await api<{ id: number }>(`/api/chat/start/${uid}`);
+                    await loadConversations();
+                    setProfileUserId(null);
+                    setActiveId(res.id);
+                  } catch (e) {
+                    showToast(e instanceof Error ? e.message : 'Не удалось открыть чат');
+                  }
+                }}
+                onOpenSettings={() => setTab('settings')}
+              />
+            </div>
+          ) : tab === 'chats' ? (
+            <div className={`chat-layout ${chatOpen ? 'chat-open' : ''}`}>
+              <ConversationSidebar
+                conversations={conversations}
+                activeId={activeId}
+                loading={loading}
+                onSelect={setActiveId}
+                onRefresh={loadConversations}
+                onCreateGroup={async () => {
+                  const list = await api<{ id: string; name: string; last_name: string }[]>('/api/contacts/my');
+                  setContactsForGroup(list);
+                  setShowCreateGroup(true);
+                }}
+              />
+              {activeId ? (
+                <ChatPanel
+                  conversation={activeConv}
+                  messages={messages}
+                  currentUserId={user.id}
+                  typingUserId={typingUserId}
+                  savedMessageIds={savedMessageIds}
+                  isMobile={isMobile}
+                  onSend={sendMessage}
+                  onSendVoice={sendVoiceMessage}
+                  onEditMessage={editMessage}
+                  onDeleteMessage={deleteMessage}
+                  onToggleSave={toggleSaveMessage}
+                  onTyping={sendTyping}
+                  onOpenGroupInfo={
+                    activeConv?.type === 'group' ? () => setShowGroupPanel(true) : undefined
+                  }
+                  onOpenPartnerProfile={
+                    activeConv?.type !== 'group' && activeConv?.other_user?.id
+                      ? () => setProfileUserId(activeConv.other_user!.id)
+                      : undefined
+                  }
+                  onOpenGroupSettings={
+                    activeConv?.type === 'group' && activeConv.my_role === 'admin'
+                      ? () => setShowGroupSettings(true)
+                      : undefined
+                  }
+                  onBack={isMobile ? () => setActiveId(null) : undefined}
+                />
+              ) : (
+                !isMobile && (
+                  <div className="chat-placeholder">Выберите диалог или начните новый</div>
+                )
+              )}
+            </div>
+          ) : tab === 'contacts' ? (
+            <ContactsPanel
+              contactsRefreshKey={contactsRefreshKey}
+              onStartChat={async (contactId) => {
+                try {
+                  const res = await api<{ id: number }>(`/api/chat/start/${contactId}`);
+                  await loadConversations();
                   setActiveId(res.id);
+                  setTab('chats');
                 } catch (e) {
                   showToast(e instanceof Error ? e.message : 'Не удалось открыть чат');
                 }
               }}
-              onOpenSettings={() => setTab('settings')}
             />
-          </div>
-        ) : tab === 'chats' ? (
-          <div className={`chat-layout ${chatOpen ? 'chat-open' : ''}`}>
-            <ConversationSidebar
-              conversations={conversations}
-              activeId={activeId}
-              loading={loading}
-              onSelect={setActiveId}
-              onRefresh={loadConversations}
-              onCreateGroup={async () => {
-                const list = await api<{ id: string; name: string; last_name: string }[]>('/api/contacts/my');
-                setContactsForGroup(list);
-                setShowCreateGroup(true);
-              }}
+          ) : tab === 'calls' ? (
+            <CallsPanel />
+          ) : tab === 'favorites' ? (
+            <FavoritesPanel />
+          ) : tab === 'settings' ? (
+            <SettingsPanel
+              showMobileBack={isMobile}
+              onBack={() => setTab('dashboard')}
             />
-            {activeId ? (
-              <ChatPanel
-                conversation={activeConv}
-                messages={messages}
-                currentUserId={user.id}
-                typingUserId={typingUserId}
-                savedMessageIds={savedMessageIds}
-                isMobile={isMobile}
-                onSend={sendMessage}
-                onSendVoice={sendVoiceMessage}
-                onEditMessage={editMessage}
-                onDeleteMessage={deleteMessage}
-                onToggleSave={toggleSaveMessage}
-                onTyping={sendTyping}
-                onOpenGroupInfo={
-                  activeConv?.type === 'group' ? () => setShowGroupPanel(true) : undefined
-                }
-                onOpenPartnerProfile={
-                  activeConv?.type !== 'group' && activeConv?.other_user?.id
-                    ? () => setProfileUserId(activeConv.other_user!.id)
-                    : undefined
-                }
-                onOpenGroupSettings={
-                  activeConv?.type === 'group' && activeConv.my_role === 'admin'
-                    ? () => setShowGroupSettings(true)
-                    : undefined
-                }
-                onBack={isMobile ? () => setActiveId(null) : undefined}
-              />
-            ) : (
-              !isMobile && (
-                <div className="chat-placeholder">Выберите диалог или начните новый</div>
-              )
-            )}
-          </div>
-        ) : null}
-        <div hidden={tab !== 'contacts'} className="messenger-tab-panel">
-          <ContactsPanel
-            contactsRefreshKey={contactsRefreshKey}
-            onStartChat={async (contactId) => {
-              try {
-                const res = await api<{ id: number }>(`/api/chat/start/${contactId}`);
-                await loadConversations();
-                setActiveId(res.id);
-                setTab('chats');
-              } catch (e) {
-                showToast(e instanceof Error ? e.message : 'Не удалось открыть чат');
-              }
-            }}
-          />
-        </div>
-        {tab === 'calls' && <CallsPanel />}
-        {tab === 'favorites' && <FavoritesPanel />}
-        <div hidden={tab !== 'settings'} className="messenger-tab-panel">
-          <SettingsPanel
-            showMobileBack={isMobile}
-            onBack={() => setTab('dashboard')}
-          />
-        </div>
-        <div hidden={tab !== 'dashboard'} className="messenger-tab-panel">
-          <DashboardPanel onOpenSettings={() => setTab('settings')} />
+          ) : tab === 'dashboard' ? (
+            <DashboardPanel onOpenSettings={() => setTab('settings')} />
+          ) : null}
         </div>
       </main>
 

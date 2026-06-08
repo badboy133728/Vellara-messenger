@@ -19,6 +19,8 @@ html {
 html.vellara-messenger,
 html.vellara-messenger body {
   height: 100%;
+  height: 100dvh;
+  height: -webkit-fill-available;
   overflow: hidden;
 }
 

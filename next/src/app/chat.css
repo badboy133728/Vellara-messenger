@@ -1262,14 +1262,59 @@
     flex: 1;
     min-height: 0;
     height: 100%;
+    width: 100%;
   }
 
-  .chat-layout.chat-open .chat-area {
-    display: grid;
-    flex: 1;
+  .chat-layout.chat-open .chat-area,
+  .chat-area--mobile {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100dvh;
+    height: -webkit-fill-available;
+    max-height: 100dvh;
     min-height: 0;
-    height: 100%;
+    flex: none;
+    overflow: hidden;
+    box-sizing: border-box;
+  }
+
+  .chat-layout.chat-open .chat-area.chat-area--dragging,
+  .chat-layout.chat-open .chat-area.chat-area--closing {
     will-change: transform;
+  }
+
+  .chat-layout.chat-open .chat-header,
+  .chat-area--mobile .chat-header {
+    flex: 0 0 auto;
+    grid-row: unset;
+    z-index: 3;
+    padding-top: calc(10px + env(safe-area-inset-top, 0px));
+  }
+
+  .chat-layout.chat-open .messages-container,
+  .chat-area--mobile .messages-container {
+    flex: 1 1 0;
+    min-height: 0;
+    max-height: calc(
+      100dvh - var(--vellara-chat-header-h, 56px) - var(--vellara-chat-composer-h, 64px)
+    );
+    grid-row: unset;
+    z-index: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  .chat-layout.chat-open .chat-composer-dock,
+  .chat-area--mobile .chat-composer-dock {
+    flex: 0 0 auto;
+    grid-row: unset;
+    z-index: 3;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 
   .chat-area--enter {
@@ -1311,10 +1356,6 @@
 
   .input-area {
     padding: 6px 10px;
-  }
-
-  .chat-layout.chat-open .chat-header {
-    padding-top: calc(10px + env(safe-area-inset-top, 0px));
   }
 
   .composer-btn {

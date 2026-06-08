@@ -123,6 +123,9 @@ export function ChatPanel({
   const fileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const inputAreaRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLElement>(null);
+  const composerDockRef = useRef<HTMLDivElement>(null);
+  const chatAreaRef = useRef<HTMLElement | null>(null);
   const emojiBtnRef = useRef<HTMLButtonElement>(null);
 
   const {
@@ -343,6 +346,39 @@ export function ChatPanel({
     enabled: Boolean(isMobile && onBack && chatReady),
     onBack: () => onBack?.(),
   });
+
+  const bindChatAreaRef = (node: HTMLElement | null) => {
+    chatAreaRef.current = node;
+    swipeBack.bindRef(node);
+  };
+
+  useLayoutEffect(() => {
+    if (!isMobile || !conversation) return;
+    const area = chatAreaRef.current;
+    const header = headerRef.current;
+    const dock = composerDockRef.current;
+    if (!area || !header || !dock) return;
+
+    const syncChromeHeights = () => {
+      area.style.setProperty('--vellara-chat-header-h', `${header.offsetHeight}px`);
+      area.style.setProperty('--vellara-chat-composer-h', `${dock.offsetHeight}px`);
+    };
+
+    syncChromeHeights();
+    const ro = new ResizeObserver(syncChromeHeights);
+    ro.observe(header);
+    ro.observe(dock);
+    return () => ro.disconnect();
+  }, [isMobile, conversation?.id, showMessages, isRecording, pendingAttachment, isOtherTyping]);
+
+  useLayoutEffect(() => {
+    if (!isMobile || messagesLoading) return;
+    scrollToBottom('instant');
+    if (!scrollReadyRef.current) {
+      scrollReadyRef.current = true;
+      setScrollReady(true);
+    }
+  }, [isMobile, messagesLoading, conversation?.id, messages.length]);
 
   const isGroup = conversation?.type === 'group';
   const isGroupAdmin = conversation?.my_role === 'admin';
@@ -726,14 +762,14 @@ export function ChatPanel({
 
   return (
     <section
-      ref={swipeBack.bindRef}
-      className={`chat-area${!chatReady ? ' chat-area--loading' : ''}${enterAnim ? ' chat-area--enter' : ''}${swipeBack.isDragging ? ' chat-area--dragging' : ''}${swipeBack.isClosing ? ' chat-area--closing' : ''}`}
+      ref={bindChatAreaRef}
+      className={`chat-area${isMobile ? ' chat-area--mobile' : ''}${!chatReady ? ' chat-area--loading' : ''}${enterAnim ? ' chat-area--enter' : ''}${swipeBack.isDragging ? ' chat-area--dragging' : ''}${swipeBack.isClosing ? ' chat-area--closing' : ''}`}
       onTouchStart={swipeBack.handlers.onTouchStart}
       onTouchMove={swipeBack.handlers.onTouchMove}
       onTouchEnd={swipeBack.handlers.onTouchEnd}
       onTouchCancel={swipeBack.handlers.onTouchCancel}
     >
-      <header className="chat-header">
+      <header className="chat-header" ref={headerRef}>
         {onBack && (
           <button type="button" className="btn-back-chat" aria-label="Назад к списку" onClick={onBack}>
             ←
@@ -778,7 +814,7 @@ export function ChatPanel({
       </header>
 
       <div
-        className={`messages-container${showMessages && messages.length && !scrollReady ? ' messages-container--preparing' : ''}`}
+        className={`messages-container${showMessages && messages.length && !scrollReady && !isMobile ? ' messages-container--preparing' : ''}`}
         ref={messagesContainerRef}
       >
         {!showMessages ? (
@@ -799,7 +835,7 @@ export function ChatPanel({
       </div>
 
       {showMessages && (
-        <div className="chat-composer-dock">
+        <div className="chat-composer-dock" ref={composerDockRef}>
           <div
             className={`chat-typing-bar ${isOtherTyping ? 'chat-typing-bar--visible' : ''}`}
             aria-live="polite"

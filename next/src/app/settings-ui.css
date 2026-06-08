@@ -122,6 +122,22 @@
   color: var(--vellara-text-muted, #94a3b8);
 }
 
+.settings-hint--warn {
+  color: #fca5a5;
+}
+
+.settings-hint--status {
+  margin-top: 10px;
+  color: var(--vellara-gold, #c9a885);
+}
+
+.settings-push-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
 .settings-hint {
   margin: 0 0 12px;
   font-size: 13px;

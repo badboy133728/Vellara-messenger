@@ -35,6 +35,7 @@ import { CreateGroupModal } from './CreateGroupModal';
 import { GroupSettingsModal } from './GroupSettingsModal';
 import { GroupInfoPanel } from './GroupInfoPanel';
 import { UserProfilePanel } from './UserProfilePanel';
+import { PushNotificationBanner } from '@/components/PushNotificationBanner';
 
 type Tab = 'chats' | 'calls' | 'contacts' | 'favorites' | 'settings' | 'dashboard';
 
@@ -339,6 +340,18 @@ function MessengerAppInner({ user }: { user: Profile }) {
       .catch(() => setConversations([]))
       .finally(() => setLoading(false));
   }, [loadConversations, user.id]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const chat = params.get('chat');
+    if (!chat) return;
+    const id = Number(chat);
+    if (!Number.isFinite(id) || id <= 0) return;
+    setActiveId(id);
+    setTab('chats');
+    window.history.replaceState({}, '', '/main');
+  }, []);
 
   useEffect(() => {
     loadSavedIds();
@@ -793,6 +806,8 @@ function MessengerAppInner({ user }: { user: Profile }) {
           onHangup={() => endCall()}
         />
       )}
+
+      <PushNotificationBanner />
 
       {toast && <div className="contacts-toast">{toast}</div>}
 

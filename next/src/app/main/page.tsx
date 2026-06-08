@@ -15,7 +15,11 @@ export default function MainPage() {
       return;
     }
     if (initialized && isAuthenticated && window.location.search) {
-      router.replace('/main');
+      const params = new URLSearchParams(window.location.search);
+      if (params.has('reason') || params.has('redirect')) {
+        const chat = params.get('chat');
+        router.replace(chat ? `/main?chat=${encodeURIComponent(chat)}` : '/main');
+      }
     }
   }, [initialized, isAuthenticated, router]);
 

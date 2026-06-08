@@ -13,6 +13,16 @@ const comfortaa = Comfortaa({
 export const metadata: Metadata = {
   title: 'Vellara Messenger',
   description: 'Vellara — мессенджер на Next.js + Supabase',
+  manifest: '/manifest.webmanifest',
+  appleWebApp: {
+    capable: true,
+    title: 'Vellara',
+    statusBarStyle: 'black-translucent',
+  },
+  icons: {
+    icon: '/icon-192.png',
+    apple: '/icon-192.png',
+  },
 };
 
 export const viewport: Viewport = {

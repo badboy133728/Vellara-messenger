@@ -3,6 +3,7 @@ import { ensureMember } from '@/lib/chat/conversations';
 import { formatMessage } from '@/lib/chat/formatters';
 import { canManageGroup } from '@/lib/chat/permissions';
 import { broadcastToConversation } from '@/lib/realtime/broadcast';
+import { notifyConversationPush } from '@/lib/push/notify';
 import { uploadMessageFile } from '@/lib/storage-server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { MessageRow, Profile } from '@/lib/types';
@@ -161,6 +162,14 @@ export async function POST(
     ...formatted,
     conversation_id: convId,
   });
+
+  void notifyConversationPush(
+    supabase,
+    convId,
+    user.id,
+    `${profile.name} ${profile.last_name}`.trim(),
+    message as MessageRow,
+  );
 
   return Response.json(formatted, { status: 201 });
 }

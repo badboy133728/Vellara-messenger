@@ -9,6 +9,7 @@ import { applyTheme } from '@/lib/applyTheme';
 import { resolveProfileMedia } from '@/lib/profileCover';
 import { AvatarCropModal } from '@/components/AvatarCropModal';
 import { AvatarImg } from '@/components/AvatarImg';
+import { PushNotificationsSection } from '@/components/PushNotificationsSection';
 
 type SettingsData = {
   name: string;
@@ -397,6 +398,8 @@ export function SettingsPanel({
           ))}
         </div>
       </section>
+
+      <PushNotificationsSection />
 
       <section className="settings-card">
         <h2>Приватность</h2>

@@ -207,8 +207,9 @@ export function ContactsPanel({
                       type="button"
                       className="profile-btn profile-btn--gold contact-card__action"
                       onClick={() => sendRequest(u.id)}
+                      title="Отправить заявку"
                     >
-                      Заявка
+                      + Заявка
                     </button>
                   </li>
                 ))}
@@ -245,15 +246,19 @@ export function ContactsPanel({
                   <div className="contact-card__actions">
                     <button
                       type="button"
-                      className="profile-btn profile-btn--gold contact-card__action"
+                      className="profile-btn profile-btn--gold profile-btn--icon contact-card__action"
                       onClick={() => accept(req.sender_id)}
+                      title="Принять"
+                      aria-label="Принять заявку"
                     >
                       ✓
                     </button>
                     <button
                       type="button"
-                      className="profile-btn profile-btn--outline contact-card__action"
+                      className="profile-btn profile-btn--outline profile-btn--icon contact-card__action"
                       onClick={() => reject(req.sender_id)}
+                      title="Отклонить"
+                      aria-label="Отклонить заявку"
                     >
                       ✕
                     </button>
@@ -282,30 +287,36 @@ export function ContactsPanel({
                   <div className="contact-card__actions">
                     <button
                       type="button"
-                      className="profile-btn profile-btn--outline contact-card__action"
+                      className="profile-btn profile-btn--outline profile-btn--icon contact-card__action"
                       title="Голосовой звонок"
+                      aria-label="Голосовой звонок"
                       onClick={() => dial(c.id, 'voice')}
                     >
                       📞
                     </button>
                     <button
                       type="button"
-                      className="profile-btn profile-btn--outline contact-card__action"
+                      className="profile-btn profile-btn--outline profile-btn--icon contact-card__action"
                       title="Видеозвонок"
+                      aria-label="Видеозвонок"
                       onClick={() => dial(c.id, 'video')}
                     >
                       📹
                     </button>
                     <button
                       type="button"
-                      className="profile-btn profile-btn--outline contact-card__action"
+                      className="profile-btn profile-btn--outline profile-btn--icon contact-card__action"
+                      title="Написать сообщение"
+                      aria-label="Написать сообщение"
                       onClick={() => onStartChat(c.id)}
                     >
                       💬
                     </button>
                     <button
                       type="button"
-                      className="profile-btn profile-btn--outline contact-card__action"
+                      className="profile-btn profile-btn--outline profile-btn--icon contact-card__action"
+                      title="Удалить из контактов"
+                      aria-label="Удалить из контактов"
                       onClick={() => removeContact(c.id)}
                     >
                       ✕

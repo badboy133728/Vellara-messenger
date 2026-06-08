@@ -1,5 +1,6 @@
 import { requireAuth } from '@/lib/auth';
 import { ensureMember } from '@/lib/chat/conversations';
+import { broadcastToConversation } from '@/lib/realtime/broadcast';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export async function POST(
@@ -32,6 +33,12 @@ export async function POST(
       .eq('conversation_id', convId)
       .eq('user_id', user.id);
 
+    void broadcastToConversation(supabase, convId, 'MemberRead', {
+      conversation_id: convId,
+      user_id: user.id,
+      last_read_at: now,
+    });
+
     return Response.json({ success: true, updated: 0, unread_count: 0, read_at: now });
   }
 
@@ -60,6 +67,15 @@ export async function POST(
     .update({ last_read_at: now })
     .eq('conversation_id', convId)
     .eq('user_id', user.id);
+
+  if (updated > 0) {
+    void broadcastToConversation(supabase, convId, 'MessagesRead', {
+      conversation_id: convId,
+      reader_id: user.id,
+      read_at: now,
+      message_ids: messageIds,
+    });
+  }
 
   return Response.json({
     success: true,

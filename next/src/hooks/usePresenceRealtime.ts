@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
+import type { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/client';
-import { syncSupabaseRealtimeAuth } from '@/lib/realtime/clientAuth';
+import { reconnectSupabaseRealtime } from '@/lib/realtime/clientAuth';
 
 export function usePresenceRealtime(
   userIds: string[],
@@ -19,23 +19,44 @@ export function usePresenceRealtime(
     if (uniqueIds.length === 0) return;
 
     const supabase = createClient();
-    void syncSupabaseRealtimeAuth(supabase);
-    const channels = uniqueIds.map((userId) =>
-      supabase
-        .channel(`presence:${userId}`)
-        .on(
-          'postgres_changes',
-          { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${userId}` },
-          (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
-            const row = payload.new as { id?: string; last_seen_at?: string | null };
-            if (!row.id) return;
-            handlerRef.current(row.id, row.last_seen_at ?? null);
-          },
-        )
-        .subscribe(),
-    );
+    let disposed = false;
+    const channels: RealtimeChannel[] = [];
+
+    const bindAll = async () => {
+      await reconnectSupabaseRealtime(supabase);
+      if (disposed) return;
+      while (channels.length) {
+        const ch = channels.pop();
+        if (ch) await supabase.removeChannel(ch);
+      }
+      uniqueIds.forEach((userId) => {
+        channels.push(
+          supabase
+            .channel(`presence:${userId}`)
+            .on(
+              'postgres_changes',
+              { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${userId}` },
+              (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
+                const row = payload.new as { id?: string; last_seen_at?: string | null };
+                if (!row.id) return;
+                handlerRef.current(row.id, row.last_seen_at ?? null);
+              },
+            )
+            .subscribe(),
+        );
+      });
+    };
+
+    void bindAll();
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && !disposed) void bindAll();
+    };
+    document.addEventListener('visibilitychange', onVisible);
 
     return () => {
+      disposed = true;
+      document.removeEventListener('visibilitychange', onVisible);
       channels.forEach((ch) => supabase.removeChannel(ch));
     };
   }, [idsKey]);

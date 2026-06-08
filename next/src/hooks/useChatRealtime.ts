@@ -2,14 +2,12 @@
 
 import { useEffect, useRef, type RefObject } from 'react';
 import type {
-  AuthChangeEvent,
   RealtimeChannel,
   RealtimePostgresChangesPayload,
   REALTIME_SUBSCRIBE_STATES,
-  Session,
 } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/client';
-import { syncSupabaseRealtimeAuth } from '@/lib/realtime/clientAuth';
+import { reconnectSupabaseRealtime, syncSupabaseRealtimeAuth } from '@/lib/realtime/clientAuth';
 import type { FormattedMessage } from '@/lib/types';
 
 type Handlers = {
@@ -20,6 +18,12 @@ type Handlers = {
     conversation_id: number;
     user_id: string;
     last_read_at: string;
+  }) => void;
+  onMessagesRead?: (data: {
+    conversation_id: number;
+    reader_id: string;
+    read_at: string;
+    message_ids: number[];
   }) => void;
 };
 
@@ -50,9 +54,8 @@ function subscribeConversation(
   supabase: ReturnType<typeof createClient>,
   convId: number,
   handlersRef: RefObject<Handlers>,
-  onResubscribe: (channel: RealtimeChannel) => void,
 ): RealtimeChannel {
-  const channel = supabase
+  return supabase
     .channel(`conversation:${convId}`, {
       config: { broadcast: { self: false } },
     })
@@ -97,19 +100,45 @@ function subscribeConversation(
         handlersRef.current?.onMessage?.(msg);
       }
     })
+    .on(
+      'broadcast',
+      { event: 'MessagesRead' },
+      (message: {
+        payload: {
+          conversation_id: number;
+          reader_id: string;
+          read_at: string;
+          message_ids: number[];
+        };
+      }) => {
+        const data = message.payload;
+        if (data?.conversation_id === convId) {
+          handlersRef.current?.onMessagesRead?.(data);
+        }
+      },
+    )
+    .on(
+      'broadcast',
+      { event: 'MemberRead' },
+      (message: {
+        payload: { conversation_id: number; user_id: string; last_read_at: string };
+      }) => {
+        const data = message.payload;
+        if (data?.conversation_id === convId) {
+          handlersRef.current?.onMemberRead?.(data);
+        }
+      },
+    )
     .subscribe((status: `${REALTIME_SUBSCRIBE_STATES}`) => {
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
         window.setTimeout(() => {
-          supabase.removeChannel(channel);
-          onResubscribe(subscribeConversation(supabase, convId, handlersRef, onResubscribe));
-        }, 2000);
+          void reconnectSupabaseRealtime(supabase);
+        }, 1500);
       }
     });
-
-  return channel;
 }
 
-/** Realtime for the open chat only (reliable: one channel + server JWT). */
+/** Realtime for the open chat only (one channel + server JWT). */
 export function useActiveConversationRealtime(activeId: number | null, handlers: Handlers) {
   const handlersRef = useRef(handlers);
   handlersRef.current = handlers;
@@ -120,46 +149,50 @@ export function useActiveConversationRealtime(activeId: number | null, handlers:
     const supabase = createClient();
     let disposed = false;
     let channel: RealtimeChannel | null = null;
+    let binding = false;
 
-    const attach = (ch: RealtimeChannel) => {
-      channel = ch;
-    };
-
-    const resubscribe = (ch: RealtimeChannel) => {
-      if (disposed) return;
-      attach(ch);
-    };
-
-    void (async () => {
-      await syncSupabaseRealtimeAuth(supabase);
-      if (disposed) return;
-      attach(subscribeConversation(supabase, activeId, handlersRef, resubscribe));
-    })();
-
-    const {
-      data: { subscription: authSubscription },
-    } = supabase.auth.onAuthStateChange((_event: AuthChangeEvent, session: Session | null) => {
-      if (session?.access_token) {
-        void supabase.realtime.setAuth(session.access_token);
-      } else {
-        void syncSupabaseRealtimeAuth(supabase);
+    const bind = async (hardReconnect = false) => {
+      if (disposed || binding) return;
+      binding = true;
+      try {
+        if (hardReconnect) {
+          await reconnectSupabaseRealtime(supabase);
+        } else {
+          await syncSupabaseRealtimeAuth(supabase);
+        }
+        if (disposed) return;
+        if (channel) {
+          await supabase.removeChannel(channel);
+          channel = null;
+        }
+        channel = subscribeConversation(supabase, activeId, handlersRef);
+      } finally {
+        binding = false;
       }
-    });
+    };
+
+    void bind(true);
+
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible' || disposed) return;
+      void bind(true);
+    };
+    document.addEventListener('visibilitychange', onVisible);
 
     const refreshAuth = window.setInterval(() => {
       void syncSupabaseRealtimeAuth(supabase);
-    }, 4 * 60 * 1000);
+    }, 3 * 60 * 1000);
 
     return () => {
       disposed = true;
+      document.removeEventListener('visibilitychange', onVisible);
       window.clearInterval(refreshAuth);
-      authSubscription.unsubscribe();
       if (channel) supabase.removeChannel(channel);
     };
   }, [activeId]);
 }
 
-/** Lightweight list updates: postgres INSERT on all user conversations. */
+/** Lightweight list updates: broadcast + postgres INSERT per conversation. */
 export function useChatRealtime(conversationIdsKey: string, handlers: Pick<Handlers, 'onMessage'>) {
   const handlersRef = useRef(handlers);
   handlersRef.current = handlers;
@@ -173,36 +206,68 @@ export function useChatRealtime(conversationIdsKey: string, handlers: Pick<Handl
     const supabase = createClient();
     let disposed = false;
     const channels: RealtimeChannel[] = [];
+    let binding = false;
 
-    void (async () => {
-      await syncSupabaseRealtimeAuth(supabase);
-      if (disposed) return;
+    const bindAll = async (hardReconnect = false) => {
+      if (disposed || binding) return;
+      binding = true;
+      try {
+        if (hardReconnect) {
+          await reconnectSupabaseRealtime(supabase);
+        } else {
+          await syncSupabaseRealtimeAuth(supabase);
+        }
+        if (disposed) return;
 
-      conversationIds.forEach((convId) => {
-        const channel = supabase
-          .channel(`conversation-list:${convId}`)
-          .on(
-            'postgres_changes',
-            { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${convId}` },
-            (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
-              handlersRef.current.onMessage?.(
-                rowToMessage(payload.new as Record<string, unknown>, convId),
-              );
-            },
-          )
-          .on('broadcast', { event: 'NewMessage' }, (message: { payload: FormattedMessage }) => {
-            const msg = message.payload;
-            if (msg?.conversation_id === convId) {
-              handlersRef.current.onMessage?.(msg);
-            }
-          })
-          .subscribe();
-        channels.push(channel);
-      });
-    })();
+        while (channels.length) {
+          const ch = channels.pop();
+          if (ch) await supabase.removeChannel(ch);
+        }
+
+        conversationIds.forEach((convId) => {
+          const channel = supabase
+            .channel(`conversation-list:${convId}`, {
+              config: { broadcast: { self: false } },
+            })
+            .on(
+              'postgres_changes',
+              { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${convId}` },
+              (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
+                handlersRef.current.onMessage?.(
+                  rowToMessage(payload.new as Record<string, unknown>, convId),
+                );
+              },
+            )
+            .on('broadcast', { event: 'NewMessage' }, (message: { payload: FormattedMessage }) => {
+              const msg = message.payload;
+              if (msg?.conversation_id === convId) {
+                handlersRef.current.onMessage?.(msg);
+              }
+            })
+            .subscribe();
+          channels.push(channel);
+        });
+      } finally {
+        binding = false;
+      }
+    };
+
+    void bindAll(true);
+
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible' || disposed) return;
+      void bindAll(true);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
+    const refreshAuth = window.setInterval(() => {
+      void syncSupabaseRealtimeAuth(supabase);
+    }, 3 * 60 * 1000);
 
     return () => {
       disposed = true;
+      document.removeEventListener('visibilitychange', onVisible);
+      window.clearInterval(refreshAuth);
       channels.forEach((ch) => supabase.removeChannel(ch));
     };
   }, [conversationIdsKey]);
@@ -221,76 +286,75 @@ export function useUserRealtime(userId: string | undefined, handlers: UserRealti
     if (!userId) return;
     const supabase = createClient();
     let disposed = false;
+    let channel: RealtimeChannel | null = null;
 
-    const notifyContacts = () => handlersRef.current.onContactsChanged?.();
-
-    void (async () => {
-      await syncSupabaseRealtimeAuth(supabase);
+    const bind = async () => {
+      await reconnectSupabaseRealtime(supabase);
       if (disposed) return;
-    })();
+      if (channel) await supabase.removeChannel(channel);
 
-    const channel = supabase
-      .channel(`user:${userId}`)
-      .on('broadcast', { event: 'CallSignaling' }, (message: { payload: unknown }) =>
-        handlersRef.current.onCallSignaling?.(message.payload),
-      )
-      .on('broadcast', { event: 'ContactRequestSent' }, notifyContacts)
-      .on('broadcast', { event: 'ContactRequestAccepted' }, notifyContacts)
-      .on('broadcast', { event: 'ContactRemoved' }, notifyContacts)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'user_contacts',
-          filter: `contact_id=eq.${userId}`,
-        },
-        notifyContacts,
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'user_contacts',
-          filter: `user_id=eq.${userId}`,
-        },
-        (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
-          const row = payload.new as { status?: string };
-          if (row?.status === 'accepted') notifyContacts();
-        },
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'user_contacts',
-          filter: `contact_id=eq.${userId}`,
-        },
-        notifyContacts,
-      )
-      .on(
-        'postgres_changes',
-        { event: 'DELETE', schema: 'public', table: 'user_contacts' },
-        notifyContacts,
-      )
-      .subscribe();
+      const notifyContacts = () => handlersRef.current.onContactsChanged?.();
 
-    const {
-      data: { subscription: authSubscription },
-    } = supabase.auth.onAuthStateChange((_event: AuthChangeEvent, session: Session | null) => {
-      if (session?.access_token) {
-        void supabase.realtime.setAuth(session.access_token);
-      } else {
-        void syncSupabaseRealtimeAuth(supabase);
-      }
-    });
+      channel = supabase
+        .channel(`user:${userId}`)
+        .on('broadcast', { event: 'CallSignaling' }, (message: { payload: unknown }) =>
+          handlersRef.current.onCallSignaling?.(message.payload),
+        )
+        .on('broadcast', { event: 'ContactRequestSent' }, notifyContacts)
+        .on('broadcast', { event: 'ContactRequestAccepted' }, notifyContacts)
+        .on('broadcast', { event: 'ContactRemoved' }, notifyContacts)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'user_contacts',
+            filter: `contact_id=eq.${userId}`,
+          },
+          notifyContacts,
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'user_contacts',
+            filter: `user_id=eq.${userId}`,
+          },
+          (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
+            const row = payload.new as { status?: string };
+            if (row?.status === 'accepted') notifyContacts();
+          },
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'user_contacts',
+            filter: `contact_id=eq.${userId}`,
+          },
+          notifyContacts,
+        )
+        .on(
+          'postgres_changes',
+          { event: 'DELETE', schema: 'public', table: 'user_contacts' },
+          notifyContacts,
+        )
+        .subscribe();
+    };
+
+    void bind();
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && !disposed) void bind();
+    };
+    document.addEventListener('visibilitychange', onVisible);
 
     return () => {
       disposed = true;
-      authSubscription.unsubscribe();
-      supabase.removeChannel(channel);
+      document.removeEventListener('visibilitychange', onVisible);
+      if (channel) supabase.removeChannel(channel);
     };
   }, [userId]);
 }

@@ -606,7 +606,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
       if (document.visibilityState !== 'visible') return;
       loadMessages(activeId, { silent: true }).catch(() => {});
     };
-    const messageTimer = window.setInterval(pollMessages, 12000);
+    const messageTimer = window.setInterval(pollMessages, 5000);
     return () => window.clearInterval(messageTimer);
   }, [activeId, tab, loadMessages]);
 
@@ -715,6 +715,17 @@ function MessengerAppInner({ user }: { user: Profile }) {
         setMessages((msgs) => applyGroupRead(msgs, next, activeIdRef.current!));
         return next;
       });
+    },
+    onMessagesRead: (data) => {
+      const convId = activeIdRef.current;
+      if (!convId || data.conversation_id !== convId) return;
+      const idSet = new Set(data.message_ids);
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (!idSet.has(m.id) || m.user_id !== user.id) return m;
+          return { ...m, read_at: data.read_at };
+        }),
+      );
     },
   });
 

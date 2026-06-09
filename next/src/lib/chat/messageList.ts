@@ -10,15 +10,22 @@ export async function formatMessagesWithReplies(
   const replyIds = [
     ...new Set(messages.map((m) => m.reply_to_id).filter((id): id is number => !!id)),
   ];
+  const forwardIds = [
+    ...new Set(messages.map((m) => m.forwarded_from_id).filter((id): id is number => !!id)),
+  ];
   const replyRows = new Map<number, MessageRow>();
+  const forwardRows = new Map<number, MessageRow>();
 
-  if (replyIds.length) {
-    const { data: replies } = await admin.from('messages').select('*').in('id', replyIds);
-    for (const row of replies ?? []) {
-      replyRows.set(row.id, row as MessageRow);
+  const lookupIds = [...new Set([...replyIds, ...forwardIds])];
+  if (lookupIds.length) {
+    const { data: related } = await admin.from('messages').select('*').in('id', lookupIds);
+    for (const row of related ?? []) {
+      const typed = row as MessageRow;
+      if (replyIds.includes(typed.id)) replyRows.set(typed.id, typed);
+      if (forwardIds.includes(typed.id)) forwardRows.set(typed.id, typed);
     }
     const missingAuthors = [
-      ...new Set([...replyRows.values()].map((r) => r.user_id)),
+      ...new Set([...replyRows.values(), ...forwardRows.values()].map((r) => r.user_id)),
     ].filter((id) => !profileMap.has(id));
     if (missingAuthors.length) {
       const { data: extraProfiles } = await admin
@@ -32,6 +39,6 @@ export async function formatMessagesWithReplies(
   }
 
   return messages.map((m) =>
-    formatMessage(m, profileMap.get(m.user_id) ?? null, false, replyRows, profileMap),
+    formatMessage(m, profileMap.get(m.user_id) ?? null, false, replyRows, profileMap, forwardRows),
   );
 }

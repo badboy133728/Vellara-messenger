@@ -35,6 +35,7 @@ import { CallsPanel } from './CallsPanel';
 import { DashboardPanel } from './DashboardPanel';
 import { FavoritesPanel } from './FavoritesPanel';
 import { CreateGroupModal } from './CreateGroupModal';
+import { ForwardDestinationModal } from './ForwardDestinationModal';
 import { GroupSettingsModal } from './GroupSettingsModal';
 import { GroupInfoPanel } from './GroupInfoPanel';
 import { UserProfilePanel } from './UserProfilePanel';
@@ -125,6 +126,10 @@ function MessengerAppInner({ user }: { user: Profile }) {
   const [typingUserId, setTypingUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [forwardPayload, setForwardPayload] = useState<{
+    message: FormattedMessage;
+    excludeConversationId: number | null;
+  } | null>(null);
   const [showGroupSettings, setShowGroupSettings] = useState(false);
   const [showGroupPanel, setShowGroupPanel] = useState(false);
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
@@ -846,6 +851,71 @@ function MessengerAppInner({ user }: { user: Profile }) {
     });
   };
 
+  const requestForwardMessage = useCallback(
+    (message: FormattedMessage, excludeConversationId?: number | null) => {
+      setForwardPayload({
+        message,
+        excludeConversationId: excludeConversationId ?? activeId,
+      });
+    },
+    [activeId],
+  );
+
+  const forwardMessageToChats = async (
+    messageId: number,
+    conversationIds: number[],
+    caption: string,
+  ) => {
+    const result = await api<{ messages: FormattedMessage[] }>(
+      `/api/chat/messages/${messageId}/forward`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ conversation_ids: conversationIds, caption }),
+      },
+    );
+
+    const forwarded = result.messages ?? [];
+    const convId = activeIdRef.current;
+
+    const lastByConv = new Map<number, FormattedMessage>();
+    for (const msg of forwarded) {
+      if (msg.conversation_id) lastByConv.set(msg.conversation_id, msg);
+    }
+
+    setConversations((prev) => {
+      let next = prev;
+      for (const [targetId, msg] of lastByConv) {
+        next = patchConversationFromMessage(next, targetId, msg, {
+          incrementUnread: false,
+          currentUserId: user.id,
+        });
+      }
+      return next;
+    });
+
+    if (convId) {
+      const forActive = forwarded.filter((m) => m.conversation_id === convId);
+      if (forActive.length) {
+        setMessages((prev) => {
+          let next = prev;
+          for (const msg of forActive) {
+            const enriched = enrichMessageReply(
+              enrichMessageSender(msg, groupMembersRef.current, user),
+              next,
+            );
+            if (next.some((m) => m.id === enriched.id)) continue;
+            next = applyGroupRead([...next, enriched], membersRead, convId);
+          }
+          return next;
+        });
+      }
+    }
+
+    const count = conversationIds.length;
+    const chatWord = count === 1 ? 'чат' : count < 5 ? 'чата' : 'чатов';
+    showToast(`Переслано в ${count} ${chatWord}`);
+  };
+
   const sendTyping = useCallback(() => {
     if (!activeId) return;
     const now = Date.now();
@@ -1001,6 +1071,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
                   onEditMessage={editMessage}
                   onDeleteMessage={deleteMessage}
                   onToggleSave={toggleSaveMessage}
+                  onForwardMessage={(msg) => requestForwardMessage(msg, activeId)}
                   onTyping={sendTyping}
                   onOpenGroupInfo={
                     activeConv?.type === 'group'
@@ -1051,7 +1122,9 @@ function MessengerAppInner({ user }: { user: Profile }) {
           ) : tab === 'calls' ? (
             <CallsPanel />
           ) : tab === 'favorites' ? (
-            <FavoritesPanel />
+            <FavoritesPanel
+              onForwardMessage={(msg) => requestForwardMessage(msg, null)}
+            />
           ) : tab === 'settings' ? (
             <SettingsPanel
               showMobileBack={isMobile}
@@ -1075,6 +1148,17 @@ function MessengerAppInner({ user }: { user: Profile }) {
               setTab('chats');
             }, 'replace');
           }}
+        />
+      )}
+      {forwardPayload && (
+        <ForwardDestinationModal
+          message={forwardPayload.message}
+          conversations={conversations}
+          excludeConversationId={forwardPayload.excludeConversationId}
+          onClose={() => setForwardPayload(null)}
+          onForward={(ids, caption) =>
+            forwardMessageToChats(forwardPayload.message.id, ids, caption)
+          }
         />
       )}
       {showGroupPanel && activeId && (

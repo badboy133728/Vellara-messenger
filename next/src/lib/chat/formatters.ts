@@ -3,6 +3,7 @@ import type {
   ConversationListItem,
   FormattedMessage,
   MemberRow,
+  MessageForwardPreview,
   MessageReplyPreview,
   MessageRow,
   Profile,
@@ -40,17 +41,47 @@ export function messagePreview(msg: MessageRow, viewerId: string, albumCount = 1
   return prefix + (text.length > 60 ? text.slice(0, 60) + '…' : text);
 }
 
+function buildForwardPreview(
+  row: MessageRow | undefined,
+  profileMap: Map<string, Profile>,
+  storedName?: string | null,
+): MessageForwardPreview | null {
+  if (!row && !storedName) return null;
+  if (row) {
+    const sender = profileMap.get(row.user_id) ?? null;
+    const name =
+      `${sender?.name ?? ''} ${sender?.last_name ?? ''}`.trim() ||
+      storedName ||
+      'Контакт';
+    return {
+      id: row.id,
+      conversation_id: row.conversation_id,
+      sender_name: name,
+    };
+  }
+  return {
+    id: 0,
+    conversation_id: 0,
+    sender_name: storedName || 'Контакт',
+  };
+}
+
 export function formatMessage(
   message: MessageRow,
   sender: Profile | null,
   isDeleted = false,
   replyRows?: Map<number, MessageRow>,
   replyProfiles?: Map<string, Profile>,
+  forwardRows?: Map<number, MessageRow>,
 ): FormattedMessage {
   const deleted = isDeleted || !!message.deleted_at;
   const replyRow =
     message.reply_to_id && replyRows ? replyRows.get(message.reply_to_id) : undefined;
   const replyProfileMap = replyProfiles ?? new Map(sender ? [[sender.id, sender]] : []);
+  const forwardRow =
+    message.forwarded_from_id && forwardRows
+      ? forwardRows.get(message.forwarded_from_id)
+      : undefined;
   return {
     id: message.id,
     message_type: message.message_type || 'user',
@@ -65,6 +96,10 @@ export function formatMessage(
     album_group_id: message.album_group_id,
     reply_to_id: message.reply_to_id ?? null,
     reply_to: replyRow ? buildReplyPreview(replyRow, replyProfileMap) : null,
+    forwarded_from_id: message.forwarded_from_id ?? null,
+    forwarded_from: message.forwarded_from_id || message.forwarded_from_sender_name
+      ? buildForwardPreview(forwardRow, replyProfileMap, message.forwarded_from_sender_name)
+      : null,
     is_edited: message.is_edited,
     edited_at: message.edited_at,
     is_deleted: deleted,

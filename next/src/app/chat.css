@@ -1028,6 +1028,25 @@
   color: rgba(26, 22, 18, 0.78);
 }
 
+.msg-forward-quote {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vellara-gold, #c9a885);
+}
+
+.msg-forward-quote__icon {
+  flex-shrink: 0;
+  opacity: 0.9;
+}
+
+.message-bubble.my .msg-forward-quote {
+  color: rgba(26, 22, 18, 0.72);
+}
+
 .composer--telegram {
   align-items: flex-end;
   gap: 8px;

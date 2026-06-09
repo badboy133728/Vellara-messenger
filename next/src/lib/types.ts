@@ -27,6 +27,9 @@ export type MessageRow = {
   voice_duration: number | null;
   album_group_id: string | null;
   reply_to_id: number | null;
+  forwarded_from_id: number | null;
+  forwarded_from_conversation_id: number | null;
+  forwarded_from_sender_name: string | null;
   is_edited: boolean;
   edited_at: string | null;
   deleted_at: string | null;
@@ -46,6 +49,12 @@ export type MessageReplyPreview = {
     last_name: string;
     avatar: string | null;
   } | null;
+};
+
+export type MessageForwardPreview = {
+  id: number;
+  conversation_id: number;
+  sender_name: string;
 };
 
 export type ConversationRow = {
@@ -94,6 +103,8 @@ export type FormattedMessage = {
   group_read_status?: 'sent' | 'partial' | 'all';
   reply_to_id?: number | null;
   reply_to?: MessageReplyPreview | null;
+  forwarded_from_id?: number | null;
+  forwarded_from?: MessageForwardPreview | null;
 };
 
 export type ConversationListItem = {

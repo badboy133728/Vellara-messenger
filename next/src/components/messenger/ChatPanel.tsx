@@ -70,6 +70,7 @@ export function ChatPanel({
   onEditMessage,
   onDeleteMessage,
   onToggleSave,
+  onForwardMessage,
   onTyping,
   onOpenGroupSettings,
   onOpenGroupInfo,
@@ -94,6 +95,7 @@ export function ChatPanel({
   onEditMessage?: (messageId: number, content: string) => Promise<void>;
   onDeleteMessage?: (messageId: number) => Promise<void>;
   onToggleSave?: (messageId: number) => Promise<void>;
+  onForwardMessage?: (message: FormattedMessage) => void;
   onTyping: () => void;
   onOpenGroupSettings?: () => void;
   onOpenGroupInfo?: () => void;
@@ -409,7 +411,8 @@ export function ChatPanel({
     const canEdit = canEditMsg(msg) && (!msg.file_path || !!msg.content);
     const canDelete = canDeleteMsg(msg);
     const canSave = msg.message_type === 'user' && !msg.is_deleted;
-    if (!canEdit && !canDelete && !canSave) return;
+    const canForward = msg.message_type === 'user' && !msg.is_deleted;
+    if (!canEdit && !canDelete && !canSave && !canForward) return;
 
     event.preventDefault?.();
 
@@ -449,6 +452,13 @@ export function ChatPanel({
     setText(msg.content || '');
     closeMessageMenu();
     window.setTimeout(() => textareaRef.current?.focus(), 0);
+  };
+
+  const startForwardMessage = () => {
+    const msg = msgMenu.message;
+    if (!msg || msg.is_deleted || !onForwardMessage) return;
+    closeMessageMenu();
+    onForwardMessage(msg);
   };
 
   const startReplyMessage = () => {
@@ -656,6 +666,12 @@ export function ChatPanel({
           <span className="msg-deleted">Сообщение удалено</span>
         ) : (
           <>
+            {m.forwarded_from && (
+              <div className="msg-forward-quote">
+                <VellaraIcon name="forward" size={12} className="msg-forward-quote__icon" />
+                <span>Переслано от {m.forwarded_from.sender_name}</span>
+              </div>
+            )}
             {m.reply_to && (
               <div className="msg-reply-quote">
                 <span className="msg-reply-quote__author">
@@ -1038,7 +1054,9 @@ export function ChatPanel({
         canDelete={msgMenu.canDelete}
         canSave={msgMenu.canSave}
         isSaved={msgMenu.isSaved}
+        canForward={!!msgMenu.message && !msgMenu.message.is_deleted && !!onForwardMessage}
         onReply={startReplyMessage}
+        onForward={startForwardMessage}
         onSave={() => void handleToggleSave()}
         onEdit={startEditMessage}
         onDelete={() => void handleDeleteMessage()}

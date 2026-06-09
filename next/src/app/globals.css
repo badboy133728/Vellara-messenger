@@ -556,6 +556,31 @@ a {
   flex-shrink: 0;
 }
 
+.forward-preview {
+  margin: 12px 18px 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--vellara-border-subtle, #2e2e2e);
+  background: var(--vellara-panel-2, #222);
+}
+
+.forward-preview__label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vellara-text-muted, #94a3b8);
+}
+
+.forward-preview__text {
+  margin: 0;
+  font-size: 14px;
+  color: var(--vellara-text, #f1f5f9);
+  line-height: 1.4;
+}
+
 .modal-card__foot {
   display: flex;
   justify-content: flex-end;

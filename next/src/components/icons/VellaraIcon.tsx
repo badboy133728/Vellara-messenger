@@ -30,6 +30,7 @@ export type VellaraIconName =
   | 'mic-off'
   | 'video-off'
   | 'reply'
+  | 'forward'
   | 'checks';
 
 type Props = {
@@ -232,6 +233,13 @@ function IconPaths({ name }: { name: VellaraIconName }) {
         <>
           <polyline points="9 14 4 9 9 4" />
           <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
+        </>
+      );
+    case 'forward':
+      return (
+        <>
+          <polyline points="15 14 20 9 15 4" />
+          <path d="M4 20v-7a4 4 0 0 1 4-4h12" />
         </>
       );
     case 'checks':

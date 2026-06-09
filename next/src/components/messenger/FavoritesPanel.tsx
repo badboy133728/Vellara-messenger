@@ -17,10 +17,14 @@ type SavedItem = {
   };
 };
 
-export function FavoritesPanel() {
+export function FavoritesPanel({
+  onForwardMessage,
+}: {
+  onForwardMessage?: (message: FormattedMessage) => void;
+}) {
   const [items, setItems] = useState<SavedItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [menu, setMenu] = useState<{ x: number; y: number; messageId: number } | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; item: SavedItem } | null>(null);
   const [lightbox, setLightbox] = useState<{ urls: string[]; index: number } | null>(null);
 
   const load = useCallback(async () => {
@@ -77,7 +81,7 @@ export function FavoritesPanel() {
               className="fav-row"
               onContextMenu={(e) => {
                 e.preventDefault();
-                setMenu({ x: e.clientX, y: e.clientY, messageId: item.message.id });
+                setMenu({ x: e.clientX, y: e.clientY, item });
               }}
             >
               <p className="fav-source">{sourceLabel(item)}</p>
@@ -132,7 +136,20 @@ export function FavoritesPanel() {
           style={{ top: menu.y, left: menu.x }}
           onClick={() => setMenu(null)}
         >
-          <button type="button" onClick={() => unsave(menu.messageId)}>
+          {onForwardMessage && !menu.item.message.is_deleted && (
+            <button
+              type="button"
+              className="msg-context-menu__item--with-icon"
+              onClick={() => {
+                onForwardMessage(menu.item.message);
+                setMenu(null);
+              }}
+            >
+              <VellaraIcon name="forward" size={16} />
+              Переслать
+            </button>
+          )}
+          <button type="button" onClick={() => unsave(menu.item.message.id)}>
             Убрать из избранного
           </button>
         </div>

@@ -100,3 +100,45 @@ export async function uploadMessageFile(
     originalName: file.name,
   };
 }
+
+export async function copyMessageFile(
+  sourcePath: string,
+  userId: string,
+  originalName: string,
+  _fileType: string,
+): Promise<string> {
+  const slash = sourcePath.indexOf('/');
+  if (slash === -1) {
+    throw new Error('Некорректный путь к файлу');
+  }
+
+  const bucket = sourcePath.slice(0, slash);
+  const key = sourcePath.slice(slash + 1);
+  const admin = createAdminClient();
+  const { data, error } = await admin.storage.from(bucket).download(key);
+
+  if (error || !data) {
+    throw new Error('Не удалось скопировать файл');
+  }
+
+  const body = Buffer.from(await data.arrayBuffer());
+  if (!body.byteLength) {
+    throw new Error('Пустой файл');
+  }
+
+  const ext =
+    originalName.split('.').pop()?.toLowerCase() ??
+    key.split('.').pop()?.toLowerCase() ??
+    'bin';
+  const contentType = contentTypeForExtension(ext);
+  const newKey = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+
+  const { error: uploadError } = await admin.storage.from(BUCKET_MESSAGES).upload(newKey, body, {
+    contentType,
+    upsert: false,
+  });
+
+  if (uploadError) throw uploadError;
+
+  return `${BUCKET_MESSAGES}/${newKey}`;
+}

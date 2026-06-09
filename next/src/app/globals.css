@@ -544,6 +544,18 @@ a {
   width: calc(100% - 16px);
 }
 
+.modal-member-list .avatar-small--modal {
+  width: 40px;
+  height: 40px;
+  font-size: 14px;
+}
+
+.modal-member-list .avatar-small--modal .avatar-letter {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .conv-pick-check {
   display: inline-flex;
   align-items: center;

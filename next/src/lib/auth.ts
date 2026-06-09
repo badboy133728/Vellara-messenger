@@ -4,6 +4,7 @@ import type { SupabaseClient, User } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { Profile } from '@/lib/types';
+import { formatPersonName } from '@/utils/formatName';
 
 export { isOnline } from '@/lib/presence';
 
@@ -42,11 +43,12 @@ export async function ensureProfile(
   if (existing) return existing;
 
   const meta = user.user_metadata ?? {};
-  const name =
+  const rawName =
     (typeof meta.name === 'string' && meta.name) ||
     user.email?.split('@')[0] ||
     'User';
-  const last_name = typeof meta.last_name === 'string' ? meta.last_name : '';
+  const rawLastName = typeof meta.last_name === 'string' ? meta.last_name : '';
+  const { name, last_name } = formatPersonName(rawName, rawLastName);
 
   const admin = createAdminClient();
   const { data, error } = await admin

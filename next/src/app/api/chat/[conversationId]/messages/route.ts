@@ -7,6 +7,7 @@ import { notifyConversationPush } from '@/lib/push/notify';
 import { uploadMessageFile } from '@/lib/storage-server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { MessageRow, Profile } from '@/lib/types';
+import { unhideConversationForRecipients } from '@/lib/chat/unhideMembers';
 import { applyGroupReadStatuses, type MemberRead } from '@/utils/groupReadStatus';
 
 export const maxDuration = 60;
@@ -195,6 +196,8 @@ export async function POST(
     .from('conversations')
     .update({ updated_at: new Date().toISOString() })
     .eq('id', convId);
+
+  await unhideConversationForRecipients(supabase, convId, user.id);
 
   const admin = createAdminClient();
   const profileMap = new Map([[profile.id, profile]]);

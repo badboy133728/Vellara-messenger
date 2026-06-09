@@ -26,7 +26,10 @@ export async function POST(
 
   await supabase
     .from('conversation_members')
-    .update({ is_archived: next })
+    .update({
+      is_archived: next,
+      ...(next ? { is_pinned: false, pinned_at: null } : {}),
+    })
     .eq('conversation_id', convId)
     .eq('user_id', user.id);
 

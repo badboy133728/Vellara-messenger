@@ -1,3 +1,5 @@
+import { displayFullName } from '@/utils/formatName';
+
 const PALETTE = [
   '#e879f9',
   '#38bdf8',
@@ -23,6 +25,5 @@ export function senderColorForUserId(userId: string) {
 
 export function senderDisplayName(sender: { name?: string; last_name?: string } | null | undefined) {
   if (!sender) return 'Участник';
-  const name = `${sender.name || ''} ${sender.last_name || ''}`.trim();
-  return name || 'Участник';
+  return displayFullName(sender.name, sender.last_name, 'Участник');
 }

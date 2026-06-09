@@ -1,6 +1,7 @@
 import { requireAuth } from '@/lib/auth';
 import { formatConversationForList } from '@/lib/chat/formatters';
 import type { MemberRow, MessageRow, Profile } from '@/lib/types';
+import { sortConversations } from '@/utils/conversationList';
 
 export async function GET() {
   const auth = await requireAuth();
@@ -9,11 +10,15 @@ export async function GET() {
 
   const { data: memberships } = await supabase
     .from('conversation_members')
-    .select('conversation_id, role, last_read_at, is_archived')
-    .eq('user_id', user.id);
+    .select('conversation_id, role, last_read_at, is_archived, is_pinned, pinned_at, hidden_at')
+    .eq('user_id', user.id)
+    .is('hidden_at', null);
 
   if (!memberships?.length) return Response.json([]);
 
+  const membershipByConv = new Map(
+    (memberships ?? []).map((m) => [m.conversation_id as number, m]),
+  );
   const convIds = memberships.map((m) => m.conversation_id);
   const messagesLimit = Math.min(convIds.length * 50, 800);
 
@@ -56,13 +61,27 @@ export async function GET() {
     }
   }
 
-  const result = (conversations ?? []).map((conv) =>
-    formatConversationForList(
-      conv,
-      membersByConv.get(conv.id) ?? [],
-      messagesByConv.get(conv.id) ?? [],
-      user.id,
-    ),
+  const result = sortConversations(
+    (conversations ?? []).map((conv) => {
+      const members = membersByConv.get(conv.id) ?? [];
+      const selfMembership = membershipByConv.get(conv.id);
+      const membersWithSelfFlags = members.map((m) =>
+        m.user_id === user.id && selfMembership
+          ? {
+              ...m,
+              is_archived: selfMembership.is_archived as boolean,
+              is_pinned: selfMembership.is_pinned as boolean,
+              pinned_at: (selfMembership.pinned_at as string | null) ?? null,
+            }
+          : m,
+      );
+      return formatConversationForList(
+        conv,
+        membersWithSelfFlags,
+        messagesByConv.get(conv.id) ?? [],
+        user.id,
+      );
+    }),
   );
 
   return Response.json(result);

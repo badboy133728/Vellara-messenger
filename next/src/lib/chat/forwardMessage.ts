@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import { ensureMember } from '@/lib/chat/conversations';
+import { unhideConversationForRecipients } from '@/lib/chat/unhideMembers';
 import { formatMessagesWithReplies } from '@/lib/chat/messageList';
 import { canManageGroup } from '@/lib/chat/permissions';
 import { broadcastToConversation } from '@/lib/realtime/broadcast';
@@ -176,6 +177,8 @@ export async function forwardMessageToConversations(
       .from('conversations')
       .update({ updated_at: new Date().toISOString() })
       .eq('id', targetConvId);
+
+    await unhideConversationForRecipients(supabase, targetConvId, user.id);
   }
 
   const profileMap = new Map<string, Profile>([[profile.id, profile]]);

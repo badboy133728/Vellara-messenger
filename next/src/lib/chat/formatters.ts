@@ -1,4 +1,5 @@
 import { isOnline } from '@/lib/presence';
+import { capitalizeNamePart } from '@/utils/formatName';
 import type {
   ConversationListItem,
   FormattedMessage,
@@ -23,7 +24,12 @@ function buildReplyPreview(
     file_type: deleted ? null : row.file_type,
     is_deleted: deleted,
     sender: sender
-      ? { id: sender.id, name: sender.name, last_name: sender.last_name, avatar: sender.avatar }
+      ? {
+          id: sender.id,
+          name: sender.name,
+          last_name: sender.last_name,
+          avatar: sender.avatar,
+        }
       : null,
   };
 }
@@ -107,8 +113,8 @@ export function formatMessage(
     sender: sender
       ? {
           id: sender.id,
-          name: sender.name,
-          last_name: sender.last_name,
+          name: capitalizeNamePart(sender.name),
+          last_name: capitalizeNamePart(sender.last_name),
           avatar: sender.avatar,
         }
       : null,
@@ -158,8 +164,8 @@ export function formatConversationForList(
     other_user: other
       ? {
           id: other.id,
-          name: other.name,
-          last_name: other.last_name,
+          name: capitalizeNamePart(other.name),
+          last_name: capitalizeNamePart(other.last_name),
           avatar: other.avatar,
           is_online: isOnline(other.last_seen_at),
           last_seen_at: other.last_seen_at,
@@ -186,6 +192,8 @@ export function formatConversationForList(
     unread_count: count,
     has_unread: count > 0,
     is_archived: selfMember?.is_archived ?? false,
+    is_pinned: selfMember?.is_pinned ?? false,
+    pinned_at: selfMember?.pinned_at ?? null,
     updated_at: conv.updated_at,
   };
 }

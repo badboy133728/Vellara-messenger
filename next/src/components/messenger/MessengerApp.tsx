@@ -7,6 +7,7 @@ import { useChatRealtime, useActiveConversationRealtime, useUserRealtime } from 
 import { CallProvider, useCall } from '@/hooks/useCallManager';
 import { ContactAvatar } from '@/components/ContactAvatar';
 import { prepareChatImageForUpload } from '@/lib/chatImageUpload';
+import type { SendMessageOptions } from '@/lib/chat/sendMessage';
 import type { ConversationListItem, FormattedMessage, Profile } from '@/lib/types';
 import { applyGroupReadStatuses, type MemberRead } from '@/utils/groupReadStatus';
 import {
@@ -19,7 +20,9 @@ import {
 import {
   clearConversationUnread,
   patchConversationFromMessage,
+  sortConversations,
 } from '@/utils/conversationList';
+import { ConversationActionsMenu } from './ConversationActionsMenu';
 import { useMessageNotifications } from '@/hooks/useMessageNotifications';
 import { useLastSeenHeartbeat } from '@/hooks/useLastSeenHeartbeat';
 import { usePushActivePing } from '@/hooks/usePushActivePing';
@@ -129,6 +132,11 @@ function MessengerAppInner({ user }: { user: Profile }) {
   const [forwardPayload, setForwardPayload] = useState<{
     message: FormattedMessage;
     excludeConversationId: number | null;
+  } | null>(null);
+  const [convActionsMenu, setConvActionsMenu] = useState<{
+    conv: ConversationListItem;
+    x: number;
+    y: number;
   } | null>(null);
   const [showGroupSettings, setShowGroupSettings] = useState(false);
   const [showGroupPanel, setShowGroupPanel] = useState(false);
@@ -768,27 +776,62 @@ function MessengerAppInner({ user }: { user: Profile }) {
 
   const activeConv = conversations.find((c) => c.id === activeId) ?? null;
 
-  const sendMessage = async (text: string, file?: File, replyToId?: number) => {
-    if (!activeId) return;
-    const uploadFile = file ? await prepareChatImageForUpload(file) : file;
-    const form = new FormData();
-    if (text) form.append('content', text);
-    if (uploadFile) form.append('file', uploadFile);
-    if (replyToId) form.append('reply_to_id', String(replyToId));
-    const msg = await api<FormattedMessage>(`/api/chat/${activeId}/messages`, {
-      method: 'POST',
-      body: form,
-      headers: {},
-    });
+  const sendMessage = async (text: string, options?: SendMessageOptions): Promise<number[]> => {
+    if (!activeId) return [];
+    const files = options?.files ?? [];
+    const replyToId = options?.replyToId;
+    const convId = activeId;
+
+    const postOne = async (form: FormData) => {
+      const msg = await api<FormattedMessage>(`/api/chat/${convId}/messages`, {
+        method: 'POST',
+        body: form,
+        headers: {},
+      });
+      return enrichMessageSender(msg, groupMembersRef.current, user);
+    };
+
+    if (!files.length) {
+      const form = new FormData();
+      if (text) form.append('content', text);
+      if (replyToId) form.append('reply_to_id', String(replyToId));
+      const enriched = await postOne(form);
+      setMessages((prev) => {
+        const withReply = enrichMessageReply(enriched, prev);
+        if (prev.some((m) => m.id === withReply.id)) return prev;
+        return applyGroupRead([...prev, withReply], membersRead, convId);
+      });
+      await loadConversations();
+      return [enriched.id];
+    }
+
+    const albumGroupId = files.length > 1 && files.every((f) => f.type.startsWith('image/') || /\.(jpe?g|png|gif|webp|heic|heif)$/i.test(f.name))
+      ? crypto.randomUUID()
+      : null;
+
+    const created: FormattedMessage[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const uploadFile = await prepareChatImageForUpload(files[i]!);
+      const form = new FormData();
+      if (i === 0 && text) form.append('content', text);
+      form.append('file', uploadFile);
+      if (albumGroupId) form.append('album_group_id', albumGroupId);
+      if (replyToId && i === 0) form.append('reply_to_id', String(replyToId));
+      const enriched = await postOne(form);
+      created.push(enriched);
+    }
+
     setMessages((prev) => {
-      const enriched = enrichMessageReply(
-        enrichMessageSender(msg, groupMembersRef.current, user),
-        prev,
-      );
-      if (prev.some((m) => m.id === enriched.id)) return prev;
-      return applyGroupRead([...prev, enriched], membersRead, activeId);
+      let next = prev;
+      for (const raw of created) {
+        const enriched = enrichMessageReply(raw, next);
+        if (next.some((m) => m.id === enriched.id)) continue;
+        next = applyGroupRead([...next, enriched], membersRead, convId);
+      }
+      return next;
     });
     await loadConversations();
+    return created.map((m) => m.id);
   };
 
   const sendVoiceMessage = async (blob: Blob, duration: number, mimeType: string) => {
@@ -914,6 +957,72 @@ function MessengerAppInner({ user }: { user: Profile }) {
     const count = conversationIds.length;
     const chatWord = count === 1 ? 'чат' : count < 5 ? 'чата' : 'чатов';
     showToast(`Переслано в ${count} ${chatWord}`);
+  };
+
+  const pinnedCount = useMemo(
+    () => conversations.filter((c) => c.is_pinned && !c.is_archived).length,
+    [conversations],
+  );
+
+  const pinConversation = async (conv: ConversationListItem) => {
+    try {
+      const wantPinned = !conv.is_pinned;
+      const data = await api<{ is_pinned: boolean; pinned_at: string | null }>(
+        `/api/chat/${conv.id}/pin`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ pinned: wantPinned }),
+        },
+      );
+      setConversations((prev) =>
+        sortConversations(
+          prev.map((c) =>
+            c.id === conv.id
+              ? { ...c, is_pinned: data.is_pinned, pinned_at: data.pinned_at }
+              : c,
+          ),
+        ),
+      );
+      showToast(data.is_pinned ? 'Чат закреплён' : 'Чат откреплён');
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'Не удалось изменить закрепление');
+    }
+  };
+
+  const archiveConversation = async (conv: ConversationListItem) => {
+    try {
+      const data = await api<{ is_archived: boolean }>(`/api/chat/${conv.id}/archive`, {
+        method: 'POST',
+      });
+      await loadConversations();
+      if (data.is_archived && activeId === conv.id) closeChat();
+      showToast(data.is_archived ? 'Чат в архиве' : 'Чат возвращён из архива');
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'Не удалось изменить архив');
+    }
+  };
+
+  const deleteConversation = async (conv: ConversationListItem) => {
+    if (!window.confirm('Удалить чат из списка? История сохранится и чат появится снова при новом сообщении.')) {
+      return;
+    }
+    try {
+      await api(`/api/chat/${conv.id}`, { method: 'DELETE' });
+      setConversations((prev) => prev.filter((c) => c.id !== conv.id));
+      if (activeId === conv.id) closeChat();
+      showToast('Чат удалён');
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'Не удалось удалить чат');
+    }
+  };
+
+  const openChatActionsMenu = () => {
+    if (!activeConv) return;
+    setConvActionsMenu({
+      conv: activeConv,
+      x: Math.max(12, window.innerWidth - 240),
+      y: 72,
+    });
   };
 
   const sendTyping = useCallback(() => {
@@ -1043,8 +1152,12 @@ function MessengerAppInner({ user }: { user: Profile }) {
                 conversations={conversations}
                 activeId={activeId}
                 loading={loading}
+                isMobile={isMobile}
                 onSelect={(id) => navigate(() => setActiveId(id), 'push')}
                 onRefresh={loadConversations}
+                onPinConversation={pinConversation}
+                onArchiveConversation={archiveConversation}
+                onDeleteConversation={deleteConversation}
                 onCreateGroup={async () => {
                   const list = await api<
                     { id: string; name: string; last_name: string; email?: string; avatar?: string | null }[]
@@ -1089,6 +1202,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
                       ? () => navigate(() => setShowGroupSettings(true), 'push')
                       : undefined
                   }
+                  onOpenChatActions={openChatActionsMenu}
                   onBack={isMobile ? closeChat : undefined}
                   onFilePickerOpen={() => {
                     filePickerGraceUntilRef.current = Date.now() + 120_000;
@@ -1148,6 +1262,23 @@ function MessengerAppInner({ user }: { user: Profile }) {
               setTab('chats');
             }, 'replace');
           }}
+        />
+      )}
+      {convActionsMenu && (
+        <ConversationActionsMenu
+          conversation={convActionsMenu.conv}
+          x={convActionsMenu.x}
+          y={convActionsMenu.y}
+          isMobile={isMobile}
+          pinnedCount={pinnedCount}
+          onPin={() => void pinConversation(convActionsMenu.conv).then(() => setConvActionsMenu(null))}
+          onArchive={() =>
+            void archiveConversation(convActionsMenu.conv).then(() => setConvActionsMenu(null))
+          }
+          onDelete={() =>
+            void deleteConversation(convActionsMenu.conv).then(() => setConvActionsMenu(null))
+          }
+          onClose={() => setConvActionsMenu(null)}
         />
       )}
       {forwardPayload && (

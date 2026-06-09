@@ -12,9 +12,16 @@ import { useSwipeBack } from '@/hooks/useSwipeGesture';
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
 import { storageDisplayUrl } from '@/lib/storage';
 import type { ConversationListItem, FormattedMessage, MessageReplyPreview } from '@/lib/types';
-import { buildMessageFeed, formatMessageTime, type ChatFeedItem } from '@/utils/chatDates';
+import type { SendMessageOptions } from '@/lib/chat/sendMessage';
+import {
+  buildMessageFeed,
+  formatMessageTime,
+  type ChatFeedItem,
+  type PendingFeedItem,
+} from '@/utils/chatDates';
 import { formatVoiceDuration } from '@/utils/messagePreview';
 import { VellaraIcon } from '@/components/icons/VellaraIcon';
+import { conversationTitle } from '@/utils/conversationList';
 import { senderColorForUserId, senderDisplayName } from '@/utils/senderColor';
 
 type MsgMenuState = {
@@ -43,9 +50,19 @@ const MAX_FILE_BYTES = 15 * 1024 * 1024;
 const CHAT_FILE_INPUT_ID = 'chat-attach-input';
 
 type PendingAttachment = {
+  id: string;
   file: File;
   previewUrl: string | null;
   isImage: boolean;
+  previewLoading: boolean;
+};
+
+type PendingSend = {
+  clientId: string;
+  content: string;
+  previewUrls: string[];
+  created_at: string;
+  expectedIds: number[];
 };
 
 function isImageAttachment(file: File) {
@@ -75,6 +92,7 @@ export function ChatPanel({
   onOpenGroupSettings,
   onOpenGroupInfo,
   onOpenPartnerProfile,
+  onOpenChatActions,
   onBack,
   onFilePickerOpen,
   onFilePickerDone,
@@ -90,7 +108,7 @@ export function ChatPanel({
   savedMessageIds: Set<number>;
   isMobile?: boolean;
   enterAnim?: boolean;
-  onSend: (text: string, file?: File, replyToId?: number) => Promise<void>;
+  onSend: (text: string, options?: SendMessageOptions) => Promise<number[]>;
   onSendVoice?: (blob: Blob, duration: number, mimeType: string) => Promise<void>;
   onEditMessage?: (messageId: number, content: string) => Promise<void>;
   onDeleteMessage?: (messageId: number) => Promise<void>;
@@ -100,6 +118,7 @@ export function ChatPanel({
   onOpenGroupSettings?: () => void;
   onOpenGroupInfo?: () => void;
   onOpenPartnerProfile?: () => void;
+  onOpenChatActions?: () => void;
   onBack?: () => void;
   onFilePickerOpen?: () => void;
   onFilePickerDone?: () => void;
@@ -111,9 +130,11 @@ export function ChatPanel({
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [editingMessage, setEditingMessage] = useState<FormattedMessage | null>(null);
   const [msgMenu, setMsgMenu] = useState<MsgMenuState>(emptyMenu);
-  const [pendingAttachment, setPendingAttachment] = useState<PendingAttachment | null>(null);
+  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
+  const [pendingSends, setPendingSends] = useState<PendingSend[]>([]);
   const [replyTo, setReplyTo] = useState<FormattedMessage | null>(null);
   const menuCloseLockRef = useRef(0);
+  const attachmentUrlsRef = useRef<Set<string>>(new Set());
 
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -140,7 +161,20 @@ export function ChatPanel({
     cancelRecording,
   } = useVoiceRecorder();
 
-  const feed = useMemo(() => buildMessageFeed(messages), [messages]);
+  const feed = useMemo(
+    () =>
+      buildMessageFeed(
+        messages,
+        pendingSends.map((p) => ({
+          key: `pending-${p.clientId}`,
+          clientId: p.clientId,
+          created_at: p.created_at,
+          content: p.content,
+          previewUrls: p.previewUrls,
+        })),
+      ),
+    [messages, pendingSends],
+  );
   const isOtherTyping = typingUserId && typingUserId !== currentUserId;
 
   const scrollToBottom = (mode: 'instant' | 'smooth' = 'instant') => {
@@ -302,43 +336,96 @@ export function ChatPanel({
     if (voiceError) window.alert(voiceError);
   }, [voiceError]);
 
-  useEffect(() => {
-    return () => {
-      if (pendingAttachment?.previewUrl) URL.revokeObjectURL(pendingAttachment.previewUrl);
-    };
-  }, [pendingAttachment?.previewUrl]);
+  const revokeAttachmentUrl = (url: string | null) => {
+    if (!url || !attachmentUrlsRef.current.has(url)) return;
+    URL.revokeObjectURL(url);
+    attachmentUrlsRef.current.delete(url);
+  };
+
+  const revokeAllAttachmentUrls = () => {
+    for (const url of attachmentUrlsRef.current) URL.revokeObjectURL(url);
+    attachmentUrlsRef.current.clear();
+  };
 
   useEffect(() => {
-    if (pendingAttachment?.previewUrl) URL.revokeObjectURL(pendingAttachment.previewUrl);
-    setPendingAttachment(null);
+    return () => revokeAllAttachmentUrls();
+  }, []);
+
+  useEffect(() => {
+    revokeAllAttachmentUrls();
+    setPendingAttachments([]);
     if (fileRef.current) fileRef.current.value = '';
   }, [conversation?.id]);
 
-  const clearAttachment = () => {
-    if (pendingAttachment?.previewUrl) URL.revokeObjectURL(pendingAttachment.previewUrl);
-    setPendingAttachment(null);
+  useEffect(() => {
+    const messageIds = new Set(messages.map((m) => m.id));
+    setPendingSends((prev) => {
+      if (!prev.length) return prev;
+      const next = prev.filter((p) => {
+        if (!p.expectedIds.length) return true;
+        return !p.expectedIds.every((id) => messageIds.has(id));
+      });
+      if (next.length === prev.length) return prev;
+      for (const removed of prev) {
+        if (next.some((p) => p.clientId === removed.clientId)) continue;
+        for (const url of removed.previewUrls) URL.revokeObjectURL(url);
+      }
+      return next;
+    });
+  }, [messages]);
+
+  useEffect(() => {
+    if (!pendingSends.length) return;
+    stickToBottomRef.current = true;
+    requestAnimationFrame(() => scrollToBottom('instant'));
+  }, [pendingSends.length]);
+
+  const clearAttachments = () => {
+    for (const a of pendingAttachments) revokeAttachmentUrl(a.previewUrl);
+    setPendingAttachments([]);
     if (fileRef.current) fileRef.current.value = '';
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (fileRef.current) fileRef.current.value = '';
-    onFilePickerDone?.();
-    if (!file) return;
+  const removeAttachment = (id: string) => {
+    setPendingAttachments((prev) => {
+      const item = prev.find((a) => a.id === id);
+      revokeAttachmentUrl(item?.previewUrl ?? null);
+      return prev.filter((a) => a.id !== id);
+    });
+  };
 
+  const loadAttachmentPreview = (id: string, file: File) => {
+    window.setTimeout(() => {
+      const url = URL.createObjectURL(file);
+      attachmentUrlsRef.current.add(url);
+      setPendingAttachments((prev) =>
+        prev.map((a) =>
+          a.id === id ? { ...a, previewUrl: url, previewLoading: false } : a,
+        ),
+      );
+    }, 0);
+  };
+
+  const addAttachmentFile = (file: File) => {
     if (file.size > MAX_FILE_BYTES) {
-      window.alert('Файл больше 15 МБ');
+      window.alert(`«${file.name}» больше 15 МБ`);
       return;
     }
-
-    if (pendingAttachment?.previewUrl) URL.revokeObjectURL(pendingAttachment.previewUrl);
     const isImage = isImageAttachment(file);
-    setPendingAttachment({
-      file,
-      isImage,
-      // На мобильных не грузим multi-MB blob в <img> — иначе WebView может перезагрузить вкладку.
-      previewUrl: isImage && !isMobile ? URL.createObjectURL(file) : null,
-    });
+    const id = crypto.randomUUID();
+    setPendingAttachments((prev) => [
+      ...prev,
+      { id, file, isImage, previewUrl: null, previewLoading: isImage },
+    ]);
+    if (isImage) loadAttachmentPreview(id, file);
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (fileRef.current) fileRef.current.value = '';
+    onFilePickerDone?.();
+    if (!files.length) return;
+    for (const file of files) addAttachmentFile(file);
   };
 
   const showMessages = !messagesLoading;
@@ -372,7 +459,7 @@ export function ChatPanel({
     ro.observe(header);
     ro.observe(dock);
     return () => ro.disconnect();
-  }, [isMobile, conversation?.id, showMessages, isRecording, pendingAttachment, isOtherTyping]);
+  }, [isMobile, conversation?.id, showMessages, isRecording, pendingAttachments.length, isOtherTyping]);
 
   useLayoutEffect(() => {
     if (!isMobile || messagesLoading) return;
@@ -572,11 +659,7 @@ export function ChatPanel({
   }
 
   const partner = conversation.other_user;
-  const title = isGroup
-    ? conversation.title ?? 'Группа'
-    : partner
-      ? `${partner.name} ${partner.last_name}`.trim()
-      : 'Чат';
+  const title = conversationTitle(conversation);
 
   const headerLetter = isGroup
     ? (conversation.title?.[0] || 'G').toUpperCase()
@@ -605,15 +688,48 @@ export function ChatPanel({
       return;
     }
 
-    if (!content && !pendingAttachment) return;
+    if (!content && !pendingAttachments.length) return;
+
+    const files = pendingAttachments.map((a) => a.file);
+    const previewUrls = pendingAttachments
+      .filter((a) => a.isImage && a.previewUrl)
+      .map((a) => a.previewUrl!);
+    const replyToId = replyTo?.id;
+    const clientId = crypto.randomUUID();
+    const created_at = new Date().toISOString();
+
+    for (const url of previewUrls) attachmentUrlsRef.current.delete(url);
+
+    setText('');
+    setReplyTo(null);
+    setPendingAttachments([]);
+    if (fileRef.current) fileRef.current.value = '';
+
+    const pendingItem: PendingSend = {
+      clientId,
+      content,
+      previewUrls,
+      created_at,
+      expectedIds: [],
+    };
+    setPendingSends((prev) => [...prev, pendingItem]);
+    stickToBottomRef.current = true;
     setSending(true);
+
     try {
-      await onSend(content, pendingAttachment?.file, replyTo?.id);
-      setText('');
-      clearAttachment();
-      setReplyTo(null);
-      stickToBottomRef.current = true;
+      const ids = await onSend(content, {
+        files: files.length ? files : undefined,
+        replyToId,
+      });
+      setPendingSends((prev) =>
+        prev.map((p) => (p.clientId === clientId ? { ...p, expectedIds: ids } : p)),
+      );
     } catch (err) {
+      setPendingSends((prev) => {
+        const item = prev.find((p) => p.clientId === clientId);
+        item?.previewUrls.forEach((url) => URL.revokeObjectURL(url));
+        return prev.filter((p) => p.clientId !== clientId);
+      });
       window.alert(err instanceof Error ? err.message : 'Не удалось отправить сообщение');
     } finally {
       setSending(false);
@@ -645,7 +761,83 @@ export function ChatPanel({
     );
   };
 
-  const renderBubble = (m: FormattedMessage, mine: boolean) => {
+  const renderAlbumGrid = (images: FormattedMessage[], anchor: FormattedMessage) => {
+    const count = images.length;
+    const gridClass =
+      count <= 1
+        ? 'msg-album-grid--1'
+        : count === 2
+          ? 'msg-album-grid--2'
+          : count === 3
+            ? 'msg-album-grid--3'
+            : 'msg-album-grid--4plus';
+
+    return (
+      <div className={`msg-album-grid ${gridClass}`}>
+        {images.slice(0, 4).map((img, idx) => {
+          const url = storageDisplayUrl(img.file_path);
+          if (!url) return null;
+          return (
+            <button
+              key={img.id}
+              type="button"
+              className="msg-album-cell"
+              onClick={() => openImageLightbox(anchor)}
+            >
+              <img
+                src={url}
+                alt="Фото"
+                decoding="async"
+                onLoad={handleMessageMediaLoad}
+              />
+              {count > 4 && idx === 3 && (
+                <span className="msg-album-more">+{count - 4}</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderPendingBubble = (item: PendingFeedItem) => {
+    const count = item.previewUrls.length;
+    const gridClass =
+      count <= 1
+        ? 'msg-album-grid--1'
+        : count === 2
+          ? 'msg-album-grid--2'
+          : count === 3
+            ? 'msg-album-grid--3'
+            : 'msg-album-grid--4plus';
+
+    return (
+      <div className="message-bubble my message-bubble--pending">
+        {count > 0 && (
+          <div className={`msg-album-grid ${gridClass}`}>
+            {item.previewUrls.map((url, idx) => (
+              <div key={`${item.clientId}-${idx}`} className="msg-album-cell msg-album-cell--pending">
+                <img src={url} alt="" decoding="async" />
+                <div className="attachment-preview-shimmer" aria-hidden="true" />
+              </div>
+            ))}
+          </div>
+        )}
+        {item.content && <div className="msg-content">{item.content}</div>}
+        <div className="msg-meta">
+          <span className="msg-pending-status" aria-label="Отправка">
+            <span className="msg-pending-spinner" />
+          </span>
+        </div>
+      </div>
+    );
+  };
+
+  const renderBubble = (
+    m: FormattedMessage,
+    mine: boolean,
+    albumMessages?: FormattedMessage[],
+  ) => {
     const isSystem = m.message_type === 'system';
     const voiceOnly = m.file_type === 'voice' && !m.content;
 
@@ -680,20 +872,22 @@ export function ChatPanel({
                 <span className="msg-reply-quote__text">{replyPreviewText(m.reply_to)}</span>
               </div>
             )}
-            {m.file_path && m.file_type === 'image' && storageDisplayUrl(m.file_path) && (
-              <button
-                type="button"
-                className="msg-image-btn"
-                onClick={() => openImageLightbox(m)}
-              >
-                <img
-                  src={storageDisplayUrl(m.file_path) ?? ''}
-                  alt="Фото"
-                  decoding="async"
-                  onLoad={handleMessageMediaLoad}
-                />
-              </button>
-            )}
+            {albumMessages && albumMessages.length > 1
+              ? renderAlbumGrid(albumMessages, m)
+              : m.file_path && m.file_type === 'image' && storageDisplayUrl(m.file_path) && (
+                  <button
+                    type="button"
+                    className="msg-image-btn"
+                    onClick={() => openImageLightbox(m)}
+                  >
+                    <img
+                      src={storageDisplayUrl(m.file_path) ?? ''}
+                      alt="Фото"
+                      decoding="async"
+                      onLoad={handleMessageMediaLoad}
+                    />
+                  </button>
+                )}
             {m.file_path && m.file_type === 'voice' && (
               <VoiceMessagePlayer
                 src={storageDisplayUrl(m.file_path) ?? ''}
@@ -733,7 +927,18 @@ export function ChatPanel({
       );
     }
 
+    if (item.kind === 'pending') {
+      return (
+        <div key={item.key} className="message-row message-row--mine message-row--pending">
+          <div className="message-row-body message-row-body--mine">
+            <div className="message-row-content">{renderPendingBubble(item)}</div>
+          </div>
+        </div>
+      );
+    }
+
     const m = item.message;
+    const albumMessages = item.albumMessages;
     const mine = m.user_id === currentUserId;
     const isSystem = m.message_type === 'system';
 
@@ -774,12 +979,14 @@ export function ChatPanel({
                 {senderDisplayName(m.sender)}
               </p>
             )}
-            {renderBubble(m, mine)}
+            {renderBubble(m, mine, albumMessages)}
           </div>
         </div>
       </div>
     );
   };
+
+  const hasAttachments = pendingAttachments.length > 0;
 
   return (
     <section
@@ -822,16 +1029,28 @@ export function ChatPanel({
           </div>
         </button>
 
-        {isGroup && isGroupAdmin && onOpenGroupSettings && (
-          <button
-            type="button"
-            className="btn-group-settings"
-            title="Настройки группы"
-            onClick={onOpenGroupSettings}
-          >
-            <VellaraIcon name="settings" size={18} />
-          </button>
-        )}
+        <div className="chat-header__actions">
+          {isGroup && isGroupAdmin && onOpenGroupSettings && (
+            <button
+              type="button"
+              className="btn-group-settings"
+              title="Настройки группы"
+              onClick={onOpenGroupSettings}
+            >
+              <VellaraIcon name="settings" size={18} />
+            </button>
+          )}
+          {onOpenChatActions && (
+            <button
+              type="button"
+              className="btn-group-settings btn-chat-more"
+              title="Действия с чатом"
+              onClick={onOpenChatActions}
+            >
+              <VellaraIcon name="more" size={18} />
+            </button>
+          )}
+        </div>
       </header>
 
       <div
@@ -893,42 +1112,56 @@ export function ChatPanel({
             type="file"
             className="composer-file-input"
             accept="image/*,.heic,.heif,.pdf,.doc,.docx,.webp"
+            multiple
             onChange={handleFileSelect}
             onClick={() => onFilePickerOpen?.()}
           />
-          {pendingAttachment && (
+          {hasAttachments && (
             <div className="attachments-panel">
               <div className="attachments-panel__head">
-                <span>{pendingAttachment.isImage ? 'Фото' : pendingAttachment.file.name}</span>
-                <button type="button" className="attachments-clear" onClick={clearAttachment}>
-                  Убрать
+                <span>
+                  {pendingAttachments.every((a) => a.isImage)
+                    ? `Фото · ${pendingAttachments.length}`
+                    : `Вложения · ${pendingAttachments.length}`}
+                </span>
+                <button type="button" className="attachments-clear" onClick={clearAttachments}>
+                  Убрать все
                 </button>
               </div>
               <div className="attachments-grid">
-                <div
-                  className={`attachment-item ${pendingAttachment.isImage ? '' : 'attachment-item--doc'}`}
-                >
-                  {pendingAttachment.isImage && pendingAttachment.previewUrl ? (
-                    <img src={pendingAttachment.previewUrl} alt="" className="attachment-thumb" />
-                  ) : pendingAttachment.isImage ? (
-                    <div className="attachment-item-photo-placeholder" aria-hidden="true">
-                      <VellaraIcon name="image" size={24} />
-                    </div>
-                  ) : (
-                    <div className="attachment-doc">
-                      <VellaraIcon name="document" size={20} />
-                      <span className="attachment-doc-name">{pendingAttachment.file.name}</span>
-                    </div>
-                  )}
-                  <button
-                    type="button"
-                    className="attachment-remove"
-                    title="Убрать"
-                    onClick={clearAttachment}
+                {pendingAttachments.map((att) => (
+                  <div
+                    key={att.id}
+                    className={`attachment-item ${att.isImage ? '' : 'attachment-item--doc'}`}
                   >
-                    <VellaraIcon name="close" size={14} />
-                  </button>
-                </div>
+                    {att.isImage && att.previewUrl ? (
+                      <>
+                        <img src={att.previewUrl} alt="" className="attachment-thumb" />
+                        {att.previewLoading && (
+                          <div className="attachment-preview-shimmer" aria-hidden="true" />
+                        )}
+                      </>
+                    ) : att.isImage ? (
+                      <div className="attachment-item-photo-placeholder attachment-item-photo-placeholder--loading">
+                        <div className="attachment-preview-shimmer" aria-hidden="true" />
+                        <VellaraIcon name="image" size={24} />
+                      </div>
+                    ) : (
+                      <div className="attachment-doc">
+                        <VellaraIcon name="document" size={20} />
+                        <span className="attachment-doc-name">{att.file.name}</span>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      className="attachment-remove"
+                      title="Убрать"
+                      onClick={() => removeAttachment(att.id)}
+                    >
+                      <VellaraIcon name="close" size={14} />
+                    </button>
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -1015,7 +1248,7 @@ export function ChatPanel({
               <button type="button" className="composer-btn" title="Отменить" onClick={cancelEdit}>
                 <VellaraIcon name="close" size={20} />
               </button>
-            ) : canSendVoice && onSendVoice && !text.trim() && !pendingAttachment ? (
+            ) : canSendVoice && onSendVoice && !text.trim() && !hasAttachments ? (
               <button
                 type="button"
                 className="composer-btn composer-btn--voice"
@@ -1029,7 +1262,7 @@ export function ChatPanel({
                 type="submit"
                 className="composer-btn composer-btn--send"
                 title="Отправить"
-                disabled={sending || (!editingMessage && !text.trim() && !pendingAttachment)}
+                disabled={sending || (!editingMessage && !text.trim() && !hasAttachments)}
               >
                 <VellaraIcon name="send" size={20} />
               </button>

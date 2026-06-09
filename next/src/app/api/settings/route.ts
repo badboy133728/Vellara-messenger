@@ -1,5 +1,6 @@
 import { requireAuth } from '@/lib/auth';
 import { uploadProfileImage } from '@/lib/storage-server';
+import { formatPersonName } from '@/utils/formatName';
 
 const THEMES = ['gold-dark', 'midnight', 'forest', 'rose', 'light'];
 const GRADIENTS = ['gold', 'sunset', 'ocean', 'aurora', 'berry', 'slate', 'ember', 'lavender'];
@@ -26,8 +27,8 @@ export async function POST(request: Request) {
   const profileVisibility = formData.get('profile_visibility');
   const backgroundGradient = formData.get('background_gradient');
 
-  if (name) updates.name = String(name);
-  if (lastName !== null) updates.last_name = String(lastName ?? '');
+  if (name) updates.name = formatPersonName(String(name)).name;
+  if (lastName !== null) updates.last_name = formatPersonName('', String(lastName ?? '')).last_name;
   if (email) updates.email = String(email);
   if (bio !== null) updates.bio = String(bio ?? '');
   if (theme && THEMES.includes(String(theme))) updates.theme = String(theme);
@@ -90,10 +91,11 @@ export async function POST(request: Request) {
 }
 
 function formatSettings(p: Record<string, unknown>) {
+  const formatted = formatPersonName(String(p.name ?? ''), String(p.last_name ?? ''));
   return {
     id: p.id,
-    name: String(p.name ?? ''),
-    last_name: String(p.last_name ?? ''),
+    name: formatted.name,
+    last_name: formatted.last_name,
     email: String(p.email ?? ''),
     bio: String(p.bio ?? ''),
     theme: String(p.theme ?? 'gold-dark'),

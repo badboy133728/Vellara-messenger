@@ -809,6 +809,33 @@
 .conv-item.active { background: #2a2a2a; border-left-color: var(--vellara-gold, #c9a885); }
 .conv-item.unread .conv-name { color: #fff; font-weight: 600; }
 
+.conv-item--pinned .conv-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.conv-item__pin-icon {
+  flex-shrink: 0;
+  color: var(--vellara-gold, #c9a885);
+  opacity: 0.9;
+}
+
+.conv-actions-menu__title {
+  margin: 0 0 8px;
+  padding: 4px 14px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vellara-text-muted, #94a3b8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.conv-actions-menu button.danger {
+  color: #f87171;
+}
+
 .conv-info { flex: 1; min-width: 0; }
 .conv-row { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
 .conv-name { font-size: 15px; font-weight: 500; }

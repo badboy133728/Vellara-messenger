@@ -74,6 +74,9 @@ export type MemberRow = {
   role: string;
   last_read_at: string | null;
   is_archived: boolean;
+  is_pinned?: boolean;
+  pinned_at?: string | null;
+  hidden_at?: string | null;
   profiles?: Profile;
 };
 
@@ -127,5 +130,7 @@ export type ConversationListItem = {
   unread_count: number;
   has_unread: boolean;
   is_archived: boolean;
+  is_pinned: boolean;
+  pinned_at: string | null;
   updated_at: string;
 };

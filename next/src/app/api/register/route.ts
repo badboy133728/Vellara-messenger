@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ensureProfile } from '@/lib/auth';
+import { formatPersonName } from '@/utils/formatName';
 import { createRouteHandlerClient } from '@/lib/supabase/route-handler';
 
 function mapAuthError(message: string): string {
@@ -53,13 +54,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: 'Пароли не совпадают' }, { status: 422 });
   }
 
+  const formatted = formatPersonName(String(name), String(last_name));
   const { supabase, withCookies } = createRouteHandlerClient(request);
 
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
-      data: { name, last_name },
+      data: { name: formatted.name, last_name: formatted.last_name },
       emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'}/login`,
     },
   });

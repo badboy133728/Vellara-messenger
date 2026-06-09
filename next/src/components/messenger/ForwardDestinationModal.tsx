@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { ContactAvatar } from '@/components/ContactAvatar';
 import { VellaraIcon } from '@/components/icons/VellaraIcon';
 import { storageDisplayUrl } from '@/lib/storage';
 import type { ConversationListItem, FormattedMessage } from '@/lib/types';
@@ -151,18 +150,15 @@ export function ForwardDestinationModal({
                     className={`conv-item conv-item--pick ${isSelected ? 'active' : ''}`}
                     onClick={() => toggle(c.id)}
                   >
-                    {avatar.type === 'image' ? (
-                      <img src={avatar.value} alt="" className="conv-avatar-img" />
-                    ) : c.type === 'group' ? (
-                      <span className="conv-avatar conv-avatar--group">{avatar.value}</span>
-                    ) : (
-                      <ContactAvatar
-                        name={c.other_user?.name ?? ''}
-                        lastName={c.other_user?.last_name ?? ''}
-                        avatar={c.other_user?.avatar}
-                        size="sm"
-                      />
-                    )}
+                    <div
+                      className={`avatar-small avatar-small--modal ${c.type === 'group' ? 'avatar-small--group' : ''}`}
+                    >
+                      {avatar.type === 'image' ? (
+                        <img src={avatar.value} alt="" className="avatar-img" />
+                      ) : (
+                        <span className="avatar-letter">{avatar.value}</span>
+                      )}
+                    </div>
                     <div className="conv-info">
                       <div className="conv-row">
                         <div className="conv-name">{convTitle(c)}</div>

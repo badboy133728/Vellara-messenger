@@ -6,6 +6,7 @@ import { ContactAvatar } from '@/components/ContactAvatar';
 import { VellaraIcon } from '@/components/icons/VellaraIcon';
 import { useAuth } from '@/hooks/useAuth';
 import { useCall } from '@/hooks/useCallManager';
+import { displayFullName } from '@/utils/formatName';
 import { UserProfilePanel } from './UserProfilePanel';
 
 type Contact = {
@@ -80,7 +81,7 @@ export function ContactsPanel({
         setContactIds(await loadContactIds());
         if (inc.length > incomingCountRef.current) {
           const latest = inc[0];
-          const who = latest ? `${latest.name} ${latest.last_name}`.trim() : 'Пользователь';
+          const who = latest ? displayFullName(latest.name, latest.last_name, 'Пользователь') : 'Пользователь';
           showToast(`${who} отправил заявку в контакты`);
         }
         incomingCountRef.current = inc.length;
@@ -200,7 +201,7 @@ export function ContactsPanel({
                     <button type="button" className="contact-card__main" onClick={() => setProfileUserId(u.id)}>
                       <ContactAvatar name={u.name} lastName={u.last_name} avatar={u.avatar} />
                       <span className="contact-card__body">
-                        <span className="contact-card__name">{u.name} {u.last_name}</span>
+                        <span className="contact-card__name">{displayFullName(u.name, u.last_name)}</span>
                         <span className="contact-card__meta">{u.email}</span>
                       </span>
                     </button>
@@ -243,7 +244,7 @@ export function ContactsPanel({
                       variant="request"
                     />
                     <span className="contact-card__body">
-                      <span className="contact-card__name">{req.name} {req.last_name}</span>
+                      <span className="contact-card__name">{displayFullName(req.name, req.last_name)}</span>
                       <span className="contact-card__meta">{req.email}</span>
                     </span>
                   </button>
@@ -284,7 +285,7 @@ export function ContactsPanel({
                   <button type="button" className="contact-card__main" onClick={() => setProfileUserId(c.id)}>
                     <ContactAvatar name={c.name} lastName={c.last_name} avatar={c.avatar} />
                     <span className="contact-card__body">
-                      <span className="contact-card__name">{c.name} {c.last_name}</span>
+                      <span className="contact-card__name">{displayFullName(c.name, c.last_name)}</span>
                       <span className="contact-card__meta">{c.email}</span>
                     </span>
                   </button>

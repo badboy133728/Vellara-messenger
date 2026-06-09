@@ -36,6 +36,16 @@ export type MessageFeedItem = {
   key: string;
   created_at: string;
   message: import('@/lib/types').FormattedMessage;
+  albumMessages?: import('@/lib/types').FormattedMessage[];
+};
+
+export type PendingFeedItem = {
+  kind: 'pending';
+  key: string;
+  created_at: string;
+  clientId: string;
+  content: string;
+  previewUrls: string[];
 };
 
 export type DateFeedItem = {
@@ -45,9 +55,9 @@ export type DateFeedItem = {
   dayKey: string;
 };
 
-export type ChatFeedItem = MessageFeedItem | DateFeedItem;
+export type ChatFeedItem = MessageFeedItem | DateFeedItem | PendingFeedItem;
 
-export function withDateDividers(feed: MessageFeedItem[]): ChatFeedItem[] {
+export function withDateDividers(feed: (MessageFeedItem | PendingFeedItem)[]): ChatFeedItem[] {
   const result: ChatFeedItem[] = [];
   let lastDayKey: string | null = null;
 
@@ -88,14 +98,41 @@ export function withDateDividers(feed: MessageFeedItem[]): ChatFeedItem[] {
 
 export function buildMessageFeed(
   messages: import('@/lib/types').FormattedMessage[],
+  pending: Omit<PendingFeedItem, 'kind'>[] = [],
 ): ChatFeedItem[] {
-  const feed: MessageFeedItem[] = messages.map((m) => ({
-    kind: 'message',
-    key: `msg-${m.id}`,
-    created_at: m.created_at,
-    message: m,
+  const feed: MessageFeedItem[] = [];
+  const seenAlbums = new Set<string>();
+
+  for (const m of messages) {
+    if (m.album_group_id && m.file_type === 'image') {
+      if (seenAlbums.has(m.album_group_id)) continue;
+      seenAlbums.add(m.album_group_id);
+      const albumMessages = messages.filter(
+        (x) => x.album_group_id === m.album_group_id && x.file_type === 'image',
+      );
+      feed.push({
+        kind: 'message',
+        key: `album-${m.album_group_id}`,
+        created_at: m.created_at,
+        message: m,
+        albumMessages: albumMessages.length > 1 ? albumMessages : undefined,
+      });
+      continue;
+    }
+    feed.push({
+      kind: 'message',
+      key: `msg-${m.id}`,
+      created_at: m.created_at,
+      message: m,
+    });
+  }
+
+  const pendingItems: PendingFeedItem[] = pending.map((p) => ({
+    kind: 'pending',
+    ...p,
   }));
-  return withDateDividers(feed);
+
+  return withDateDividers([...feed, ...pendingItems]);
 }
 
 export function formatMessageTime(dateStr: string) {

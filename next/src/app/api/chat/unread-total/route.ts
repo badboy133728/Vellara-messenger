@@ -11,7 +11,8 @@ export async function GET() {
     .from('conversation_members')
     .select('conversation_id, last_read_at, is_archived')
     .eq('user_id', user.id)
-    .eq('is_archived', false);
+    .eq('is_archived', false)
+    .is('hidden_at', null);
 
   let total = 0;
 

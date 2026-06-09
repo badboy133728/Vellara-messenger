@@ -1,4 +1,5 @@
 import type { ConversationListItem, FormattedMessage } from '@/lib/types';
+import { displayFullName } from '@/utils/formatName';
 
 export function formatIncomingMessagePreview(
   msg: Pick<FormattedMessage, 'content' | 'file_type' | 'file_original_name' | 'message_type'>,
@@ -26,8 +27,22 @@ export function conversationPreviewFromMessage(
 
 export function conversationTitle(c: ConversationListItem): string {
   if (c.type === 'group') return c.title ?? 'Группа';
-  if (c.other_user) return `${c.other_user.name} ${c.other_user.last_name}`.trim();
+  if (c.other_user) return displayFullName(c.other_user.name, c.other_user.last_name, 'Чат');
   return 'Чат';
+}
+
+export function sortConversations(list: ConversationListItem[]): ConversationListItem[] {
+  return [...list].sort((a, b) => {
+    if (Boolean(a.is_pinned) !== Boolean(b.is_pinned)) {
+      return a.is_pinned ? -1 : 1;
+    }
+    if (a.is_pinned && b.is_pinned) {
+      const pa = a.pinned_at ? new Date(a.pinned_at).getTime() : 0;
+      const pb = b.pinned_at ? new Date(b.pinned_at).getTime() : 0;
+      if (pa !== pb) return pb - pa;
+    }
+    return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+  });
 }
 
 export function patchConversationFromMessage(
@@ -64,9 +79,8 @@ export function patchConversationFromMessage(
   };
 
   const next = [...conversations];
-  next.splice(idx, 1);
-  next.unshift(updated);
-  return next;
+  next[idx] = updated;
+  return sortConversations(next);
 }
 
 export function clearConversationUnread(

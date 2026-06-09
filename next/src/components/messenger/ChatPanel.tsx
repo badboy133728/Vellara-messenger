@@ -61,13 +61,50 @@ type PendingSend = {
   clientId: string;
   content: string;
   previewUrls: string[];
+  fileCount: number;
   created_at: string;
   expectedIds: number[];
+  baselineMessageIds: number[];
 };
 
 function isImageAttachment(file: File) {
   if (file.type.startsWith('image/')) return true;
   return /\.(jpe?g|png|gif|webp|bmp|heic|heif)$/i.test(file.name);
+}
+
+/** Скрываем pending в том же кадре, когда реальное сообщение уже в ленте — без дубля пузырей. */
+function pendingStillVisible(
+  pending: PendingSend,
+  messages: FormattedMessage[],
+  currentUserId: string,
+) {
+  const knownIds = new Set(messages.map((m) => m.id));
+  if (pending.expectedIds.length > 0 && pending.expectedIds.every((id) => knownIds.has(id))) {
+    return false;
+  }
+
+  const baseline = new Set(pending.baselineMessageIds);
+  const newFromMe = messages.filter(
+    (m) => m.user_id === currentUserId && !baseline.has(m.id),
+  );
+  if (!newFromMe.length) return true;
+
+  if (pending.previewUrls.length > 0) {
+    const newImages = newFromMe.filter((m) => m.file_type === 'image');
+    return newImages.length < pending.previewUrls.length;
+  }
+
+  if (pending.fileCount > 0) {
+    const withFile = newFromMe.filter((m) => m.file_path);
+    return withFile.length < pending.fileCount;
+  }
+
+  if (pending.content) {
+    const text = pending.content.trim();
+    return !newFromMe.some((m) => !m.file_path && (m.content || '').trim() === text);
+  }
+
+  return newFromMe.length === 0;
 }
 
 export function ChatPanel({
@@ -161,11 +198,16 @@ export function ChatPanel({
     cancelRecording,
   } = useVoiceRecorder();
 
+  const visiblePendingSends = useMemo(
+    () => pendingSends.filter((p) => pendingStillVisible(p, messages, currentUserId)),
+    [pendingSends, messages, currentUserId],
+  );
+
   const feed = useMemo(
     () =>
       buildMessageFeed(
         messages,
-        pendingSends.map((p) => ({
+        visiblePendingSends.map((p) => ({
           key: `pending-${p.clientId}`,
           clientId: p.clientId,
           created_at: p.created_at,
@@ -173,7 +215,7 @@ export function ChatPanel({
           previewUrls: p.previewUrls,
         })),
       ),
-    [messages, pendingSends],
+    [messages, visiblePendingSends],
   );
   const isOtherTyping = typingUserId && typingUserId !== currentUserId;
 
@@ -358,13 +400,9 @@ export function ChatPanel({
   }, [conversation?.id]);
 
   useEffect(() => {
-    const messageIds = new Set(messages.map((m) => m.id));
     setPendingSends((prev) => {
       if (!prev.length) return prev;
-      const next = prev.filter((p) => {
-        if (!p.expectedIds.length) return true;
-        return !p.expectedIds.every((id) => messageIds.has(id));
-      });
+      const next = prev.filter((p) => pendingStillVisible(p, messages, currentUserId));
       if (next.length === prev.length) return prev;
       for (const removed of prev) {
         if (next.some((p) => p.clientId === removed.clientId)) continue;
@@ -372,7 +410,7 @@ export function ChatPanel({
       }
       return next;
     });
-  }, [messages]);
+  }, [messages, currentUserId]);
 
   useEffect(() => {
     if (!pendingSends.length) return;
@@ -709,8 +747,10 @@ export function ChatPanel({
       clientId,
       content,
       previewUrls,
+      fileCount: files.length,
       created_at,
       expectedIds: [],
+      baselineMessageIds: messages.map((m) => m.id),
     };
     setPendingSends((prev) => [...prev, pendingItem]);
     stickToBottomRef.current = true;

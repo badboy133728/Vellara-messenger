@@ -38,8 +38,6 @@ import { GroupSettingsModal } from './GroupSettingsModal';
 import { GroupInfoPanel } from './GroupInfoPanel';
 import { UserProfilePanel } from './UserProfilePanel';
 import { PushNotificationBanner } from '@/components/PushNotificationBanner';
-import { LayoutDebugOverlay } from '@/components/messenger/LayoutDebugOverlay';
-import { agentDebugLog, isLayoutDebugEnabled } from '@/lib/debugLog';
 import { useMessengerHistory } from '@/hooks/useMessengerHistory';
 import { useSwipeGesture } from '@/hooks/useSwipeGesture';
 import {
@@ -142,21 +140,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
 
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 768px)');
-    const update = () => {
-      setIsMobile(mq.matches);
-      // #region agent log
-      agentDebugLog({
-        hypothesisId: 'A',
-        location: 'MessengerApp.tsx:isMobile',
-        message: 'matchMedia update',
-        data: {
-          matches: mq.matches,
-          innerWidth: window.innerWidth,
-          innerHeight: window.innerHeight,
-        },
-      });
-      // #endregion
-    };
+    const update = () => setIsMobile(mq.matches);
     update();
     mq.addEventListener('change', update);
     return () => mq.removeEventListener('change', update);
@@ -869,7 +853,6 @@ function MessengerAppInner({ user }: { user: Profile }) {
 
   return (
     <div className="app-shell">
-      {isLayoutDebugEnabled() && <LayoutDebugOverlay />}
       <aside className={`side-menu ${hideMobileNav ? 'side-menu--hidden-mobile' : ''}`}>
         <header className="side-menu__brand">
           <span className="brand-mark" aria-hidden="true">V</span>
@@ -1007,7 +990,6 @@ function MessengerAppInner({ user }: { user: Profile }) {
                   typingUserId={typingUserId}
                   savedMessageIds={savedMessageIds}
                   isMobile={isMobile}
-                  chatOpen={chatOpen}
                   enterAnim={chatEnterAnim}
                   onSend={sendMessage}
                   onSendVoice={sendVoiceMessage}

@@ -8,6 +8,7 @@ import { CallProvider, useCall } from '@/hooks/useCallManager';
 import { ContactAvatar } from '@/components/ContactAvatar';
 import { prepareChatImageForUpload } from '@/lib/chatImageUpload';
 import type { SendMessageOptions } from '@/lib/chat/sendMessage';
+import { readCachedMessages, writeCachedMessages } from '@/lib/chat/messageCache';
 import type { ConversationListItem, FormattedMessage, Profile } from '@/lib/types';
 import { applyGroupReadStatuses, type MemberRead } from '@/utils/groupReadStatus';
 import {
@@ -302,7 +303,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
   const typingTimeoutRef = useRef<number | null>(null);
   const lastTypingSentRef = useRef(0);
   const loadMessagesRef = useRef<
-    (convId: number, opts?: { silent?: boolean }) => Promise<void>
+    (convId: number, opts?: { silent?: boolean; fromCache?: boolean }) => Promise<void>
   >(async () => {});
   const filePickerGraceUntilRef = useRef(0);
   const visibilityRefreshTimerRef = useRef<number | null>(null);
@@ -453,8 +454,8 @@ function MessengerAppInner({ user }: { user: Profile }) {
   }, []);
 
   const loadMessages = useCallback(
-    async (convId: number, opts?: { silent?: boolean }) => {
-      if (!opts?.silent) setMessagesLoading(true);
+    async (convId: number, opts?: { silent?: boolean; fromCache?: boolean }) => {
+      if (!opts?.silent && !opts?.fromCache) setMessagesLoading(true);
       setConversationReadLocal(convId);
       const conv = conversationsRef.current.find((c) => c.id === convId);
       if (conv?.type === 'group') {
@@ -489,7 +490,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
         });
         api(`/api/chat/${convId}/messages/read`, { method: 'POST' }).catch(() => {});
       } finally {
-        if (!opts?.silent) setMessagesLoading(false);
+        if (!opts?.silent && !opts?.fromCache) setMessagesLoading(false);
       }
     },
     [setConversationReadLocal, syncGroupMembers],
@@ -571,17 +572,30 @@ function MessengerAppInner({ user }: { user: Profile }) {
 
   useEffect(() => {
     if (activeId) {
-      setMessages([]);
-      setHasMoreOlder(false);
-      setMessagesLoading(true);
-      void loadMessagesRef.current(activeId);
+      const cached = readCachedMessages(user.id, activeId);
+      if (cached.length) {
+        setMessages(cached);
+        setHasMoreOlder(true);
+        setMessagesLoading(false);
+        void loadMessagesRef.current(activeId, { silent: true, fromCache: true });
+      } else {
+        setMessages([]);
+        setHasMoreOlder(false);
+        setMessagesLoading(true);
+        void loadMessagesRef.current(activeId);
+      }
     } else {
       setMessages([]);
       setMembersRead([]);
       setHasMoreOlder(false);
       setMessagesLoading(false);
     }
-  }, [activeId]);
+  }, [activeId, user.id]);
+
+  useEffect(() => {
+    if (!activeId || !messages.length) return;
+    writeCachedMessages(user.id, activeId, messages);
+  }, [messages, activeId, user.id]);
 
   useEffect(() => {
     syncConversations(conversations);

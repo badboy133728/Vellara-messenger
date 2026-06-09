@@ -1237,6 +1237,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
             <CallsPanel />
           ) : tab === 'favorites' ? (
             <FavoritesPanel
+              isMobile={isMobile}
               onForwardMessage={(msg) => requestForwardMessage(msg, null)}
             />
           ) : tab === 'settings' ? (

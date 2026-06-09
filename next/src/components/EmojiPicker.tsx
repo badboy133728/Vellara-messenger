@@ -1,77 +1,93 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { VellaraIcon } from '@/components/icons/VellaraIcon';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { emojiCategories } from '@/lib/data/emojis';
+import {
+  defaultRecentEmojis,
+  loadRecentEmojis,
+  pushRecentEmoji,
+} from '@/lib/recentEmojis';
+
+const RECENT_ID = 'recent';
 
 export function EmojiPicker({
-  anchorRef,
   onSelect,
-  onClose,
+  isMobile = false,
 }: {
-  anchorRef: React.RefObject<HTMLElement | null>;
   onSelect: (emoji: string) => void;
-  onClose: () => void;
+  onClose?: () => void;
+  isMobile?: boolean;
 }) {
-  const [activeCategory, setActiveCategory] = useState(emojiCategories[0].id);
-  const [position, setPosition] = useState<{ left: number; bottom: number } | null>(null);
-  const current = emojiCategories.find((c) => c.id === activeCategory);
+  const [recent, setRecent] = useState<string[]>([]);
+  const [activeCategory, setActiveCategory] = useState(RECENT_ID);
+  const gridRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const update = () => {
-      const anchor = anchorRef.current;
-      if (!anchor) return;
-      const rect = anchor.getBoundingClientRect();
-      const width = 320;
-      const left = Math.min(Math.max(8, rect.left), window.innerWidth - width - 8);
-      setPosition({ left, bottom: window.innerHeight - rect.top + 8 });
-    };
-    update();
-    window.addEventListener('resize', update);
-    window.addEventListener('scroll', update, true);
-    return () => {
-      window.removeEventListener('resize', update);
-      window.removeEventListener('scroll', update, true);
-    };
-  }, [anchorRef]);
+    setRecent(loadRecentEmojis());
+  }, []);
 
-  if (!position) return null;
+  useEffect(() => {
+    gridRef.current?.scrollTo({ top: 0 });
+  }, [activeCategory]);
 
-  return createPortal(
+  const categories = useMemo(
+    () => [
+      {
+        id: RECENT_ID,
+        label: 'Недавние',
+        icon: '🕘',
+        emojis: recent.length ? recent : defaultRecentEmojis,
+      },
+      ...emojiCategories,
+    ],
+    [recent],
+  );
+
+  const current = categories.find((c) => c.id === activeCategory) ?? categories[0];
+
+  const handleSelect = (emoji: string) => {
+    setRecent(pushRecentEmoji(emoji));
+    onSelect(emoji);
+  };
+
+  return (
     <div
-      className="emoji-picker emoji-picker--portal"
-      style={{ left: position.left, bottom: position.bottom }}
+      className={`emoji-picker emoji-picker--docked${isMobile ? ' emoji-picker--mobile' : ''}`}
       onClick={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
     >
-      <div className="emoji-picker-header">
-        <span className="emoji-picker-title">Смайлики</span>
-        <button type="button" className="emoji-picker-close" title="Закрыть" onClick={onClose}>
-          <VellaraIcon name="close" size={16} />
-        </button>
+      <div className="emoji-picker__grid" ref={gridRef} role="listbox" aria-label="Смайлики">
+        {current.emojis.map((emoji, index) => (
+          <button
+            key={`${activeCategory}-${emoji}-${index}`}
+            type="button"
+            className="emoji-item"
+            role="option"
+            aria-label={emoji}
+            onMouseDown={(e) => e.preventDefault()}
+            onTouchStart={(e) => e.preventDefault()}
+            onClick={() => handleSelect(emoji)}
+          >
+            {emoji}
+          </button>
+        ))}
       </div>
-      <div className="emoji-tabs">
-        {emojiCategories.map((cat) => (
+      <div className="emoji-picker__tabs" role="tablist" aria-label="Категории смайликов">
+        {categories.map((cat) => (
           <button
             key={cat.id}
             type="button"
+            role="tab"
+            aria-selected={activeCategory === cat.id}
             className={`emoji-tab ${activeCategory === cat.id ? 'active' : ''}`}
             title={cat.label}
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => setActiveCategory(cat.id)}
           >
             {cat.icon}
           </button>
         ))}
       </div>
-      <div className="emoji-grid">
-        {(current?.emojis ?? []).map((emoji) => (
-          <button key={emoji} type="button" className="emoji-item" onClick={() => onSelect(emoji)}>
-            {emoji}
-          </button>
-        ))}
-      </div>
-    </div>,
-    document.body,
+    </div>
   );
 }

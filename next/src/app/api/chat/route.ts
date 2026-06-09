@@ -62,7 +62,9 @@ export async function GET() {
   }
 
   const result = sortConversations(
-    (conversations ?? []).map((conv) => {
+    (conversations ?? [])
+      .filter((conv) => conv.type !== 'saved')
+      .map((conv) => {
       const members = membersByConv.get(conv.id) ?? [];
       const selfMembership = membershipByConv.get(conv.id);
       const membersWithSelfFlags = members.map((m) =>

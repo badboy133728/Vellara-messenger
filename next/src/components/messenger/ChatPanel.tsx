@@ -364,15 +364,31 @@ export function ChatPanel({
   }, [text, onTyping]);
 
   useEffect(() => {
+    if (!showEmojiPicker) return;
     const onDocPointerDown = (e: PointerEvent) => {
       const target = e.target as Node;
-      if (inputAreaRef.current?.contains(target)) return;
+      if (composerDockRef.current?.contains(target)) return;
       if (target instanceof Element && target.closest('.emoji-picker')) return;
+      if (emojiBtnRef.current?.contains(target)) return;
       setShowEmojiPicker(false);
     };
     document.addEventListener('pointerdown', onDocPointerDown);
     return () => document.removeEventListener('pointerdown', onDocPointerDown);
   }, [showEmojiPicker]);
+
+  const toggleEmojiPicker = () => {
+    setShowEmojiPicker((open) => {
+      const next = !open;
+      if (next) {
+        if (isMobile) textareaRef.current?.blur();
+        stickToBottomRef.current = true;
+        requestAnimationFrame(() => scrollToBottom('instant'));
+      } else {
+        window.setTimeout(() => textareaRef.current?.focus(), 0);
+      }
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (voiceError) window.alert(voiceError);
@@ -497,7 +513,7 @@ export function ChatPanel({
     ro.observe(header);
     ro.observe(dock);
     return () => ro.disconnect();
-  }, [isMobile, conversation?.id, showMessages, isRecording, pendingAttachments.length, isOtherTyping]);
+  }, [isMobile, conversation?.id, showMessages, isRecording, pendingAttachments.length, isOtherTyping, showEmojiPicker]);
 
   useLayoutEffect(() => {
     if (!isMobile || messagesLoading) return;
@@ -1115,7 +1131,10 @@ export function ChatPanel({
       </div>
 
       {showMessages && (
-        <div className="chat-composer-dock" ref={composerDockRef}>
+        <div
+          className={`chat-composer-dock${showEmojiPicker ? ' chat-composer-dock--emoji-open' : ''}`}
+          ref={composerDockRef}
+        >
           <div
             className={`chat-typing-bar ${isOtherTyping ? 'chat-typing-bar--visible' : ''}`}
             aria-live="polite"
@@ -1145,6 +1164,10 @@ export function ChatPanel({
               </button>
             </div>
           ) : showComposerArea ? (
+            <>
+          {showEmojiPicker && (
+            <EmojiPicker isMobile={isMobile} onSelect={insertEmoji} />
+          )}
             <div className="input-area input-area--ready" ref={inputAreaRef}>
           <input
             id={CHAT_FILE_INPUT_ID}
@@ -1251,18 +1274,11 @@ export function ChatPanel({
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={(e) => {
                       e.stopPropagation();
-                      setShowEmojiPicker((v) => !v);
+                      toggleEmojiPicker();
                     }}
                   >
                     <VellaraIcon name="smile" size={22} />
                   </button>
-                  {showEmojiPicker && (
-                    <EmojiPicker
-                      anchorRef={emojiBtnRef}
-                      onSelect={insertEmoji}
-                      onClose={() => setShowEmojiPicker(false)}
-                    />
-                  )}
                 </div>
                 <textarea
                   ref={textareaRef}
@@ -1272,6 +1288,9 @@ export function ChatPanel({
                   onChange={(e) => {
                     setText(e.target.value);
                     onTyping();
+                  }}
+                  onFocus={() => {
+                    if (showEmojiPicker) setShowEmojiPicker(false);
                   }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
@@ -1309,6 +1328,7 @@ export function ChatPanel({
             )}
           </form>
             </div>
+            </>
           ) : null}
         </div>
       )}

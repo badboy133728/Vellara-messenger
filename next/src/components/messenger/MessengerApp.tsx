@@ -38,6 +38,8 @@ import { GroupSettingsModal } from './GroupSettingsModal';
 import { GroupInfoPanel } from './GroupInfoPanel';
 import { UserProfilePanel } from './UserProfilePanel';
 import { PushNotificationBanner } from '@/components/PushNotificationBanner';
+import { LayoutDebugOverlay } from '@/components/messenger/LayoutDebugOverlay';
+import { agentDebugLog, isLayoutDebugEnabled } from '@/lib/debugLog';
 import { useMessengerHistory } from '@/hooks/useMessengerHistory';
 import { useSwipeGesture } from '@/hooks/useSwipeGesture';
 import {
@@ -127,7 +129,9 @@ function MessengerAppInner({ user }: { user: Profile }) {
   const [showGroupPanel, setShowGroupPanel] = useState(false);
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
   const [profileInContacts, setProfileInContacts] = useState(false);
-  const [contactsForGroup, setContactsForGroup] = useState<{ id: string; name: string; last_name: string }[]>([]);
+  const [contactsForGroup, setContactsForGroup] = useState<
+    { id: string; name: string; last_name: string; email?: string; avatar?: string | null }[]
+  >([]);
   const [incomingContactCount, setIncomingContactCount] = useState(0);
   const [toast, setToast] = useState('');
   const [tabAnim, setTabAnim] = useState<'left' | 'right' | null>(null);
@@ -138,7 +142,21 @@ function MessengerAppInner({ user }: { user: Profile }) {
 
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 768px)');
-    const update = () => setIsMobile(mq.matches);
+    const update = () => {
+      setIsMobile(mq.matches);
+      // #region agent log
+      agentDebugLog({
+        hypothesisId: 'A',
+        location: 'MessengerApp.tsx:isMobile',
+        message: 'matchMedia update',
+        data: {
+          matches: mq.matches,
+          innerWidth: window.innerWidth,
+          innerHeight: window.innerHeight,
+        },
+      });
+      // #endregion
+    };
     update();
     mq.addEventListener('change', update);
     return () => mq.removeEventListener('change', update);
@@ -851,6 +869,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
 
   return (
     <div className="app-shell">
+      {isLayoutDebugEnabled() && <LayoutDebugOverlay />}
       <aside className={`side-menu ${hideMobileNav ? 'side-menu--hidden-mobile' : ''}`}>
         <header className="side-menu__brand">
           <span className="brand-mark" aria-hidden="true">V</span>
@@ -969,7 +988,9 @@ function MessengerAppInner({ user }: { user: Profile }) {
                 onSelect={(id) => navigate(() => setActiveId(id), 'push')}
                 onRefresh={loadConversations}
                 onCreateGroup={async () => {
-                  const list = await api<{ id: string; name: string; last_name: string }[]>('/api/contacts/my');
+                  const list = await api<
+                    { id: string; name: string; last_name: string; email?: string; avatar?: string | null }[]
+                  >('/api/contacts/my');
                   setContactsForGroup(list);
                   navigate(() => setShowCreateGroup(true), 'push');
                 }}
@@ -986,6 +1007,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
                   typingUserId={typingUserId}
                   savedMessageIds={savedMessageIds}
                   isMobile={isMobile}
+                  chatOpen={chatOpen}
                   enterAnim={chatEnterAnim}
                   onSend={sendMessage}
                   onSendVoice={sendVoiceMessage}

@@ -32,6 +32,7 @@ function isRootNav(state: MessengerNavState): boolean {
 
 export function useMessengerHistory({ isMobile, getState, applyState }: Options) {
   const applyingRef = useRef(false);
+  const desktopStackRef = useRef<MessengerNavState[]>([]);
   const getStateRef = useRef(getState);
   const applyStateRef = useRef(applyState);
   getStateRef.current = getState;
@@ -49,16 +50,47 @@ export function useMessengerHistory({ isMobile, getState, applyState }: Options)
 
   const navigate = useCallback(
     (mutate: () => void, mode: 'push' | 'replace' | 'none' = 'push') => {
+      if (!isMobile && mode === 'push') {
+        desktopStackRef.current.push({ ...getStateRef.current() });
+      } else if (!isMobile && mode === 'replace') {
+        desktopStackRef.current = [];
+      }
       mutate();
       if (mode === 'push') writeHistory('push');
       else if (mode === 'replace') writeHistory('replace');
     },
-    [writeHistory],
+    [writeHistory, isMobile],
   );
 
   const goBack = useCallback(() => {
-    if (!isMobile) return;
-    window.history.back();
+    if (isMobile) {
+      window.history.back();
+      return;
+    }
+
+    const prev = desktopStackRef.current.pop();
+    if (prev) {
+      applyingRef.current = true;
+      try {
+        applyStateRef.current(prev);
+      } finally {
+        applyingRef.current = false;
+      }
+      return;
+    }
+
+    const current = getStateRef.current();
+    if (current.showGroupSettings) {
+      applyStateRef.current({ ...current, showGroupSettings: false });
+    } else if (current.showGroupPanel) {
+      applyStateRef.current({ ...current, showGroupPanel: false });
+    } else if (current.showCreateGroup) {
+      applyStateRef.current({ ...current, showCreateGroup: false });
+    } else if (current.profileUserId) {
+      applyStateRef.current({ ...current, profileUserId: null });
+    } else if (current.activeId != null) {
+      applyStateRef.current({ ...current, activeId: null });
+    }
   }, [isMobile]);
 
   useEffect(() => {

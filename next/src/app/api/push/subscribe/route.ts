@@ -33,6 +33,7 @@ export async function POST(request: NextRequest) {
       p256dh,
       auth: authKey,
       user_agent: userAgent,
+      last_active_at: new Date().toISOString(),
     },
     { onConflict: 'user_id,endpoint' },
   );

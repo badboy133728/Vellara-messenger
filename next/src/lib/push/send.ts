@@ -14,7 +14,18 @@ type PushSubscriptionRow = {
   endpoint: string;
   p256dh: string;
   auth: string;
+  last_active_at: string | null;
 };
+
+/** Не слать push на устройство, где вкладка была активна недавно. */
+const PUSH_ACTIVE_GRACE_MS = 45_000;
+
+function isSubscriptionInactive(row: PushSubscriptionRow, nowMs: number): boolean {
+  if (!row.last_active_at) return true;
+  const activeAt = new Date(row.last_active_at).getTime();
+  if (Number.isNaN(activeAt)) return true;
+  return nowMs - activeAt > PUSH_ACTIVE_GRACE_MS;
+}
 
 export async function sendPushToUser(userId: string, payload: PushPayload): Promise<void> {
   if (!ensureWebPushConfigured()) return;
@@ -22,10 +33,13 @@ export async function sendPushToUser(userId: string, payload: PushPayload): Prom
   const admin = createAdminClient();
   const { data: rows } = await admin
     .from('push_subscriptions')
-    .select('id, endpoint, p256dh, auth')
+    .select('id, endpoint, p256dh, auth, last_active_at')
     .eq('user_id', userId);
 
-  const subscriptions = (rows ?? []) as PushSubscriptionRow[];
+  const nowMs = Date.now();
+  const subscriptions = ((rows ?? []) as PushSubscriptionRow[]).filter((row) =>
+    isSubscriptionInactive(row, nowMs),
+  );
   if (subscriptions.length === 0) return;
 
   const url = payload.url?.startsWith('/') ? payload.url : payload.url || '/main';

@@ -22,6 +22,7 @@ import {
 } from '@/utils/conversationList';
 import { useMessageNotifications } from '@/hooks/useMessageNotifications';
 import { useLastSeenHeartbeat } from '@/hooks/useLastSeenHeartbeat';
+import { usePushActivePing } from '@/hooks/usePushActivePing';
 import { usePresenceRealtime } from '@/hooks/usePresenceRealtime';
 import { isOnline } from '@/lib/presence';
 import { CallScreen } from '@/components/CallScreen';
@@ -248,6 +249,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
   });
 
   useLastSeenHeartbeat(true);
+  usePushActivePing(true);
 
   const presenceUserIds = useMemo(
     () =>

@@ -369,3 +369,10 @@ alter table public.conversation_members replica identity full;
 -- ========== 009_typing_at.sql ==========
 alter table public.conversation_members
   add column if not exists last_typing_at timestamptz;
+
+-- ========== 010_push_last_active.sql ==========
+alter table public.push_subscriptions
+  add column if not exists last_active_at timestamptz;
+
+create index if not exists push_subscriptions_active_idx
+  on public.push_subscriptions (user_id, last_active_at desc);

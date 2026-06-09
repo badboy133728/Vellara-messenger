@@ -1,4 +1,4 @@
-/* Vellara Messenger — Web Push service worker v3 */
+/* Vellara Messenger — Web Push service worker v4 */
 
 self.addEventListener('install', (event) => {
   event.waitUntil(self.skipWaiting());
@@ -18,6 +18,15 @@ function normalizeUrl(url) {
   }
 }
 
+/** Не показывать OS-уведомление, если сайт открыт на этом устройстве. */
+async function shouldSuppressPushNotification() {
+  const clients = await self.clients.matchAll({
+    type: 'window',
+    includeUncontrolled: true,
+  });
+  return clients.some((client) => client.visibilityState === 'visible');
+}
+
 self.addEventListener('push', (event) => {
   let data = { title: 'Vellara', body: 'Новое сообщение', url: '/main', tag: 'vellara' };
   try {
@@ -31,17 +40,21 @@ self.addEventListener('push', (event) => {
   const targetPath = normalizeUrl(data.url);
 
   event.waitUntil(
-    self.registration.showNotification(data.title || 'Vellara', {
-      body: data.body || '',
-      icon: '/icon-192.png',
-      badge: '/icon-192.png',
-      tag: data.tag || 'vellara-message',
-      renotify: true,
-      vibrate: [180, 80, 180],
-      requireInteraction: false,
-      silent: false,
-      data: { url: targetPath },
-    }),
+    (async () => {
+      if (await shouldSuppressPushNotification()) return;
+
+      await self.registration.showNotification(data.title || 'Vellara', {
+        body: data.body || '',
+        icon: '/icon-192.png',
+        badge: '/icon-192.png',
+        tag: data.tag || 'vellara-message',
+        renotify: true,
+        vibrate: [180, 80, 180],
+        requireInteraction: false,
+        silent: false,
+        data: { url: targetPath },
+      });
+    })(),
   );
 });
 

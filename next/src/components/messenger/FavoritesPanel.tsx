@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { ImageLightbox } from '@/components/ImageLightbox';
+import { VellaraIcon } from '@/components/icons/VellaraIcon';
 import { api } from '@/lib/api';
 import { publicStorageUrl } from '@/lib/storage';
 import type { FormattedMessage } from '@/lib/types';
@@ -107,7 +108,8 @@ export function FavoritesPanel() {
                         target="_blank"
                         rel="noreferrer"
                       >
-                        📄 {item.message.file_original_name || 'Файл'}
+                        <VellaraIcon name="document" size={16} className="msg-doc-link__icon" />
+                        {item.message.file_original_name || 'Файл'}
                       </a>
                     )}
                     {item.message.content && (

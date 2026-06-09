@@ -1,6 +1,7 @@
 'use client';
 
 import { createPortal } from 'react-dom';
+import { VellaraIcon } from '@/components/icons/VellaraIcon';
 
 export function MessageContextMenu({
   show,
@@ -43,13 +44,15 @@ export function MessageContextMenu({
         onClick={(e) => e.stopPropagation()}
       >
         {canReply && onReply && (
-          <button type="button" onClick={onReply}>
-            ↩ Ответить
+          <button type="button" className="msg-context-menu__item--with-icon" onClick={onReply}>
+            <VellaraIcon name="reply" size={16} />
+            Ответить
           </button>
         )}
         {canSave && (
-          <button type="button" onClick={onSave}>
-            {isSaved ? '★ Убрать из избранного' : '☆ Сохранить в избранное'}
+          <button type="button" className="msg-context-menu__item--with-icon" onClick={onSave}>
+            <VellaraIcon name={isSaved ? 'star' : 'star-outline'} size={16} />
+            {isSaved ? 'Убрать из избранного' : 'Сохранить в избранное'}
           </button>
         )}
         {canEdit && (

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { VellaraIcon } from '@/components/icons/VellaraIcon';
 import { canvasToFile, loadOrientedImage } from '@/lib/imageOrientation';
 
 export function AvatarCropModal({
@@ -268,10 +269,11 @@ export function AvatarCropModal({
             </label>
             <button
               type="button"
-              className="avatar-crop__rotate"
+              className="avatar-crop__rotate avatar-crop__rotate--with-icon"
               onClick={() => setRotation((r) => (r + 1) % 4)}
             >
-              ↻ Повернуть
+              <VellaraIcon name="refresh" size={16} />
+              Повернуть
             </button>
           </div>
         </>

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { VellaraIcon } from '@/components/icons/VellaraIcon';
 
 export function ImageLightbox({
   urls,
@@ -114,7 +115,7 @@ export function ImageLightbox({
       onClick={onClose}
     >
       <button type="button" className="lightbox__close" aria-label="Закрыть" onClick={onClose}>
-        ✕
+        <VellaraIcon name="close" size={22} />
       </button>
 
       {list.length > 1 && (

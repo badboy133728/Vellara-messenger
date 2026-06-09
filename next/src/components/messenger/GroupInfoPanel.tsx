@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { ContactAvatar } from '@/components/ContactAvatar';
+import { VellaraIcon } from '@/components/icons/VellaraIcon';
 
 type GroupMember = {
   id: string;
@@ -206,7 +207,7 @@ export function GroupInfoPanel({
         <header className="group-panel__head">
           <h2>{group?.title || 'Группа'}</h2>
           <button type="button" className="group-settings-close" aria-label="Закрыть" onClick={onClose}>
-            ✕
+            <VellaraIcon name="close" size={18} />
           </button>
         </header>
 
@@ -279,7 +280,7 @@ export function GroupInfoPanel({
                           title="Удалить"
                           onClick={() => removeMember(m.id)}
                         >
-                          ✕
+                          <VellaraIcon name="close" size={16} />
                         </button>
                       </div>
                     )}

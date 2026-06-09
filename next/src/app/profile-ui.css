@@ -195,6 +195,19 @@ input.profile-field:not([rows]) {
   font-size: 14px;
 }
 
+.profile-email--with-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.profile-btn--with-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
 .profile-state {
   display: flex;
   flex-direction: column;

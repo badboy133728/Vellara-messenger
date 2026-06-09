@@ -39,6 +39,7 @@ import { GroupSettingsModal } from './GroupSettingsModal';
 import { GroupInfoPanel } from './GroupInfoPanel';
 import { UserProfilePanel } from './UserProfilePanel';
 import { PushNotificationBanner } from '@/components/PushNotificationBanner';
+import { VellaraIcon, type VellaraIconName } from '@/components/icons/VellaraIcon';
 import { useMessengerHistory } from '@/hooks/useMessengerHistory';
 import { useSwipeGesture } from '@/hooks/useSwipeGesture';
 import {
@@ -50,12 +51,12 @@ import {
 
 type Tab = MessengerTab;
 
-const MENU_ITEMS: { id: Tab; label: string; icon: string }[] = [
-  { id: 'chats', label: 'Чаты', icon: '💬' },
-  { id: 'calls', label: 'Звонки', icon: '📞' },
-  { id: 'contacts', label: 'Контакты', icon: '👥' },
-  { id: 'favorites', label: 'Избранное', icon: '⭐' },
-  { id: 'settings', label: 'Настройки', icon: '⚙️' },
+const MENU_ITEMS: { id: Tab; label: string; icon: VellaraIconName }[] = [
+  { id: 'chats', label: 'Чаты', icon: 'chats' },
+  { id: 'calls', label: 'Звонки', icon: 'calls' },
+  { id: 'contacts', label: 'Контакты', icon: 'contacts' },
+  { id: 'favorites', label: 'Избранное', icon: 'favorites' },
+  { id: 'settings', label: 'Настройки', icon: 'settings' },
 ];
 
 export function MessengerApp() {
@@ -881,7 +882,9 @@ function MessengerAppInner({ user }: { user: Profile }) {
               }}
             >
               <span className="nav-item__icon-wrap">
-                <span className="nav-item__icon" aria-hidden="true">{item.icon}</span>
+                <span className="nav-item__icon" aria-hidden="true">
+                  <VellaraIcon name={item.icon} size={18} />
+                </span>
                 {item.id === 'chats' && unreadBadge && (
                   <span className="nav-item__badge">{unreadBadge}</span>
                 )}
@@ -1155,7 +1158,9 @@ function MessengerAppInner({ user }: { user: Profile }) {
             }, 'push');
           }}
         >
-          <span className="msg-notification__icon">💬</span>
+          <span className="msg-notification__icon">
+            <VellaraIcon name="chats" size={20} />
+          </span>
           <span className="msg-notification__body">
             <strong>{messageNotification.title}</strong>
             <span>{messageNotification.body}</span>

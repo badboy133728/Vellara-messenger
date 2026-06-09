@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '@/lib/api';
+import { VellaraIcon } from '@/components/icons/VellaraIcon';
 import { useSwipeDismiss, useSwipeGesture } from '@/hooks/useSwipeGesture';
 
 export function GroupSettingsModal({
@@ -104,7 +105,7 @@ export function GroupSettingsModal({
         <header className="group-settings-card__head">
           <h2 id="group-settings-title">Настройки группы</h2>
           <button type="button" className="group-settings-close" aria-label="Закрыть" onClick={onClose}>
-            ✕
+            <VellaraIcon name="close" size={18} />
           </button>
         </header>
 

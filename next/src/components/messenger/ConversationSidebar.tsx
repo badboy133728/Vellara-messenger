@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { storageDisplayUrl } from '@/lib/storage';
+import { VellaraIcon } from '@/components/icons/VellaraIcon';
 import type { ConversationListItem } from '@/lib/types';
 
 type Tab = 'all' | 'unread' | 'archive';
@@ -74,15 +75,19 @@ export function ConversationSidebar({
   return (
     <aside className="sidebar">
       <div className="sidebar-head">
-        <h2 className="sidebar-title">💬 Диалоги</h2>
+        <h2 className="sidebar-title">
+          <VellaraIcon name="chats" size={20} className="sidebar-title__icon" />
+          Диалоги
+        </h2>
         <div className="sidebar-actions">
           {onCreateGroup && (
             <button type="button" className="btn-new-group" onClick={onCreateGroup}>
-              ＋ Группа
+              <VellaraIcon name="plus" size={14} />
+              Группа
             </button>
           )}
-          <button type="button" className="btn-new-group" onClick={onRefresh} aria-label="Обновить">
-            ↻
+          <button type="button" className="btn-new-group btn-new-group--icon" onClick={onRefresh} aria-label="Обновить">
+            <VellaraIcon name="refresh" size={16} />
           </button>
         </div>
       </div>

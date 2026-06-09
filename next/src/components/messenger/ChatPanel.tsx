@@ -14,6 +14,7 @@ import { storageDisplayUrl } from '@/lib/storage';
 import type { ConversationListItem, FormattedMessage, MessageReplyPreview } from '@/lib/types';
 import { buildMessageFeed, formatMessageTime, type ChatFeedItem } from '@/utils/chatDates';
 import { formatVoiceDuration } from '@/utils/messagePreview';
+import { VellaraIcon } from '@/components/icons/VellaraIcon';
 import { senderColorForUserId, senderDisplayName } from '@/utils/senderColor';
 
 type MsgMenuState = {
@@ -620,12 +621,16 @@ export function ChatPanel({
       const classes = ['status-icon'];
       if (status === 'partial') classes.push('partial');
       if (status === 'all') classes.push('read');
-      return <span className={classes.join(' ')}>{status === 'sent' ? '✓' : '✓✓'}</span>;
+      return (
+        <span className={classes.join(' ')}>
+          <VellaraIcon name={status === 'sent' ? 'check' : 'checks'} size={12} />
+        </span>
+      );
     }
 
     return (
       <span className={`status-icon ${m.read_at ? 'read' : ''}`}>
-        {m.read_at ? '✓✓' : '✓'}
+        <VellaraIcon name={m.read_at ? 'checks' : 'check'} size={12} />
       </span>
     );
   };
@@ -687,7 +692,7 @@ export function ChatPanel({
                 target="_blank"
                 rel="noreferrer"
               >
-                <span className="msg-doc-icon">📄</span>
+                <span className="msg-doc-icon"><VellaraIcon name="document" size={18} /></span>
                 <span className="msg-doc-name">{m.file_original_name ?? 'Файл'}</span>
               </a>
             )}
@@ -772,7 +777,7 @@ export function ChatPanel({
       <header className="chat-header" ref={headerRef}>
         {onBack && (
           <button type="button" className="btn-back-chat" aria-label="Назад к списку" onClick={onBack}>
-            ←
+            <VellaraIcon name="back" size={20} />
           </button>
         )}
 
@@ -808,7 +813,7 @@ export function ChatPanel({
             title="Настройки группы"
             onClick={onOpenGroupSettings}
           >
-            ⚙
+            <VellaraIcon name="settings" size={18} />
           </button>
         )}
       </header>
@@ -850,7 +855,7 @@ export function ChatPanel({
           {showMessages && isRecording ? (
             <div className="voice-record-bar">
               <button type="button" className="btn-voice-cancel" title="Отмена" onClick={cancelRecording}>
-                ✕
+                <VellaraIcon name="close" size={18} />
               </button>
               <span className="record-dot" />
               <span className="record-timer">{formatVoiceDuration(recordingSeconds)}</span>
@@ -861,7 +866,7 @@ export function ChatPanel({
                 disabled={isSendingVoice}
                 onClick={() => void finishVoiceRecord()}
               >
-                {isSendingVoice ? '⏳' : '📤'}
+                {isSendingVoice ? '…' : <VellaraIcon name="upload" size={18} />}
               </button>
             </div>
           ) : showComposerArea ? (
@@ -891,11 +896,11 @@ export function ChatPanel({
                     <img src={pendingAttachment.previewUrl} alt="" className="attachment-thumb" />
                   ) : pendingAttachment.isImage ? (
                     <div className="attachment-item-photo-placeholder" aria-hidden="true">
-                      📷
+                      <VellaraIcon name="image" size={24} />
                     </div>
                   ) : (
                     <div className="attachment-doc">
-                      <span>📄</span>
+                      <VellaraIcon name="document" size={20} />
                       <span className="attachment-doc-name">{pendingAttachment.file.name}</span>
                     </div>
                   )}
@@ -905,7 +910,7 @@ export function ChatPanel({
                     title="Убрать"
                     onClick={clearAttachment}
                   >
-                    ✕
+                    <VellaraIcon name="close" size={14} />
                   </button>
                 </div>
               </div>
@@ -927,7 +932,7 @@ export function ChatPanel({
                 onFilePickerOpen?.();
               }}
             >
-              📎
+              <VellaraIcon name="attach" size={22} />
             </label>
             <div className="composer-field">
               {replyTo && !editingMessage && (
@@ -943,7 +948,7 @@ export function ChatPanel({
                     aria-label="Отменить ответ"
                     onClick={() => setReplyTo(null)}
                   >
-                    ✕
+                    <VellaraIcon name="close" size={16} />
                   </button>
                 </div>
               )}
@@ -960,7 +965,7 @@ export function ChatPanel({
                       setShowEmojiPicker((v) => !v);
                     }}
                   >
-                    😊
+                    <VellaraIcon name="smile" size={22} />
                   </button>
                   {showEmojiPicker && (
                     <EmojiPicker
@@ -992,7 +997,7 @@ export function ChatPanel({
             </div>
             {editingMessage ? (
               <button type="button" className="composer-btn" title="Отменить" onClick={cancelEdit}>
-                ✕
+                <VellaraIcon name="close" size={20} />
               </button>
             ) : canSendVoice && onSendVoice && !text.trim() && !pendingAttachment ? (
               <button
@@ -1001,7 +1006,7 @@ export function ChatPanel({
                 title="Голосовое сообщение"
                 onClick={() => void startVoiceRecord()}
               >
-                🎤
+                <VellaraIcon name="mic" size={22} />
               </button>
             ) : (
               <button
@@ -1010,7 +1015,7 @@ export function ChatPanel({
                 title="Отправить"
                 disabled={sending || (!editingMessage && !text.trim() && !pendingAttachment)}
               >
-                ➤
+                <VellaraIcon name="send" size={20} />
               </button>
             )}
           </form>

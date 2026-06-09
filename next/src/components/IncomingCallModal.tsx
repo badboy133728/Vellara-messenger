@@ -1,6 +1,7 @@
 'use client';
 
 import { ContactAvatar } from '@/components/ContactAvatar';
+import { VellaraIcon } from '@/components/icons/VellaraIcon';
 
 export function IncomingCallModal({
   caller,
@@ -28,13 +29,16 @@ export function IncomingCallModal({
         />
         <h2>{callerName}</h2>
         <p className="incoming-call-modal__hint">{isVideo ? 'Видеозвонок' : 'Голосовой звонок'}</p>
-        <p className="incoming-call-modal__ring">📞 Входящий вызов…</p>
+        <p className="incoming-call-modal__ring incoming-call-modal__ring--with-icon">
+          <VellaraIcon name="phone" size={18} />
+          Входящий вызов…
+        </p>
         <div className="incoming-call-modal__actions">
           <button type="button" className="call-ctrl call-ctrl--accept" title="Принять" onClick={onAccept}>
-            ✓
+            <VellaraIcon name="check" size={22} />
           </button>
           <button type="button" className="call-ctrl call-ctrl--reject" title="Отклонить" onClick={onReject}>
-            ✕
+            <VellaraIcon name="close" size={22} />
           </button>
         </div>
       </div>

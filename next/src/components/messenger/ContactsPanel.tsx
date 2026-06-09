@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { ContactAvatar } from '@/components/ContactAvatar';
+import { VellaraIcon } from '@/components/icons/VellaraIcon';
 import { useAuth } from '@/hooks/useAuth';
 import { useCall } from '@/hooks/useCallManager';
 import { UserProfilePanel } from './UserProfilePanel';
@@ -170,7 +171,7 @@ export function ContactsPanel({
         </header>
 
         <div className="contacts-search-bar">
-          <span aria-hidden="true">🔎</span>
+          <VellaraIcon name="search" size={18} className="contacts-search-icon" />
           <input
             type="search"
             className="contacts-search-input"
@@ -180,7 +181,7 @@ export function ContactsPanel({
           />
           {query && (
             <button type="button" className="contacts-search-clear" onClick={() => setQuery('')}>
-              ✕
+              <VellaraIcon name="close" size={16} />
             </button>
           )}
         </div>
@@ -221,7 +222,10 @@ export function ContactsPanel({
         {incoming.length > 0 && (
           <section className="contacts-section contacts-section--highlight">
             <div className="contacts-section__head">
-              <h2 className="contacts-section__title">🔔 Входящие заявки</h2>
+              <h2 className="contacts-section__title contacts-section__title--with-icon">
+                <VellaraIcon name="bell" size={18} />
+                Входящие заявки
+              </h2>
               <span className="contacts-count">{incoming.length}</span>
             </div>
             <ul className="contacts-list">
@@ -251,7 +255,7 @@ export function ContactsPanel({
                       title="Принять"
                       aria-label="Принять заявку"
                     >
-                      ✓
+                      <VellaraIcon name="check" size={18} />
                     </button>
                     <button
                       type="button"
@@ -260,7 +264,7 @@ export function ContactsPanel({
                       title="Отклонить"
                       aria-label="Отклонить заявку"
                     >
-                      ✕
+                      <VellaraIcon name="close" size={18} />
                     </button>
                   </div>
                 </li>
@@ -292,7 +296,7 @@ export function ContactsPanel({
                       aria-label="Голосовой звонок"
                       onClick={() => dial(c.id, 'voice')}
                     >
-                      📞
+                      <VellaraIcon name="phone" size={18} />
                     </button>
                     <button
                       type="button"
@@ -301,7 +305,7 @@ export function ContactsPanel({
                       aria-label="Видеозвонок"
                       onClick={() => dial(c.id, 'video')}
                     >
-                      📹
+                      <VellaraIcon name="video-call" size={18} />
                     </button>
                     <button
                       type="button"
@@ -310,7 +314,7 @@ export function ContactsPanel({
                       aria-label="Написать сообщение"
                       onClick={() => onStartChat(c.id)}
                     >
-                      💬
+                      <VellaraIcon name="chats" size={18} />
                     </button>
                     <button
                       type="button"
@@ -319,7 +323,7 @@ export function ContactsPanel({
                       aria-label="Удалить из контактов"
                       onClick={() => removeContact(c.id)}
                     >
-                      ✕
+                      <VellaraIcon name="close" size={18} />
                     </button>
                   </div>
                 </li>

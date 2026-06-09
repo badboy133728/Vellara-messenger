@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { ContactAvatar } from '@/components/ContactAvatar';
+import { VellaraIcon } from '@/components/icons/VellaraIcon';
 import { api } from '@/lib/api';
 
 type Contact = {
@@ -11,6 +12,8 @@ type Contact = {
   email?: string;
   avatar?: string | null;
 };
+
+type MemberTab = 'all' | 'selected';
 
 export function CreateGroupModal({
   contacts,
@@ -23,6 +26,7 @@ export function CreateGroupModal({
 }) {
   const [title, setTitle] = useState('');
   const [filter, setFilter] = useState('');
+  const [memberTab, setMemberTab] = useState<MemberTab>('all');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -33,13 +37,17 @@ export function CreateGroupModal({
   }, []);
 
   const filteredContacts = useMemo(() => {
+    let list = contacts;
+    if (memberTab === 'selected') {
+      list = list.filter((c) => selected.has(c.id));
+    }
     const q = filter.toLowerCase().trim();
-    if (!q) return contacts;
-    return contacts.filter((c) => {
+    if (!q) return list;
+    return list.filter((c) => {
       const hay = `${c.name} ${c.last_name} ${c.email ?? ''}`.toLowerCase();
       return hay.includes(q);
     });
-  }, [contacts, filter]);
+  }, [contacts, filter, memberTab, selected]);
 
   const toggle = (id: string) => {
     setSelected((prev) => {
@@ -74,16 +82,24 @@ export function CreateGroupModal({
 
   return (
     <div className="modal-backdrop" onClick={onClose} role="presentation">
-      <div className="modal modal--create-group" onClick={(e) => e.stopPropagation()} role="dialog" aria-labelledby="create-group-title">
+      <div
+        className="modal modal--create-group"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-labelledby="create-group-title"
+      >
         <header className="modal-card__head">
-          <h2 id="create-group-title">Новая группа</h2>
+          <h2 id="create-group-title">
+            <VellaraIcon name="contacts" size={20} className="modal-card__head-icon" />
+            Новая группа
+          </h2>
           <button type="button" className="modal-close" aria-label="Закрыть" onClick={onClose}>
-            ✕
+            <VellaraIcon name="close" size={18} />
           </button>
         </header>
 
         <form onSubmit={submit} className="modal-form modal-form--create-group">
-          <label className="modal-field">
+          <label className="modal-field modal-field--compact">
             <span>Название группы</span>
             <input
               value={title}
@@ -95,46 +111,73 @@ export function CreateGroupModal({
             />
           </label>
 
-          <label className="modal-field">
-            <span>Участники ({selected.size} выбрано)</span>
-            <input
-              type="search"
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              placeholder="Поиск по контактам…"
-            />
-          </label>
+          <input
+            className="search-input search-input--modal"
+            type="search"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Поиск по контактам…"
+          />
 
-          {!contacts.length ? (
-            <p className="modal-hint">Нет контактов для добавления</p>
-          ) : !filteredContacts.length ? (
-            <p className="modal-hint">Никого не найдено</p>
-          ) : (
-            <ul className="member-pick-list">
-              {filteredContacts.map((c) => (
-                <li key={c.id}>
-                  <label className="member-pick">
-                    <input
-                      type="checkbox"
-                      checked={selected.has(c.id)}
-                      onChange={() => toggle(c.id)}
-                    />
+          <div className="tabs tabs--modal">
+            <button
+              type="button"
+              className={memberTab === 'all' ? 'active' : ''}
+              onClick={() => setMemberTab('all')}
+            >
+              Все
+            </button>
+            <button
+              type="button"
+              className={memberTab === 'selected' ? 'active' : ''}
+              onClick={() => setMemberTab('selected')}
+            >
+              Выбранные
+              {selected.size > 0 && <span className="badge">{selected.size}</span>}
+            </button>
+          </div>
+
+          <div className="modal-member-list">
+            {!contacts.length ? (
+              <p className="modal-hint">Нет контактов для добавления</p>
+            ) : !filteredContacts.length ? (
+              <p className="modal-hint">{memberTab === 'selected' ? 'Никто не выбран' : 'Ничего не найдено'}</p>
+            ) : (
+              filteredContacts.map((c) => {
+                const isSelected = selected.has(c.id);
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    className={`conv-item conv-item--pick ${isSelected ? 'active' : ''}`}
+                    onClick={() => toggle(c.id)}
+                  >
                     <ContactAvatar
                       name={c.name}
                       lastName={c.last_name}
                       avatar={c.avatar}
                       size="sm"
                     />
-                    <span className="member-pick__name">
-                      {c.name} {c.last_name}
-                    </span>
-                  </label>
-                </li>
-              ))}
-            </ul>
-          )}
+                    <div className="conv-info">
+                      <div className="conv-row">
+                        <div className="conv-name">
+                          {c.name} {c.last_name}
+                        </div>
+                      </div>
+                      {c.email && <div className="conv-preview">{c.email}</div>}
+                    </div>
+                    {isSelected && (
+                      <span className="conv-pick-check" aria-hidden="true">
+                        <VellaraIcon name="check" size={16} />
+                      </span>
+                    )}
+                  </button>
+                );
+              })
+            )}
+          </div>
 
-          {error && <p className="auth-error">{error}</p>}
+          {error && <p className="auth-error modal-error">{error}</p>}
 
           <footer className="modal-card__foot">
             <button type="button" className="profile-btn profile-btn--outline" onClick={onClose}>

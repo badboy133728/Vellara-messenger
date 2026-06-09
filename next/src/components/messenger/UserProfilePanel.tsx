@@ -6,6 +6,7 @@ import { ImageLightbox } from '@/components/ImageLightbox';
 import { ProfileShell } from '@/components/ProfileShell';
 import { useCall } from '@/hooks/useCallManager';
 import { StatusDot } from '@/components/StatusDot';
+import { VellaraIcon } from '@/components/icons/VellaraIcon';
 import { resolveProfileMedia } from '@/lib/profileCover';
 
 type ProfileData = {
@@ -72,8 +73,9 @@ export function UserProfilePanel({
       <div className="profile-page profile-page--state">
         <div className="profile-state profile-state--error">
           <p>{error || 'Профиль не найден'}</p>
-          <button type="button" className="profile-btn profile-btn--outline" onClick={onBack}>
-            ← Назад
+          <button type="button" className="profile-btn profile-btn--outline profile-btn--with-icon" onClick={onBack}>
+            <VellaraIcon name="back" size={18} />
+            Назад
           </button>
         </div>
       </div>
@@ -90,14 +92,20 @@ export function UserProfilePanel({
       onAvatarZoom={() => setAvatarLightbox(true)}
       coverStyle={{ backgroundImage: media.coverBackgroundImage }}
       coverActions={
-        <button type="button" className="profile-btn profile-btn--ghost" onClick={onBack}>
-          ← Назад
+        <button type="button" className="profile-btn profile-btn--ghost profile-btn--with-icon" onClick={onBack}>
+          <VellaraIcon name="back" size={18} />
+          Назад
         </button>
       }
       subtitle={
         <>
           <StatusDot isOnline={data.is_online} lastSeenAt={data.last_seen_at} showLabel />
-          {data.email && <span className="profile-email">📧 {data.email}</span>}
+          {data.email && (
+            <span className="profile-email profile-email--with-icon">
+              <VellaraIcon name="mail" size={14} />
+              {data.email}
+            </span>
+          )}
         </>
       }
     >
@@ -122,43 +130,53 @@ export function UserProfilePanel({
         {data.is_owner ? (
           <button
             type="button"
-            className="profile-btn profile-btn--gold profile-btn--full"
+            className="profile-btn profile-btn--gold profile-btn--full profile-btn--with-icon"
             onClick={onOpenSettings}
           >
-            ⚙️ Редактировать профиль
+            <VellaraIcon name="settings" size={18} />
+            Редактировать профиль
           </button>
         ) : (
           <>
             {!isInContacts && onAddToContacts && (
-              <button type="button" className="profile-btn profile-btn--gold" onClick={onAddToContacts}>
-                📤 Добавить в контакты
+              <button type="button" className="profile-btn profile-btn--gold profile-btn--with-icon" onClick={onAddToContacts}>
+                <VellaraIcon name="user-plus" size={18} />
+                Добавить в контакты
               </button>
             )}
-            {isInContacts && <span className="profile-chip">✓ В ваших контактах</span>}
+            {isInContacts && (
+              <span className="profile-chip profile-chip--with-icon">
+                <VellaraIcon name="check" size={14} />
+                В ваших контактах
+              </span>
+            )}
             {onStartChat && (
               <button
                 type="button"
-                className="profile-btn profile-btn--outline"
+                className="profile-btn profile-btn--outline profile-btn--with-icon"
                 onClick={() => onStartChat(data.id)}
               >
-                💬 Написать
+                <VellaraIcon name="chats" size={18} />
+                Написать
               </button>
             )}
             {isInContacts && (
               <>
                 <button
                   type="button"
-                  className="profile-btn profile-btn--outline"
+                  className="profile-btn profile-btn--outline profile-btn--with-icon"
                   onClick={() => startCall(data.id, 'voice').catch(() => {})}
                 >
-                  📞 Позвонить
+                  <VellaraIcon name="phone" size={18} />
+                  Позвонить
                 </button>
                 <button
                   type="button"
-                  className="profile-btn profile-btn--outline"
+                  className="profile-btn profile-btn--outline profile-btn--with-icon"
                   onClick={() => startCall(data.id, 'video').catch(() => {})}
                 >
-                  📹 Видео
+                  <VellaraIcon name="video-call" size={18} />
+                  Видео
                 </button>
               </>
             )}

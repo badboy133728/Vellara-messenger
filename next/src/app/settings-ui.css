@@ -363,6 +363,12 @@
     touch-action: manipulation;
   }
 
+  .settings-page__back--with-icon {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
   .settings-page {
     padding-bottom: calc(24px + env(safe-area-inset-bottom, 0));
   }

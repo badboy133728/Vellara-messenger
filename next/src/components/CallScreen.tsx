@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { ContactAvatar } from '@/components/ContactAvatar';
+import { VellaraIcon } from '@/components/icons/VellaraIcon';
 import { useCall } from '@/hooks/useCallManager';
 
 export function CallScreen({
@@ -77,7 +78,7 @@ export function CallScreen({
           className={`call-ctrl ${muted ? 'active' : ''}`}
           onClick={toggleMute}
         >
-          {muted ? '🔇' : '🎤'}
+          <VellaraIcon name={muted ? 'mic-off' : 'mic'} size={22} />
         </button>
         {isVideo && (
           <button
@@ -85,21 +86,21 @@ export function CallScreen({
             className={`call-ctrl ${!videoEnabled ? 'active' : ''}`}
             onClick={toggleVideo}
           >
-            {videoEnabled ? '📹' : '🚫'}
+            <VellaraIcon name={videoEnabled ? 'video' : 'video-off'} size={22} />
           </button>
         )}
         {phase === 'incoming' ? (
           <>
             <button type="button" className="call-ctrl call-ctrl--accept" onClick={onAccept}>
-              ✓
+              <VellaraIcon name="check" size={22} />
             </button>
             <button type="button" className="call-ctrl call-ctrl--reject" onClick={onReject}>
-              ✕
+              <VellaraIcon name="close" size={22} />
             </button>
           </>
         ) : (
           <button type="button" className="call-ctrl call-ctrl--hangup" onClick={onHangup}>
-            📞
+            <VellaraIcon name="phone" size={22} />
           </button>
         )}
       </div>

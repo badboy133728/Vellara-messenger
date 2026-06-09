@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { VellaraIcon } from '@/components/icons/VellaraIcon';
 import { emojiCategories } from '@/lib/data/emojis';
 
 export function EmojiPicker({
@@ -47,7 +48,7 @@ export function EmojiPicker({
       <div className="emoji-picker-header">
         <span className="emoji-picker-title">Смайлики</span>
         <button type="button" className="emoji-picker-close" title="Закрыть" onClick={onClose}>
-          ✕
+          <VellaraIcon name="close" size={16} />
         </button>
       </div>
       <div className="emoji-tabs">

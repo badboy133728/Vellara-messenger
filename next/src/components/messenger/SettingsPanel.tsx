@@ -9,6 +9,7 @@ import { applyTheme } from '@/lib/applyTheme';
 import dynamic from 'next/dynamic';
 import { resolveProfileMedia, coverStyleFromMedia } from '@/lib/profileCover';
 import { AvatarImg } from '@/components/AvatarImg';
+import { VellaraIcon } from '@/components/icons/VellaraIcon';
 
 const AvatarCropModal = dynamic(
   () => import('@/components/AvatarCropModal').then((m) => ({ default: m.AvatarCropModal })),
@@ -173,8 +174,9 @@ export function SettingsPanel({
   const mobileBar =
     showMobileBack && onBack ? (
       <div className="settings-page__mobile-bar">
-        <button type="button" className="settings-page__back" onClick={onBack}>
-          ← Назад
+        <button type="button" className="settings-page__back settings-page__back--with-icon" onClick={onBack}>
+          <VellaraIcon name="back" size={18} />
+          Назад
         </button>
       </div>
     ) : null;

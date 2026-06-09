@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { useCall } from '@/hooks/useCallManager';
 import { ContactAvatar } from '@/components/ContactAvatar';
+import { VellaraIcon } from '@/components/icons/VellaraIcon';
 
 type CallItem = {
   id: number;
@@ -142,10 +143,10 @@ export function CallsPanel() {
                 {item.peer && (
                   <>
                     <button type="button" className="icon-btn" title="Голосовой" onClick={() => dial(item.peer!.id, 'voice')}>
-                      📞
+                      <VellaraIcon name="phone" size={18} />
                     </button>
                     <button type="button" className="icon-btn" title="Видео" onClick={() => dial(item.peer!.id, 'video')}>
-                      📹
+                      <VellaraIcon name="video-call" size={18} />
                     </button>
                   </>
                 )}
@@ -161,7 +162,7 @@ export function CallsPanel() {
             <header>
               <h2>Новый звонок</h2>
               <button type="button" className="modal-close" onClick={() => setShowNewCall(false)}>
-                ✕
+                <VellaraIcon name="close" size={18} />
               </button>
             </header>
             <input
@@ -178,10 +179,10 @@ export function CallsPanel() {
                   <ContactAvatar name={c.name} lastName={c.last_name} avatar={c.avatar} size="sm" />
                   <span>{c.name} {c.last_name}</span>
                   <button type="button" className="icon-btn" onClick={() => dial(c.id, 'voice')}>
-                    📞
+                    <VellaraIcon name="phone" size={18} />
                   </button>
                   <button type="button" className="icon-btn" onClick={() => dial(c.id, 'video')}>
-                    📹
+                    <VellaraIcon name="video-call" size={18} />
                   </button>
                 </li>
               ))}

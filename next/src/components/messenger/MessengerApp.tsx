@@ -345,11 +345,20 @@ function MessengerAppInner({ user }: { user: Profile }) {
   const refreshIncomingCount = useCallback(async () => {
     try {
       const inc = await api<{ name: string; last_name: string }[]>('/api/contacts/incoming');
-      incomingContactCountRef.current = inc.length;
-      setIncomingContactCount(inc.length);
+      const nextCount = inc.length;
+      const changed = incomingContactCountRef.current !== nextCount;
+      incomingContactCountRef.current = nextCount;
+      setIncomingContactCount(nextCount);
+      if (changed) {
+        setContactsRefreshKey((k) => k + 1);
+      }
     } catch {
+      const changed = incomingContactCountRef.current !== 0;
       incomingContactCountRef.current = 0;
       setIncomingContactCount(0);
+      if (changed) {
+        setContactsRefreshKey((k) => k + 1);
+      }
     }
   }, []);
 
@@ -375,6 +384,14 @@ function MessengerAppInner({ user }: { user: Profile }) {
 
   useEffect(() => {
     void refreshIncomingCount();
+  }, [refreshIncomingCount]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      void refreshIncomingCount();
+    }, 5000);
+    return () => window.clearInterval(timer);
   }, [refreshIncomingCount]);
 
   useUserRealtime(user.id, {

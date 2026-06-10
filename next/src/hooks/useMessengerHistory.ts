@@ -7,6 +7,10 @@ import {
   type MessengerNavState,
 } from '@/lib/messengerNav';
 
+export type NavigatePatch =
+  | Partial<MessengerNavState>
+  | ((prev: MessengerNavState) => Partial<MessengerNavState>);
+
 type Options = {
   isMobile: boolean;
   getState: () => MessengerNavState;
@@ -49,15 +53,21 @@ export function useMessengerHistory({ isMobile, getState, applyState }: Options)
   }, [isMobile]);
 
   const navigate = useCallback(
-    (mutate: () => void, mode: 'push' | 'replace' | 'none' = 'push') => {
+    (patch: NavigatePatch, mode: 'push' | 'replace' | 'none' = 'push') => {
+      const prev = getStateRef.current();
+      const delta = typeof patch === 'function' ? patch(prev) : patch;
+      const next: MessengerNavState = { ...prev, ...delta };
+
       if (!isMobile && mode === 'push') {
-        desktopStackRef.current.push({ ...getStateRef.current() });
+        desktopStackRef.current.push({ ...prev });
       } else if (!isMobile && mode === 'replace') {
         desktopStackRef.current = [];
       }
-      mutate();
-      if (mode === 'push') writeHistory('push');
-      else if (mode === 'replace') writeHistory('replace');
+
+      applyStateRef.current(next);
+
+      if (mode === 'push') writeHistory('push', next);
+      else if (mode === 'replace') writeHistory('replace', next);
     },
     [writeHistory, isMobile],
   );

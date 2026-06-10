@@ -181,6 +181,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
   };
 
   const applyNavState = useCallback((state: MessengerNavState) => {
+    navStateRef.current = state;
     setTab(state.tab);
     setActiveId(state.activeId);
     setProfileUserId(state.profileUserId);
@@ -197,10 +198,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
 
   const closeChat = useCallback(() => {
     suppressTabSwipeUntilRef.current = Date.now() + 600;
-    navigate(() => {
-      setActiveId(null);
-      setTab('chats');
-    }, 'replace');
+    navigate({ activeId: null, tab: 'chats' }, 'replace');
   }, [navigate]);
 
   useEffect(() => {
@@ -234,7 +232,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
         setTabAnim(direction);
         window.setTimeout(() => setTabAnim(null), 420);
       }
-      navigate(() => setTab(next), history);
+      navigate({ tab: next }, history);
     },
     [navigate, isMobile],
   );
@@ -540,10 +538,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
       if (!chat) return;
       const id = Number(chat);
       if (!Number.isFinite(id) || id <= 0) return;
-      navigate(() => {
-        setActiveId(id);
-        setTab('chats');
-      }, 'replace');
+      navigate({ activeId: id, tab: 'chats' }, 'replace');
     } catch {
       /* ignore malformed notification url */
     }
@@ -1097,7 +1092,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
           type="button"
           className={`account-card ${tab === 'dashboard' || tab === 'settings' ? 'active' : ''}`}
           aria-label="Профиль и настройки"
-          onClick={() => navigate(() => setTab('dashboard'), 'push')}
+          onClick={() => navigate({ tab: 'dashboard' }, 'push')}
         >
           <div className="account-card__avatar-wrap">
             <ContactAvatar
@@ -1149,15 +1144,12 @@ function MessengerAppInner({ user }: { user: Profile }) {
                   try {
                     const res = await api<{ id: number }>(`/api/chat/start/${uid}`);
                     await loadConversations();
-                    navigate(() => {
-                      setProfileUserId(null);
-                      setActiveId(res.id);
-                    }, 'push');
+                    navigate({ profileUserId: null, activeId: res.id }, 'push');
                   } catch (e) {
                     showToast(e instanceof Error ? e.message : 'Не удалось открыть чат');
                   }
                 }}
-                onOpenSettings={() => navigate(() => setTab('settings'), 'push')}
+                onOpenSettings={() => navigate({ tab: 'settings' }, 'push')}
               />
             </div>
           ) : tab === 'chats' ? (
@@ -1167,7 +1159,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
                 activeId={activeId}
                 loading={loading}
                 isMobile={isMobile}
-                onSelect={(id) => navigate(() => setActiveId(id), 'push')}
+                onSelect={(id) => navigate({ activeId: id }, 'push')}
                 onRefresh={loadConversations}
                 onPinConversation={pinConversation}
                 onArchiveConversation={archiveConversation}
@@ -1177,7 +1169,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
                     { id: string; name: string; last_name: string; email?: string; avatar?: string | null }[]
                   >('/api/contacts/my');
                   setContactsForGroup(list);
-                  navigate(() => setShowCreateGroup(true), 'push');
+                  navigate({ showCreateGroup: true }, 'push');
                 }}
               />
               {activeId ? (
@@ -1202,18 +1194,18 @@ function MessengerAppInner({ user }: { user: Profile }) {
                   onTyping={sendTyping}
                   onOpenGroupInfo={
                     activeConv?.type === 'group'
-                      ? () => navigate(() => setShowGroupPanel(true), 'push')
+                      ? () => navigate({ showGroupPanel: true }, 'push')
                       : undefined
                   }
                   onOpenPartnerProfile={
                     activeConv?.type !== 'group' && activeConv?.other_user?.id
                       ? () =>
-                          navigate(() => setProfileUserId(activeConv.other_user!.id), 'push')
+                          navigate({ profileUserId: activeConv.other_user!.id }, 'push')
                       : undefined
                   }
                   onOpenGroupSettings={
                     activeConv?.type === 'group' && activeConv.my_role === 'admin'
-                      ? () => navigate(() => setShowGroupSettings(true), 'push')
+                      ? () => navigate({ showGroupSettings: true }, 'push')
                       : undefined
                   }
                   onOpenChatActions={openChatActionsMenu}
@@ -1238,10 +1230,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
                 try {
                   const res = await api<{ id: number }>(`/api/chat/start/${contactId}`);
                   await loadConversations();
-                  navigate(() => {
-                    setActiveId(res.id);
-                    setTab('chats');
-                  }, 'push');
+                  navigate({ activeId: res.id, tab: 'chats' }, 'push');
                 } catch (e) {
                   showToast(e instanceof Error ? e.message : 'Не удалось открыть чат');
                 }
@@ -1260,7 +1249,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
               onBack={() => goBack()}
             />
           ) : tab === 'dashboard' ? (
-            <DashboardPanel onOpenSettings={() => navigate(() => setTab('settings'), 'push')} />
+            <DashboardPanel onOpenSettings={() => navigate({ tab: 'settings' }, 'push')} />
           ) : null}
           </div>
         </div>
@@ -1272,10 +1261,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
           onClose={() => goBack()}
           onCreated={async (id) => {
             await loadConversations();
-            navigate(() => {
-              setActiveId(id);
-              setTab('chats');
-            }, 'replace');
+            navigate({ activeId: id, tab: 'chats', showCreateGroup: false }, 'replace');
           }}
         />
       )}
@@ -1330,10 +1316,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
             );
           }}
           onLeft={() => {
-            navigate(() => {
-              setShowGroupPanel(false);
-              setActiveId(null);
-            }, 'replace');
+            navigate({ showGroupPanel: false, activeId: null }, 'replace');
             loadConversations();
           }}
         />
@@ -1382,10 +1365,10 @@ function MessengerAppInner({ user }: { user: Profile }) {
           className="msg-notification"
           onClick={() => {
             dismissNotification();
-            navigate(() => {
-              setTab('chats');
-              setActiveId(messageNotification.conversationId);
-            }, 'push');
+            navigate(
+              { tab: 'chats', activeId: messageNotification.conversationId },
+              'push',
+            );
           }}
         >
           <span className="msg-notification__icon">

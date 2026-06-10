@@ -349,7 +349,10 @@ export function FavoritesPanel({
         </p>
       </header>
 
-      <div className="favorites-feed" ref={feedRef}>
+      <div
+        className={`favorites-feed${!loading && displayItems.length === 0 ? ' favorites-feed--empty' : ''}`}
+        ref={feedRef}
+      >
         {loading ? (
           <p className="favorites-page__hint">Загрузка…</p>
         ) : displayItems.length === 0 ? (

@@ -125,16 +125,10 @@ export async function forwardMessageToConversations(
     for (let i = 0; i < sources.length; i++) {
       const src = sources[i]!;
       let messageContent = src.content ?? '';
-      if (i === 0 && trimmedCaption) {
-        if (messageContent && isE2EContent(messageContent)) {
-          // Подпись добавится на клиенте при перешифровке для целевого чата.
-          messageContent = trimmedCaption;
-        } else {
-          messageContent = messageContent
-            ? `${trimmedCaption}\n\n${messageContent}`
-            : trimmedCaption;
-        }
+      if (i === 0 && trimmedCaption && messageContent && !isE2EContent(messageContent)) {
+        messageContent = `${trimmedCaption}\n\n${messageContent}`;
       }
+      // E2E: подпись добавляется на клиенте при перешифровке; в БД остаётся исходный ciphertext.
 
       const insert: Record<string, unknown> = {
         conversation_id: targetConvId,

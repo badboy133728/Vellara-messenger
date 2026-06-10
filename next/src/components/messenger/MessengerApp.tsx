@@ -489,21 +489,30 @@ function MessengerAppInner({ user }: { user: Profile }) {
     async (convId: number): Promise<ConversationKeyContext | null> => {
       const conv = conversationsRef.current.find((c) => c.id === convId);
       const convType = conv?.type ?? 'private';
-      if (convType === 'group') {
+
+      const tryGroup = async (): Promise<ConversationKeyContext | null> => {
         try {
-          const data = await api<{ members: Array<{ id: string }> }>(
-            `/api/chat/groups/${convId}`,
-          );
+          const data = await api<{
+            members: Array<{ id: string; name: string; last_name: string; avatar: string | null }>;
+          }>(`/api/chat/groups/${convId}`);
           const memberIds = (data.members ?? []).map((m) => m.id);
           if (!memberIds.length) return null;
-          return buildE2EContextFromConversation(convId, convType, memberIds, user.id, null);
+          groupMembersRef.current = membersMapFromGroupApi(data.members ?? []);
+          return buildE2EContextFromConversation(convId, 'group', memberIds, user.id, null);
         } catch {
           return null;
         }
+      };
+
+      if (convType === 'group') {
+        return tryGroup();
       }
 
       const direct = getE2EContext(convId);
       if (direct) return direct;
+
+      const asGroup = await tryGroup();
+      if (asGroup) return asGroup;
 
       try {
         const data = await api<{ messages: FormattedMessage[] }>(
@@ -1070,6 +1079,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
 
         const decrypted: FormattedMessage[] = [];
         for (const [cid, batch] of byConv) {
+          await resolveE2EContextForConv(cid);
           decrypted.push(...(await decryptConvMessages(cid, batch)));
         }
 
@@ -1082,7 +1092,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
         });
       })();
     },
-    [activeId, decryptConvMessages],
+    [activeId, decryptConvMessages, resolveE2EContextForConv],
   );
 
   const forwardMessagesToChats = async (
@@ -1098,14 +1108,14 @@ function MessengerAppInner({ user }: { user: Profile }) {
       sources.find((m) => m.sender?.id && m.sender.id !== user.id)?.sender?.id ??
       null;
 
-    if (sourceConvId) {
-      const srcConv = conversationsRef.current.find((c) => c.id === sourceConvId);
-      if (srcConv?.type === 'group') {
-        await syncGroupMembers(sourceConvId);
-      }
-    }
+    const sourceCtx = sourceConvId
+      ? (await resolveE2EContextForConv(sourceConvId)) ??
+        (getE2EContext(sourceConvId, sourcePartnerHint) ?? null)
+      : null;
 
-    const sourceCtx = sourceConvId ? getE2EContext(sourceConvId, sourcePartnerHint) : null;
+    const decryptedSources = sourceConvId
+      ? await decryptConvMessages(sourceConvId, sources)
+      : sources;
 
     const result = await api<{ messages: FormattedMessage[] }>(
       '/api/chat/messages/forward',
@@ -1124,7 +1134,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
     if (forwarded.length) {
       const updates = await buildForwardReencryptUpdates(
         user.id,
-        sources,
+        decryptedSources,
         sourceCtx,
         forwarded,
         caption,

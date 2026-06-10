@@ -5,6 +5,7 @@ import { getConversationKey } from '@/lib/crypto/conversationKey';
 import {
   containsE2EContent,
   decryptBlob,
+  decryptText,
   encryptBlob,
   encryptFileName,
   isE2EContent,
@@ -43,13 +44,42 @@ function needsTargetEncryption(
   return Boolean(source.content?.trim() || source.file_path);
 }
 
-function sourcePlaintext(source: FormattedMessage): string {
+async function resolveSourcePlaintext(
+  userId: string,
+  source: FormattedMessage,
+  sourceCtx: ConversationKeyContext | null,
+): Promise<string> {
+  const cached = source.e2e_plaintext?.trim();
+  if (
+    cached &&
+    !isE2EContent(cached) &&
+    !containsE2EContent(cached) &&
+    !cached.startsWith('🔒')
+  ) {
+    return cached;
+  }
+
   const fromDisplay = displayMessageContent(source).trim();
-  if (fromDisplay && !isE2EContent(fromDisplay) && !containsE2EContent(fromDisplay)) {
+  if (
+    fromDisplay &&
+    !isE2EContent(fromDisplay) &&
+    !containsE2EContent(fromDisplay) &&
+    !fromDisplay.startsWith('🔒')
+  ) {
     return fromDisplay;
   }
-  if (source.e2e_plaintext?.trim()) return source.e2e_plaintext.trim();
-  return isE2EContent(fromDisplay) ? '' : fromDisplay;
+
+  if (sourceCtx && isE2EContent(source.content)) {
+    try {
+      const key = await getConversationKey(userId, sourceCtx);
+      return (await decryptText(key, source.content)).trim();
+    } catch {
+      /* retry below */
+    }
+  }
+
+  if (cached && !cached.startsWith('🔒')) return cached;
+  return '';
 }
 
 async function reencryptAttachment(
@@ -105,9 +135,21 @@ export async function buildForwardReencryptUpdates(
     const targetCtx = await resolveTargetCtx(fwd.conversation_id);
     if (!needsTargetEncryption(source, fwd, targetCtx)) continue;
 
-    let plaintext = sourcePlaintext(source);
+    let plaintext = await resolveSourcePlaintext(userId, source, sourceCtx);
     if (trimmedCaption && sourceId === firstSourceId) {
       plaintext = plaintext ? `${trimmedCaption}\n\n${plaintext}` : trimmedCaption;
+    }
+
+    if (
+      isE2EContent(source.content) &&
+      trimmedCaption &&
+      sourceId === firstSourceId &&
+      plaintext === trimmedCaption
+    ) {
+      throw new Error('Не удалось расшифровать сообщение для пересылки');
+    }
+    if (isE2EContent(source.content) && !plaintext.trim()) {
+      throw new Error('Не удалось расшифровать сообщение для пересылки');
     }
 
     const update: ForwardReencryptUpdate = {

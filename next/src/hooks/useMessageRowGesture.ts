@@ -4,7 +4,7 @@ import type { MouseEvent, TouchEvent } from 'react';
 type Point = { x: number; y: number };
 type SwipeDirection = 'ltr' | 'rtl';
 
-const RTL_REVEAL_MAX = 32;
+export const RTL_REVEAL_MAX = 32;
 const RTL_OPEN_THRESHOLD = 36;
 
 type Options = {
@@ -96,6 +96,7 @@ export function useMessageRowGesture({
     const direction = active.direction ?? swipeDirectionRef.current;
 
     if (active.swiping && direction === 'rtl' && rtlDistanceRef.current >= rtlSwipeThreshold) {
+      if (typeof navigator.vibrate === 'function') navigator.vibrate(10);
       onSwipeOpenActionsRef.current(
         { clientX: active.start.x, clientY: active.start.y },
         active.payload,
@@ -167,8 +168,6 @@ export function useMessageRowGesture({
 
       const absDx = Math.abs(dx);
       rtlDistanceRef.current = absDx;
-
-      if (!active.isMine) return;
 
       const magnitude = Math.min(absDx, RTL_REVEAL_MAX);
       swipeOffsetRef.current = magnitude;

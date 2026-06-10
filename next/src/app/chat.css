@@ -312,10 +312,6 @@
   position: relative;
 }
 
-.message-row--swiping {
-  overflow: hidden;
-}
-
 .message-row--mine {
   justify-content: flex-end;
 }
@@ -337,9 +333,19 @@
   outline-offset: 2px;
 }
 
-.message-row--swiping-rtl .message-row-body,
-.message-row--swiping-ltr .message-row-body {
+.message-row-body .message-bubble {
+  transition:
+    transform 0.22s cubic-bezier(0.32, 0.72, 0, 1),
+    opacity 0.22s cubic-bezier(0.32, 0.72, 0, 1),
+    box-shadow 0.22s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.message-row--swiping-rtl .message-row-body .message-bubble {
   transition: none;
+  transform: scale(calc(1 - 0.028 * var(--rtl-swipe, 0)));
+  opacity: calc(1 - 0.1 * var(--rtl-swipe, 0));
+  box-shadow: 0 0 0 calc(1px + 2px * var(--rtl-swipe, 0))
+    rgba(201, 168, 133, calc(0.12 + 0.28 * var(--rtl-swipe, 0)));
 }
 
 .message-row-actions {
@@ -359,17 +365,19 @@
   transition: opacity 0.15s ease;
 }
 
-.message-row-actions--rtl {
+.message-row-actions--mine {
   right: 8px;
   left: auto;
 }
 
-.message-row--swiping-rtl {
-  overflow: hidden;
+.message-row-actions--other {
+  left: 8px;
+  right: auto;
 }
 
-.message-row--swiping-rtl .message-row-actions--rtl {
-  opacity: 1;
+.message-row--swiping-rtl .message-row-actions {
+  opacity: calc(0.25 + 0.75 * var(--rtl-swipe, 0));
+  transform: translateY(-50%) scale(calc(0.85 + 0.15 * var(--rtl-swipe, 0)));
 }
 
 .message-row-action-btn {

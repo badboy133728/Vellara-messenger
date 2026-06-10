@@ -7,7 +7,7 @@ import { ImageLightbox } from '@/components/ImageLightbox';
 import { MessageContextMenu } from '@/components/MessageContextMenu';
 import { StatusDot } from '@/components/StatusDot';
 import { VoiceMessagePlayer } from '@/components/VoiceMessagePlayer';
-import { useMessageRowGesture } from '@/hooks/useMessageRowGesture';
+import { RTL_REVEAL_MAX, useMessageRowGesture } from '@/hooks/useMessageRowGesture';
 import { useSwipeBack } from '@/hooks/useSwipeGesture';
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
 import { storageDisplayUrl } from '@/lib/storage';
@@ -1131,7 +1131,12 @@ export function ChatPanel({
     return (
       <div
         key={item.key}
-        className={`message-row ${mine ? 'message-row--mine' : 'message-row--other'}${forwardSelectMode && canSelect ? ' message-row--selectable' : ''}${isSelected ? ' message-row--selected' : ''}${isSwipeActive && swipeDir === 'rtl' && mine ? ' message-row--swiping message-row--swiping-rtl' : ''}`}
+        className={`message-row ${mine ? 'message-row--mine' : 'message-row--other'}${forwardSelectMode && canSelect ? ' message-row--selectable' : ''}${isSelected ? ' message-row--selected' : ''}${isSwipeActive && swipeDir === 'rtl' ? ' message-row--swiping-rtl' : ''}`}
+        style={
+          isSwipeActive && swipeDir === 'rtl'
+            ? ({ '--rtl-swipe': String(swipeOffset / RTL_REVEAL_MAX) } as React.CSSProperties)
+            : undefined
+        }
         onClick={handleRowClick}
         onContextMenu={(e) => {
           if (forwardSelectMode) return;
@@ -1160,7 +1165,7 @@ export function ChatPanel({
         )}
         {!forwardSelectMode && isMobile && (
           <div
-            className="message-row-actions message-row-actions--rtl"
+            className={`message-row-actions ${mine ? 'message-row-actions--mine' : 'message-row-actions--other'}`}
             aria-hidden={swipeOffset < 8 || swipeDir !== 'rtl'}
           >
             <VellaraIcon name="more" size={18} />
@@ -1173,11 +1178,6 @@ export function ChatPanel({
         )}
         <div
           className={`message-row-body ${mine ? 'message-row-body--mine' : 'message-row-body--other'} ${isGroup ? 'message-row-body--group' : ''}`}
-          style={
-            swipeOffset > 0 && swipeDir === 'rtl' && mine
-              ? { transform: `translateX(-${swipeOffset}px)` }
-              : undefined
-          }
         >
           {showGroupSenderAvatar(m) && (
             <button type="button" className="msg-avatar-btn" title="Профиль">

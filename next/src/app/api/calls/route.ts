@@ -1,5 +1,5 @@
 import { requireAuth } from '@/lib/auth';
-import { broadcastToUser } from '@/lib/realtime/broadcast';
+import { publishUserCallSignaling } from '@/lib/realtime/publish';
 import { v4 as uuidv4 } from 'uuid';
 
 type PeerProfile = { name: string; last_name: string; avatar: string | null };
@@ -110,7 +110,7 @@ export async function POST(request: Request) {
   ]);
   const formatted = formatCall(call, profileMap, user.id);
 
-  await broadcastToUser(supabase, receiver_id, 'CallSignaling', {
+  await publishUserCallSignaling(receiver_id, {
     call_id: call.id,
     signal: 'call:start',
     payload: {

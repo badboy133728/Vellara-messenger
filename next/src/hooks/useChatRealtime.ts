@@ -6,26 +6,39 @@ import type {
   RealtimePostgresChangesPayload,
   REALTIME_SUBSCRIBE_STATES,
 } from '@supabase/supabase-js';
-import { createClient } from '@/lib/supabase/client';
-import { ensureRealtimeAuth, prepareRealtime } from '@/lib/realtime/ready';
 import { forwardPreviewFromStoredName } from '@/lib/chat/formatters';
 import type { FormattedMessage } from '@/lib/types';
+import {
+  parseRealtimeEnvelope,
+  realtimeDedupKey,
+  type RealtimeEventName,
+} from '@/lib/realtime/events';
+import { RealtimeDeduper } from '@/lib/realtime/dedup';
+import { getRealtimeManager } from '@/lib/realtime/manager';
+import { realtimeV2Enabled } from '@/lib/realtime/flags';
+
+export type RealtimeMeta = {
+  event: RealtimeEventName;
+  source: 'broadcast' | 'postgres';
+  dedupKey: string;
+  eventId: string;
+};
 
 type Handlers = {
-  onMessage?: (payload: FormattedMessage) => void;
-  onMessageUpdate?: (payload: FormattedMessage) => void;
-  onTyping?: (data: { conversation_id: number; user_id: string }) => void;
+  onMessage?: (payload: FormattedMessage, meta?: RealtimeMeta) => void;
+  onMessageUpdate?: (payload: FormattedMessage, meta?: RealtimeMeta) => void;
+  onTyping?: (data: { conversation_id: number; user_id: string }, meta?: RealtimeMeta) => void;
   onMemberRead?: (data: {
     conversation_id: number;
     user_id: string;
     last_read_at: string;
-  }) => void;
+  }, meta?: RealtimeMeta) => void;
   onMessagesRead?: (data: {
     conversation_id: number;
     reader_id: string;
     read_at: string;
     message_ids: number[];
-  }) => void;
+  }, meta?: RealtimeMeta) => void;
 };
 
 function rowToMessage(row: Record<string, unknown>, convId: number): FormattedMessage {
@@ -63,11 +76,41 @@ function rowToMessage(row: Record<string, unknown>, convId: number): FormattedMe
 }
 
 function subscribeConversation(
-  supabase: ReturnType<typeof createClient>,
+  supabase: ReturnType<typeof getRealtimeManager>['client'],
   convId: number,
   handlersRef: RefObject<Handlers>,
+  deduper: RealtimeDeduper,
   onUnhealthy?: () => void,
 ): RealtimeChannel {
+  const emit = <K extends RealtimeEventName>(
+    event: K,
+    source: 'broadcast' | 'postgres',
+    payload: unknown,
+    cb?: (data: unknown, meta: RealtimeMeta) => void,
+  ) => {
+    if (!cb) return;
+    if (source === 'broadcast') {
+      const envelope = parseRealtimeEnvelope(event, payload);
+      if (deduper.shouldSkip(envelope.meta.dedup_key)) return;
+      cb(envelope.data, {
+        event,
+        source,
+        dedupKey: envelope.meta.dedup_key,
+        eventId: envelope.meta.event_id,
+      });
+      return;
+    }
+    const typedPayload = payload as never;
+    const dedupKey = realtimeDedupKey(event, typedPayload);
+    if (deduper.shouldSkip(dedupKey)) return;
+    cb(payload, {
+      event,
+      source,
+      dedupKey,
+      eventId: `pg:${dedupKey}`,
+    });
+  };
+
   return supabase
     .channel(`conversation:${convId}`, {
       config: { broadcast: { self: false } },
@@ -76,8 +119,11 @@ function subscribeConversation(
       'postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${convId}` },
       (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
-        handlersRef.current?.onMessage?.(
-          rowToMessage(payload.new as Record<string, unknown>, convId),
+        emit('NewMessage', 'postgres', rowToMessage(payload.new as Record<string, unknown>, convId), (data, meta) =>
+          handlersRef.current?.onMessage?.(
+            data as FormattedMessage,
+            meta,
+          ),
         );
       },
     )
@@ -85,8 +131,15 @@ function subscribeConversation(
       'postgres_changes',
       { event: 'UPDATE', schema: 'public', table: 'messages', filter: `conversation_id=eq.${convId}` },
       (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
-        handlersRef.current?.onMessageUpdate?.(
+        emit(
+          'MessageUpdated',
+          'postgres',
           rowToMessage(payload.new as Record<string, unknown>, convId),
+          (data, meta) =>
+            handlersRef.current?.onMessageUpdate?.(
+              data as FormattedMessage,
+              meta,
+            ),
         );
       },
     )
@@ -99,57 +152,96 @@ function subscribeConversation(
 
         const lastReadAt = row.last_read_at as string | null;
         if (lastReadAt && lastReadAt !== (old?.last_read_at as string | null | undefined)) {
-          handlersRef.current?.onMemberRead?.({
+          emit('MemberRead', 'postgres', {
             conversation_id: convId,
             user_id: row.user_id as string,
             last_read_at: lastReadAt,
-          });
+          }, (data, meta) =>
+            handlersRef.current?.onMemberRead?.(
+              data as { conversation_id: number; user_id: string; last_read_at: string },
+              meta,
+            ),
+          );
         }
 
         const lastTypingAt = row.last_typing_at as string | null;
         if (lastTypingAt && lastTypingAt !== (old?.last_typing_at as string | null | undefined)) {
-          handlersRef.current?.onTyping?.({
+          emit('UserTyping', 'postgres', {
             conversation_id: convId,
             user_id: row.user_id as string,
-          });
+            last_typing_at: lastTypingAt,
+          }, (data, meta) =>
+            handlersRef.current?.onTyping?.(
+              data as { conversation_id: number; user_id: string },
+              meta,
+            ),
+          );
         }
       },
     )
-    .on('broadcast', { event: 'UserTyping' }, (message: { payload: { conversation_id: number; user_id: string } }) => {
-      handlersRef.current?.onTyping?.(message.payload);
+    .on('broadcast', { event: 'UserTyping' }, (message: { payload: unknown }) => {
+      emit('UserTyping', 'broadcast', message.payload, (data, meta) =>
+        handlersRef.current?.onTyping?.(
+          data as { conversation_id: number; user_id: string },
+          meta,
+        ),
+      );
     })
-    .on('broadcast', { event: 'NewMessage' }, (message: { payload: FormattedMessage }) => {
-      const msg = message.payload;
-      if (msg?.conversation_id === convId) {
-        handlersRef.current?.onMessage?.(msg);
-      }
+    .on('broadcast', { event: 'NewMessage' }, (message: { payload: unknown }) => {
+      const envelope = parseRealtimeEnvelope('NewMessage', message.payload);
+      const msg = envelope.data;
+      if (msg?.conversation_id !== convId) return;
+      if (deduper.shouldSkip(envelope.meta.dedup_key)) return;
+      handlersRef.current?.onMessage?.(msg, {
+        event: 'NewMessage',
+        source: 'broadcast',
+        dedupKey: envelope.meta.dedup_key,
+        eventId: envelope.meta.event_id,
+      });
+    })
+    .on('broadcast', { event: 'MessageUpdated' }, (message: { payload: unknown }) => {
+      const envelope = parseRealtimeEnvelope('MessageUpdated', message.payload);
+      const msg = envelope.data;
+      if (msg?.conversation_id !== convId) return;
+      if (deduper.shouldSkip(envelope.meta.dedup_key)) return;
+      handlersRef.current?.onMessageUpdate?.(msg, {
+        event: 'MessageUpdated',
+        source: 'broadcast',
+        dedupKey: envelope.meta.dedup_key,
+        eventId: envelope.meta.event_id,
+      });
     })
     .on(
       'broadcast',
       { event: 'MessagesRead' },
-      (message: {
-        payload: {
-          conversation_id: number;
-          reader_id: string;
-          read_at: string;
-          message_ids: number[];
-        };
-      }) => {
-        const data = message.payload;
+      (message: { payload: unknown }) => {
+        const envelope = parseRealtimeEnvelope('MessagesRead', message.payload);
+        const data = envelope.data;
         if (data?.conversation_id === convId) {
-          handlersRef.current?.onMessagesRead?.(data);
+          if (deduper.shouldSkip(envelope.meta.dedup_key)) return;
+          handlersRef.current?.onMessagesRead?.(data, {
+            event: 'MessagesRead',
+            source: 'broadcast',
+            dedupKey: envelope.meta.dedup_key,
+            eventId: envelope.meta.event_id,
+          });
         }
       },
     )
     .on(
       'broadcast',
       { event: 'MemberRead' },
-      (message: {
-        payload: { conversation_id: number; user_id: string; last_read_at: string };
-      }) => {
-        const data = message.payload;
+      (message: { payload: unknown }) => {
+        const envelope = parseRealtimeEnvelope('MemberRead', message.payload);
+        const data = envelope.data;
         if (data?.conversation_id === convId) {
-          handlersRef.current?.onMemberRead?.(data);
+          if (deduper.shouldSkip(envelope.meta.dedup_key)) return;
+          handlersRef.current?.onMemberRead?.(data, {
+            event: 'MemberRead',
+            source: 'broadcast',
+            dedupKey: envelope.meta.dedup_key,
+            eventId: envelope.meta.event_id,
+          });
         }
       },
     )
@@ -163,12 +255,15 @@ function subscribeConversation(
 /** Realtime for the open chat only (one channel + server JWT). */
 export function useActiveConversationRealtime(activeId: number | null, handlers: Handlers) {
   const handlersRef = useRef(handlers);
+  const deduperRef = useRef(new RealtimeDeduper());
   handlersRef.current = handlers;
 
   useEffect(() => {
-    if (!activeId) return;
+    if (!activeId || !realtimeV2Enabled) return;
 
-    const supabase = createClient();
+    const manager = getRealtimeManager();
+    const supabase = manager.client;
+    manager.retainAuthLifecycle();
     let disposed = false;
     let channel: RealtimeChannel | null = null;
     let binding = false;
@@ -177,7 +272,7 @@ export function useActiveConversationRealtime(activeId: number | null, handlers:
       if (disposed || binding) return;
       binding = true;
       try {
-        const authOk = await prepareRealtime(supabase, hardReconnect);
+        const authOk = await manager.prepare(hardReconnect);
         if (!authOk) {
           window.setTimeout(() => {
             if (!disposed) void bind(true);
@@ -189,7 +284,7 @@ export function useActiveConversationRealtime(activeId: number | null, handlers:
           await supabase.removeChannel(channel);
           channel = null;
         }
-        channel = subscribeConversation(supabase, activeId, handlersRef, () => {
+        channel = subscribeConversation(supabase, activeId, handlersRef, deduperRef.current, () => {
           if (!disposed) void bind(true);
         });
       } finally {
@@ -199,20 +294,9 @@ export function useActiveConversationRealtime(activeId: number | null, handlers:
 
     void bind(false);
 
-    const onVisible = () => {
-      if (document.visibilityState !== 'visible' || disposed) return;
-      void ensureRealtimeAuth(supabase);
-    };
-    document.addEventListener('visibilitychange', onVisible);
-
-    const refreshAuth = window.setInterval(() => {
-      void ensureRealtimeAuth(supabase);
-    }, 3 * 60 * 1000);
-
     return () => {
       disposed = true;
-      document.removeEventListener('visibilitychange', onVisible);
-      window.clearInterval(refreshAuth);
+      manager.releaseAuthLifecycle();
       if (channel) void supabase.removeChannel(channel);
     };
   }, [activeId]);
@@ -221,15 +305,19 @@ export function useActiveConversationRealtime(activeId: number | null, handlers:
 /** Lightweight list updates: broadcast + postgres INSERT per conversation. */
 export function useChatRealtime(conversationIdsKey: string, handlers: Pick<Handlers, 'onMessage'>) {
   const handlersRef = useRef(handlers);
+  const deduperRef = useRef(new RealtimeDeduper());
   handlersRef.current = handlers;
 
   useEffect(() => {
+    if (!realtimeV2Enabled) return;
     const conversationIds = conversationIdsKey
       ? conversationIdsKey.split(',').map((id) => Number(id))
       : [];
     if (conversationIds.length === 0) return;
 
-    const supabase = createClient();
+    const manager = getRealtimeManager();
+    const supabase = manager.client;
+    manager.retainAuthLifecycle();
     let disposed = false;
     const channels: RealtimeChannel[] = [];
     let binding = false;
@@ -238,7 +326,7 @@ export function useChatRealtime(conversationIdsKey: string, handlers: Pick<Handl
       if (disposed || binding) return;
       binding = true;
       try {
-        const authOk = await prepareRealtime(supabase, hardReconnect);
+        const authOk = await manager.prepare(hardReconnect);
         if (!authOk) {
           window.setTimeout(() => {
             if (!disposed) void bindAll(true);
@@ -261,15 +349,31 @@ export function useChatRealtime(conversationIdsKey: string, handlers: Pick<Handl
               'postgres_changes',
               { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${convId}` },
               (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
+                const msg = rowToMessage(payload.new as Record<string, unknown>, convId);
+                const dedupKey = realtimeDedupKey('NewMessage', msg as never);
+                if (deduperRef.current.shouldSkip(dedupKey)) return;
                 handlersRef.current.onMessage?.(
-                  rowToMessage(payload.new as Record<string, unknown>, convId),
+                  msg,
+                  {
+                    event: 'NewMessage',
+                    source: 'postgres',
+                    dedupKey,
+                    eventId: `pg:${dedupKey}`,
+                  },
                 );
               },
             )
-            .on('broadcast', { event: 'NewMessage' }, (message: { payload: FormattedMessage }) => {
-              const msg = message.payload;
+            .on('broadcast', { event: 'NewMessage' }, (message: { payload: unknown }) => {
+              const envelope = parseRealtimeEnvelope('NewMessage', message.payload);
+              const msg = envelope.data;
               if (msg?.conversation_id === convId) {
-                handlersRef.current.onMessage?.(msg);
+                if (deduperRef.current.shouldSkip(envelope.meta.dedup_key)) return;
+                handlersRef.current.onMessage?.(msg, {
+                  event: 'NewMessage',
+                  source: 'broadcast',
+                  dedupKey: envelope.meta.dedup_key,
+                  eventId: envelope.meta.event_id,
+                });
               }
             })
             .subscribe((status: `${REALTIME_SUBSCRIBE_STATES}`) => {
@@ -288,20 +392,9 @@ export function useChatRealtime(conversationIdsKey: string, handlers: Pick<Handl
 
     void bindAll(false);
 
-    const onVisible = () => {
-      if (document.visibilityState !== 'visible' || disposed) return;
-      void ensureRealtimeAuth(supabase);
-    };
-    document.addEventListener('visibilitychange', onVisible);
-
-    const refreshAuth = window.setInterval(() => {
-      void ensureRealtimeAuth(supabase);
-    }, 3 * 60 * 1000);
-
     return () => {
       disposed = true;
-      document.removeEventListener('visibilitychange', onVisible);
-      window.clearInterval(refreshAuth);
+      manager.releaseAuthLifecycle();
       channels.forEach((ch) => void supabase.removeChannel(ch));
     };
   }, [conversationIdsKey]);
@@ -314,18 +407,21 @@ export type ContactRequestPayload = {
 };
 
 export type UserRealtimeHandlers = {
-  onCallSignaling?: (payload: unknown) => void;
-  onContactsChanged?: () => void;
-  onContactRequest?: (payload: ContactRequestPayload) => void;
+  onCallSignaling?: (payload: unknown, meta?: RealtimeMeta) => void;
+  onContactsChanged?: (meta?: RealtimeMeta) => void;
+  onContactRequest?: (payload: ContactRequestPayload, meta?: RealtimeMeta) => void;
 };
 
 export function useUserRealtime(userId: string | undefined, handlers: UserRealtimeHandlers) {
   const handlersRef = useRef(handlers);
+  const deduperRef = useRef(new RealtimeDeduper());
   handlersRef.current = handlers;
 
   useEffect(() => {
-    if (!userId) return;
-    const supabase = createClient();
+    if (!userId || !realtimeV2Enabled) return;
+    const manager = getRealtimeManager();
+    const supabase = manager.client;
+    manager.retainAuthLifecycle();
     let disposed = false;
     let channel: RealtimeChannel | null = null;
     let binding = false;
@@ -334,7 +430,7 @@ export function useUserRealtime(userId: string | undefined, handlers: UserRealti
       if (disposed || binding) return;
       binding = true;
       try {
-        const authOk = await prepareRealtime(supabase, hardReconnect);
+        const authOk = await manager.prepare(hardReconnect);
         if (!authOk) {
           window.setTimeout(() => {
             if (!disposed) void bind(true);
@@ -344,24 +440,70 @@ export function useUserRealtime(userId: string | undefined, handlers: UserRealti
         if (disposed) return;
         if (channel) await supabase.removeChannel(channel);
 
-        const notifyContacts = () => handlersRef.current.onContactsChanged?.();
+        const notifyContacts = (meta?: RealtimeMeta) => handlersRef.current.onContactsChanged?.(meta);
 
         channel = supabase
           .channel(`user:${userId}`)
-          .on('broadcast', { event: 'CallSignaling' }, (message: { payload: unknown }) =>
-            handlersRef.current.onCallSignaling?.(message.payload),
-          )
+          .on('broadcast', { event: 'CallSignaling' }, (message: { payload: unknown }) => {
+            const envelope = parseRealtimeEnvelope('CallSignaling', message.payload);
+            if (deduperRef.current.shouldSkip(envelope.meta.dedup_key)) return;
+            handlersRef.current.onCallSignaling?.(envelope.data, {
+              event: 'CallSignaling',
+              source: 'broadcast',
+              dedupKey: envelope.meta.dedup_key,
+              eventId: envelope.meta.event_id,
+            });
+          })
           .on(
             'broadcast',
             { event: 'ContactRequestSent' },
-            (message: { payload: ContactRequestPayload }) => {
-              handlersRef.current.onContactRequest?.(message.payload ?? {});
-              notifyContacts();
+            (message: { payload: unknown }) => {
+              const envelope = parseRealtimeEnvelope('ContactRequestSent', message.payload);
+              if (deduperRef.current.shouldSkip(envelope.meta.dedup_key)) return;
+              handlersRef.current.onContactRequest?.(envelope.data ?? {}, {
+                event: 'ContactRequestSent',
+                source: 'broadcast',
+                dedupKey: envelope.meta.dedup_key,
+                eventId: envelope.meta.event_id,
+              });
+              notifyContacts({
+                event: 'ContactRequestSent',
+                source: 'broadcast',
+                dedupKey: envelope.meta.dedup_key,
+                eventId: envelope.meta.event_id,
+              });
             },
           )
-          .on('broadcast', { event: 'ContactRequestAccepted' }, notifyContacts)
-          .on('broadcast', { event: 'ContactRequestRejected' }, notifyContacts)
-          .on('broadcast', { event: 'ContactRemoved' }, notifyContacts)
+          .on('broadcast', { event: 'ContactRequestAccepted' }, (message: { payload: unknown }) => {
+            const envelope = parseRealtimeEnvelope('ContactRequestAccepted', message.payload);
+            if (deduperRef.current.shouldSkip(envelope.meta.dedup_key)) return;
+            notifyContacts({
+              event: 'ContactRequestAccepted',
+              source: 'broadcast',
+              dedupKey: envelope.meta.dedup_key,
+              eventId: envelope.meta.event_id,
+            });
+          })
+          .on('broadcast', { event: 'ContactRequestRejected' }, (message: { payload: unknown }) => {
+            const envelope = parseRealtimeEnvelope('ContactRequestRejected', message.payload);
+            if (deduperRef.current.shouldSkip(envelope.meta.dedup_key)) return;
+            notifyContacts({
+              event: 'ContactRequestRejected',
+              source: 'broadcast',
+              dedupKey: envelope.meta.dedup_key,
+              eventId: envelope.meta.event_id,
+            });
+          })
+          .on('broadcast', { event: 'ContactRemoved' }, (message: { payload: unknown }) => {
+            const envelope = parseRealtimeEnvelope('ContactRemoved', message.payload);
+            if (deduperRef.current.shouldSkip(envelope.meta.dedup_key)) return;
+            notifyContacts({
+              event: 'ContactRemoved',
+              source: 'broadcast',
+              dedupKey: envelope.meta.dedup_key,
+              eventId: envelope.meta.event_id,
+            });
+          })
           .on(
             'postgres_changes',
             {
@@ -372,10 +514,25 @@ export function useUserRealtime(userId: string | undefined, handlers: UserRealti
             },
             (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
               const row = payload.new as { user_id?: string; status?: string };
+              const dedupKey = `contact-request-sent:${row.user_id ?? 'unknown'}`;
+              if (deduperRef.current.shouldSkip(dedupKey)) return;
               if (row.status === 'pending' && row.user_id) {
-                handlersRef.current.onContactRequest?.({ sender_id: row.user_id });
+                handlersRef.current.onContactRequest?.(
+                  { sender_id: row.user_id },
+                  {
+                    event: 'ContactRequestSent',
+                    source: 'postgres',
+                    dedupKey,
+                    eventId: `pg:${dedupKey}`,
+                  },
+                );
               }
-              notifyContacts();
+              notifyContacts({
+                event: 'ContactRequestSent',
+                source: 'postgres',
+                dedupKey,
+                eventId: `pg:${dedupKey}`,
+              });
             },
           )
           .on(
@@ -388,7 +545,15 @@ export function useUserRealtime(userId: string | undefined, handlers: UserRealti
             },
             (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
               const row = payload.new as { status?: string };
-              if (row?.status === 'accepted') notifyContacts();
+              if (row?.status !== 'accepted') return;
+              const dedupKey = `contact-request-accepted:${userId}`;
+              if (deduperRef.current.shouldSkip(dedupKey)) return;
+              notifyContacts({
+                event: 'ContactRequestAccepted',
+                source: 'postgres',
+                dedupKey,
+                eventId: `pg:${dedupKey}`,
+              });
             },
           )
           .on(
@@ -399,7 +564,16 @@ export function useUserRealtime(userId: string | undefined, handlers: UserRealti
               table: 'user_contacts',
               filter: `contact_id=eq.${userId}`,
             },
-            notifyContacts,
+            () => {
+              const dedupKey = `contact-update:${userId}`;
+              if (deduperRef.current.shouldSkip(dedupKey)) return;
+              notifyContacts({
+                event: 'ContactRequestAccepted',
+                source: 'postgres',
+                dedupKey,
+                eventId: `pg:${dedupKey}`,
+              });
+            },
           )
           .on(
             'postgres_changes',
@@ -409,7 +583,16 @@ export function useUserRealtime(userId: string | undefined, handlers: UserRealti
               table: 'user_contacts',
               filter: `contact_id=eq.${userId}`,
             },
-            notifyContacts,
+            () => {
+              const dedupKey = `contact-removed:${userId}`;
+              if (deduperRef.current.shouldSkip(dedupKey)) return;
+              notifyContacts({
+                event: 'ContactRemoved',
+                source: 'postgres',
+                dedupKey,
+                eventId: `pg:${dedupKey}`,
+              });
+            },
           )
           .on(
             'postgres_changes',
@@ -419,7 +602,16 @@ export function useUserRealtime(userId: string | undefined, handlers: UserRealti
               table: 'user_contacts',
               filter: `user_id=eq.${userId}`,
             },
-            notifyContacts,
+            () => {
+              const dedupKey = `contact-removed:${userId}:self`;
+              if (deduperRef.current.shouldSkip(dedupKey)) return;
+              notifyContacts({
+                event: 'ContactRemoved',
+                source: 'postgres',
+                dedupKey,
+                eventId: `pg:${dedupKey}`,
+              });
+            },
           )
           .subscribe((status: `${REALTIME_SUBSCRIBE_STATES}`) => {
             if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
@@ -435,20 +627,9 @@ export function useUserRealtime(userId: string | undefined, handlers: UserRealti
 
     void bind(false);
 
-    const onVisible = () => {
-      if (document.visibilityState !== 'visible' || disposed) return;
-      void ensureRealtimeAuth(supabase);
-    };
-    document.addEventListener('visibilitychange', onVisible);
-
-    const refreshAuth = window.setInterval(() => {
-      void ensureRealtimeAuth(supabase);
-    }, 3 * 60 * 1000);
-
     return () => {
       disposed = true;
-      document.removeEventListener('visibilitychange', onVisible);
-      window.clearInterval(refreshAuth);
+      manager.releaseAuthLifecycle();
       if (channel) void supabase.removeChannel(channel);
     };
   }, [userId]);

@@ -6,8 +6,8 @@ import type {
   RealtimePostgresChangesPayload,
   REALTIME_SUBSCRIBE_STATES,
 } from '@supabase/supabase-js';
-import { createClient } from '@/lib/supabase/client';
-import { ensureRealtimeAuth, prepareRealtime } from '@/lib/realtime/ready';
+import { getRealtimeManager } from '@/lib/realtime/manager';
+import { realtimeV2Enabled } from '@/lib/realtime/flags';
 
 const PRESENCE_CHANNEL_LIMIT = 30;
 
@@ -21,10 +21,13 @@ export function usePresenceRealtime(
   const idsKey = [...new Set(userIds)].sort().slice(0, PRESENCE_CHANNEL_LIMIT).join(',');
 
   useEffect(() => {
+    if (!realtimeV2Enabled) return;
     const uniqueIds = idsKey ? idsKey.split(',') : [];
     if (uniqueIds.length === 0) return;
 
-    const supabase = createClient();
+    const manager = getRealtimeManager();
+    const supabase = manager.client;
+    manager.retainAuthLifecycle();
     let disposed = false;
     const channels: RealtimeChannel[] = [];
     let binding = false;
@@ -33,7 +36,7 @@ export function usePresenceRealtime(
       if (disposed || binding) return;
       binding = true;
       try {
-        const authOk = await prepareRealtime(supabase, hardReconnect);
+        const authOk = await manager.prepare(hardReconnect);
         if (!authOk) {
           window.setTimeout(() => {
             if (!disposed) void bindAll(true);
@@ -74,19 +77,9 @@ export function usePresenceRealtime(
 
     void bindAll(false);
 
-    const onVisible = () => {
-      if (document.visibilityState !== 'visible' || disposed) return;
-      void ensureRealtimeAuth(supabase);
-    };
-    document.addEventListener('visibilitychange', onVisible);
-    const refreshAuth = window.setInterval(() => {
-      void ensureRealtimeAuth(supabase);
-    }, 3 * 60 * 1000);
-
     return () => {
       disposed = true;
-      document.removeEventListener('visibilitychange', onVisible);
-      window.clearInterval(refreshAuth);
+      manager.releaseAuthLifecycle();
       channels.forEach((ch) => supabase.removeChannel(ch));
     };
   }, [idsKey]);

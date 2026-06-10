@@ -1,25 +1,22 @@
 'use client';
 
 import { useEffect } from 'react';
-import { createClient } from '@/lib/supabase/client';
-import { ensureRealtimeBoot, resetRealtimeBoot } from '@/lib/realtime/ready';
-import { reconnectSupabaseRealtime } from '@/lib/realtime/clientAuth';
+import { getRealtimeManager } from '@/lib/realtime/manager';
+import { realtimeV2Enabled } from '@/lib/realtime/flags';
 
 /** Один soft-connect при входе; hard-reconnect только после offline. */
 export function useRealtimeInit(userId: string | undefined) {
   useEffect(() => {
-    if (!userId) return;
-
-    const supabase = createClient();
+    if (!userId || !realtimeV2Enabled) return;
+    const manager = getRealtimeManager();
     let disposed = false;
 
-    void ensureRealtimeBoot(supabase);
+    void manager.prepare(false);
 
     const onOnline = () => {
       if (disposed) return;
-      resetRealtimeBoot();
-      void reconnectSupabaseRealtime(supabase).then(() => {
-        if (!disposed) void ensureRealtimeBoot(supabase);
+      void manager.reconnectAfterOnline().then(() => {
+        if (!disposed) void manager.prepare(false);
       });
     };
     window.addEventListener('online', onOnline);

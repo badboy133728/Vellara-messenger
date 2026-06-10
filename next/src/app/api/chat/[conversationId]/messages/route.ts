@@ -3,7 +3,7 @@ import { assertCanPostToConversation } from '@/lib/chat/channelAccess';
 import { ensureMember } from '@/lib/chat/conversations';
 import { formatMessagesWithReplies } from '@/lib/chat/messageList';
 import { canManageGroup } from '@/lib/chat/permissions';
-import { broadcastToConversation } from '@/lib/realtime/broadcast';
+import { publishConversationMessage } from '@/lib/realtime/publish';
 import { notifyConversationPush } from '@/lib/push/notify';
 import {
   applyMessageAttachment,
@@ -224,7 +224,7 @@ export async function POST(
     profileMap,
     admin,
   );
-  broadcastToConversation(supabase, convId, 'NewMessage', {
+  await publishConversationMessage({
     ...formatted,
     conversation_id: convId,
   });

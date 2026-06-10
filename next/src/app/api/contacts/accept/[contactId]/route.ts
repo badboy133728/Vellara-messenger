@@ -1,5 +1,5 @@
 import { requireAuth } from '@/lib/auth';
-import { broadcastToUser } from '@/lib/realtime/broadcast';
+import { publishUserContactRequestAccepted } from '@/lib/realtime/publish';
 
 export async function POST(
   _request: Request,
@@ -57,7 +57,7 @@ export async function POST(
     }
   }
 
-  await broadcastToUser(supabase, senderId, 'ContactRequestAccepted', {
+  await publishUserContactRequestAccepted(senderId, {
     contact_id: user.id,
     name: profile.name,
   });

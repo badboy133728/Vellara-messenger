@@ -2,7 +2,7 @@ import { requireAuth } from '@/lib/auth';
 import { ensureMember } from '@/lib/chat/conversations';
 import { formatMessagesWithReplies } from '@/lib/chat/messageList';
 import { isValidUserMessagePath } from '@/lib/chat/messageAttachment';
-import { broadcastToConversation } from '@/lib/realtime/broadcast';
+import { publishConversationMessageUpdated } from '@/lib/realtime/publish';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { MessageRow, Profile } from '@/lib/types';
 
@@ -81,7 +81,7 @@ export async function POST(request: Request) {
   for (const msg of formatted) {
     const row = updatedRows.find((r) => r.id === msg.id);
     if (!row) continue;
-    broadcastToConversation(supabase, row.conversation_id, 'NewMessage', {
+    await publishConversationMessageUpdated({
       ...msg,
       conversation_id: row.conversation_id,
     });

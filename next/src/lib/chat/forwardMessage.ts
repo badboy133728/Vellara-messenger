@@ -3,7 +3,7 @@ import { ensureMember } from '@/lib/chat/conversations';
 import { unhideConversationForRecipients } from '@/lib/chat/unhideMembers';
 import { formatMessagesWithReplies } from '@/lib/chat/messageList';
 import { canManageGroup } from '@/lib/chat/permissions';
-import { broadcastToConversation } from '@/lib/realtime/broadcast';
+import { publishConversationMessage } from '@/lib/realtime/publish';
 import { notifyConversationPush } from '@/lib/push/notify';
 import { isE2EContent } from '@/lib/crypto/message';
 import { copyMessageFile } from '@/lib/storage-server';
@@ -200,7 +200,7 @@ export async function forwardMessageToConversations(
     const convId = created.find((c) => c.id === msg.id)?.conversation_id;
     if (!convId) continue;
     const row = created.find((c) => c.id === msg.id)!;
-    broadcastToConversation(supabase, convId, 'NewMessage', {
+    await publishConversationMessage({
       ...msg,
       conversation_id: convId,
     });

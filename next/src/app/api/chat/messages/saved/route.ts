@@ -2,7 +2,7 @@ import { requireAuth } from '@/lib/auth';
 import { formatMessage } from '@/lib/chat/formatters';
 import { formatMessagesWithReplies } from '@/lib/chat/messageList';
 import { getOrCreateSavedConversation } from '@/lib/chat/savedConversation';
-import { broadcastToConversation } from '@/lib/realtime/broadcast';
+import { publishConversationMessage } from '@/lib/realtime/publish';
 import { applyMessageAttachment } from '@/lib/chat/messageAttachment';
 type UploadedPreparedFile = {
   mode: 'uploaded';
@@ -222,12 +222,14 @@ export async function POST(request: Request) {
   const profileMap = new Map([[profile.id, profile]]);
   const formatted = await formatMessagesWithReplies(created, profileMap, admin);
 
-  if (formatted[0]) {
-    broadcastToConversation(supabase, convId, 'NewMessage', {
-      ...formatted[0],
-      conversation_id: convId,
-    });
-  }
+  await Promise.all(
+    formatted.map((msg) =>
+      publishConversationMessage({
+        ...msg,
+        conversation_id: convId,
+      }),
+    ),
+  );
 
   return Response.json(
     {

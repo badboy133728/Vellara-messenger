@@ -1,5 +1,5 @@
 import { requireAuth } from '@/lib/auth';
-import { broadcastToUser } from '@/lib/realtime/broadcast';
+import { publishUserContactRequestRejected } from '@/lib/realtime/publish';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export async function POST(
@@ -31,8 +31,8 @@ export async function POST(
   }
 
   await Promise.all([
-    broadcastToUser(supabase, user.id, 'ContactRequestRejected', { sender_id: senderId }),
-    broadcastToUser(supabase, senderId, 'ContactRequestRejected', { contact_id: user.id }),
+    publishUserContactRequestRejected(user.id, { sender_id: senderId }),
+    publishUserContactRequestRejected(senderId, { contact_id: user.id }),
   ]);
 
   return Response.json({ message: 'Заявка отклонена' });

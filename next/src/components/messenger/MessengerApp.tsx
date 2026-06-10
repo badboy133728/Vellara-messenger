@@ -44,6 +44,7 @@ import { useLastSeenHeartbeat } from '@/hooks/useLastSeenHeartbeat';
 import { usePushActivePing } from '@/hooks/usePushActivePing';
 import { usePresenceRealtime } from '@/hooks/usePresenceRealtime';
 import { useRealtimeInit } from '@/hooks/useRealtimeInit';
+import { useRealtimeMessageReducer } from '@/hooks/useRealtimeMessageReducer';
 import { isOnline } from '@/lib/presence';
 import { CallScreen } from '@/components/CallScreen';
 import { IncomingCallModal } from '@/components/IncomingCallModal';
@@ -308,7 +309,6 @@ function MessengerAppInner({ user }: { user: Profile }) {
   const userRef = useRef(user);
   const membersReadRef = useRef(membersRead);
   const typingTimeoutRef = useRef<number | null>(null);
-  const recentMsgIdsRef = useRef(new Map<number, number>());
   const lastTypingSentRef = useRef(0);
   const loadMessagesRef = useRef<
     (convId: number, opts?: { silent?: boolean; fromCache?: boolean }) => Promise<void>
@@ -847,95 +847,21 @@ function MessengerAppInner({ user }: { user: Profile }) {
     return () => window.clearInterval(readTimer);
   }, [activeId, applyGroupRead]);
 
-  const handleListRealtimeMessage = useCallback(
-    (msg: FormattedMessage) => {
-      const convId = msg.conversation_id;
-      if (!convId) return;
-
-      const now = Date.now();
-      const seenAt = recentMsgIdsRef.current.get(msg.id);
-      if (seenAt != null && now - seenAt < 5000) return;
-      recentMsgIdsRef.current.set(msg.id, now);
-      if (recentMsgIdsRef.current.size > 300) {
-        for (const [id, ts] of recentMsgIdsRef.current) {
-          if (now - ts > 10_000) recentMsgIdsRef.current.delete(id);
-        }
-      }
-
-      const fromOther = msg.user_id !== user.id;
-      const isSystem = (msg.message_type || 'user') === 'system';
-      const viewing = isViewingConversation(convId);
-      const previewMsg = enrichMessageSender(msg, groupMembersRef.current, userRef.current);
-
-      setConversations((prev) => {
-        if (!prev.some((c) => c.id === convId)) {
-          loadConversations().catch(() => {});
-          return prev;
-        }
-        return patchConversationFromMessage(prev, convId, previewMsg, {
-          incrementUnread: fromOther && !viewing && !isSystem,
-          currentUserId: user.id,
-        });
-      });
-
-      if (fromOther && !isSystem && !viewing) {
-        notifyIncomingMessage(previewMsg);
-      }
-
-      if (viewing && activeIdRef.current === convId) {
-        setMessages((prev) => {
-          const enriched = enrichMessageReply(previewMsg, prev);
-          if (prev.some((m) => m.id === enriched.id)) return prev;
-          return applyGroupRead([...prev, enriched], membersReadRef.current, convId);
-        });
-        api(`/api/chat/${convId}/messages/read`, { method: 'POST' }).catch(() => {});
-        setConversationReadLocal(convId);
-      }
-
-      void (async () => {
-        let displayMsg = previewMsg;
-        if (!isSystem) {
-          const [decrypted] = await decryptConvMessages(convId, [displayMsg]);
-          displayMsg = decrypted ?? displayMsg;
-        }
-
-        setConversations((prev) => {
-          if (!prev.some((c) => c.id === convId)) return prev;
-          return patchConversationFromMessage(prev, convId, displayMsg, {
-            incrementUnread: false,
-            currentUserId: user.id,
-          });
-        });
-
-        if (viewing && activeIdRef.current === convId) {
-          setMessages((prev) => {
-            const enriched = enrichMessageReply(displayMsg, prev);
-            const idx = prev.findIndex((m) => m.id === enriched.id);
-            if (idx < 0) return prev;
-            const next = [...prev];
-            next[idx] = {
-              ...next[idx],
-              ...enriched,
-              forwarded_from: enriched.forwarded_from ?? next[idx]?.forwarded_from,
-              forwarded_from_id: enriched.forwarded_from_id ?? next[idx]?.forwarded_from_id,
-              e2e_plaintext: enriched.e2e_plaintext ?? next[idx]?.e2e_plaintext,
-              e2e_file_name: enriched.e2e_file_name ?? next[idx]?.e2e_file_name,
-            };
-            return applyGroupRead(next, membersReadRef.current, convId);
-          });
-          return;
-        }
-      })();
-    },
-    [
-      user.id,
-      isViewingConversation,
-      loadConversations,
-      notifyIncomingMessage,
-      setConversationReadLocal,
-      decryptConvMessages,
-    ],
-  );
+  const handleListRealtimeMessage = useRealtimeMessageReducer({
+    userId: user.id,
+    isViewingConversation,
+    loadConversations,
+    notifyIncomingMessage,
+    setConversationReadLocal,
+    decryptConvMessages,
+    setConversations,
+    setMessages,
+    applyGroupRead,
+    membersReadRef,
+    activeIdRef,
+    groupMembersRef,
+    userRef,
+  });
 
   useChatRealtime(realtimeConvIdsKey, {
     onMessage: handleListRealtimeMessage,

@@ -1,5 +1,5 @@
 import { requireAuth } from '@/lib/auth';
-import { broadcastToUser } from '@/lib/realtime/broadcast';
+import { publishUserContactRemoved } from '@/lib/realtime/publish';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export async function DELETE(
@@ -25,8 +25,8 @@ export async function DELETE(
   await admin.from('user_contacts').delete().eq('user_id', contactId).eq('contact_id', user.id);
 
   await Promise.all([
-    broadcastToUser(supabase, contactId, 'ContactRemoved', { contact_id: user.id }),
-    broadcastToUser(supabase, user.id, 'ContactRemoved', { contact_id: contactId }),
+    publishUserContactRemoved(contactId, { contact_id: user.id }),
+    publishUserContactRemoved(user.id, { contact_id: contactId }),
   ]);
 
   return Response.json({ message: 'Контакт удалён' });

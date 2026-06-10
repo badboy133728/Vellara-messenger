@@ -1,5 +1,5 @@
 import { requireAuth } from '@/lib/auth';
-import { broadcastToUser } from '@/lib/realtime/broadcast';
+import { publishUserCallSignaling } from '@/lib/realtime/publish';
 
 export async function POST(
   _request: Request,
@@ -26,7 +26,7 @@ export async function POST(
     .select('*')
     .single();
 
-  await broadcastToUser(supabase, call.caller_id, 'CallSignaling', {
+  await publishUserCallSignaling(call.caller_id, {
     call_id: callId,
     signal: 'call:accepted',
     payload: { room_id: call.room_id, call: updated },

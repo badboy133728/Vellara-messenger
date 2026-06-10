@@ -1,5 +1,5 @@
 import { requireAuth } from '@/lib/auth';
-import { broadcastToUser } from '@/lib/realtime/broadcast';
+import { publishUserCallSignaling } from '@/lib/realtime/publish';
 
 export async function POST(
   _request: Request,
@@ -35,7 +35,7 @@ export async function POST(
     .single();
 
   const peerId = call.caller_id === user.id ? call.receiver_id : call.caller_id;
-  await broadcastToUser(supabase, peerId, 'CallSignaling', {
+  await publishUserCallSignaling(peerId, {
     call_id: callId,
     signal: 'call:end',
     payload: { room_id: call.room_id, call: updated },

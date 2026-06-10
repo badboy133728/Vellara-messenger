@@ -1,6 +1,9 @@
 import { requireAuth } from '@/lib/auth';
 import { ensureMember } from '@/lib/chat/conversations';
-import { broadcastToConversation } from '@/lib/realtime/broadcast';
+import {
+  publishConversationMemberRead,
+  publishConversationMessagesRead,
+} from '@/lib/realtime/publish';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export async function POST(
@@ -33,7 +36,7 @@ export async function POST(
       .eq('conversation_id', convId)
       .eq('user_id', user.id);
 
-    broadcastToConversation(supabase, convId, 'MemberRead', {
+    await publishConversationMemberRead({
       conversation_id: convId,
       user_id: user.id,
       last_read_at: now,
@@ -79,7 +82,7 @@ export async function POST(
     messageIds.length > 0 ? messageIds : (readPartnerMessages ?? []).map((m) => m.id as number);
 
   if (notifyIds.length > 0) {
-    broadcastToConversation(supabase, convId, 'MessagesRead', {
+    await publishConversationMessagesRead({
       conversation_id: convId,
       reader_id: user.id,
       read_at: now,

@@ -1,6 +1,6 @@
 import { requireAuth } from '@/lib/auth';
 import { notifyContactRequestPush } from '@/lib/push/notify';
-import { broadcastToUser } from '@/lib/realtime/broadcast';
+import { publishUserContactRequestSent } from '@/lib/realtime/publish';
 
 export async function POST(request: Request) {
   const auth = await requireAuth();
@@ -37,7 +37,7 @@ export async function POST(request: Request) {
 
   const senderName = `${profile.name} ${profile.last_name}`.trim();
 
-  await broadcastToUser(supabase, contact_id, 'ContactRequestSent', {
+  await publishUserContactRequestSent(contact_id, {
     sender_id: user.id,
     name: profile.name,
     last_name: profile.last_name,

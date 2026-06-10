@@ -389,3 +389,99 @@ alter table public.push_subscriptions
 
 create index if not exists push_subscriptions_active_idx
   on public.push_subscriptions (user_id, last_active_at desc);
+
+-- ========== 011_message_forward.sql ==========
+alter table public.messages
+  add column if not exists forwarded_from_id bigint references public.messages (id) on delete set null,
+  add column if not exists forwarded_from_conversation_id bigint references public.conversations (id) on delete set null,
+  add column if not exists forwarded_from_sender_name text;
+
+create index if not exists messages_forwarded_from_idx on public.messages (forwarded_from_id);
+
+-- ========== 012_conversation_pin_hide.sql ==========
+alter table public.conversation_members
+  add column if not exists is_pinned boolean not null default false,
+  add column if not exists pinned_at timestamptz,
+  add column if not exists hidden_at timestamptz;
+
+create index if not exists conversation_members_user_pinned_idx
+  on public.conversation_members (user_id, is_pinned desc, pinned_at desc nulls last);
+
+create index if not exists conversation_members_user_hidden_idx
+  on public.conversation_members (user_id, hidden_at);
+
+-- ========== 013_saved_conversation.sql ==========
+comment on column public.conversations.type is 'private | group | saved (личные заметки пользователя)';
+
+-- ========== 014_messages_storage_private.sql ==========
+grant execute on function public.can_read_message_file(text, uuid) to authenticated;
+
+-- ========== 015_e2e_encryption.sql ==========
+alter table public.profiles
+  add column if not exists identity_public_key text;
+
+create table if not exists public.conversation_key_envelopes (
+  conversation_id bigint not null references public.conversations (id) on delete cascade,
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  envelope text not null,
+  key_version integer not null default 1,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (conversation_id, user_id)
+);
+
+create index if not exists conversation_key_envelopes_conv_idx
+  on public.conversation_key_envelopes (conversation_id);
+
+alter table public.conversation_key_envelopes enable row level security;
+
+drop policy if exists "e2e_envelopes_select_own" on public.conversation_key_envelopes;
+create policy "e2e_envelopes_select_own" on public.conversation_key_envelopes
+for select using (
+  user_id = auth.uid()
+  and public.is_conversation_member(conversation_id, auth.uid())
+);
+
+drop policy if exists "e2e_envelopes_upsert_member" on public.conversation_key_envelopes;
+create policy "e2e_envelopes_upsert_member" on public.conversation_key_envelopes
+for insert with check (
+  public.is_conversation_member(conversation_id, auth.uid())
+);
+
+drop policy if exists "e2e_envelopes_update_member" on public.conversation_key_envelopes;
+create policy "e2e_envelopes_update_member" on public.conversation_key_envelopes
+for update using (
+  public.is_conversation_member(conversation_id, auth.uid())
+);
+
+grant select on public.conversation_key_envelopes to authenticated;
+grant insert, update on public.conversation_key_envelopes to authenticated;
+
+-- ========== 016_identity_key_backup.sql ==========
+alter table public.profiles
+  add column if not exists identity_key_backup text;
+
+-- ========== 017_channels.sql ==========
+alter table public.conversations
+  add column if not exists allow_comments boolean not null default false;
+
+alter table public.conversations
+  add column if not exists description text;
+
+comment on column public.conversations.type is 'private | group | saved | channel';
+
+-- ========== 018_realtime_v2_hardening.sql ==========
+alter table public.user_contacts replica identity full;
+alter table public.call_logs replica identity full;
+
+do $$
+begin
+  alter publication supabase_realtime add table public.profiles;
+exception when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  alter publication supabase_realtime add table public.user_contacts;
+exception when duplicate_object then null;
+end $$;

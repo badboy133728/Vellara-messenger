@@ -2,6 +2,12 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 type PoolEntry = { channel: RealtimeChannel; ready: Promise<boolean> };
+export type RealtimePublishResult = {
+  ok: boolean;
+  topic: string;
+  event: string;
+  reason?: 'subscribe_timeout' | 'send_failed';
+};
 
 const channelPool = new Map<string, PoolEntry>();
 
@@ -32,33 +38,40 @@ function getPooledChannel(topic: string): PoolEntry {
   return entry;
 }
 
-function sendPooled(topic: string, event: string, payload: Record<string, unknown>) {
-  void (async () => {
-    const { channel, ready } = getPooledChannel(topic);
-    if (!(await ready)) return;
-    try {
-      await channel.send({ type: 'broadcast', event, payload });
-    } catch {
-      channelPool.delete(topic);
-    }
-  })();
+export async function publishRealtimeBroadcast(
+  topic: string,
+  event: string,
+  payload: Record<string, unknown>,
+): Promise<RealtimePublishResult> {
+  const { channel, ready } = getPooledChannel(topic);
+  if (!(await ready)) {
+    channelPool.delete(topic);
+    return { ok: false, topic, event, reason: 'subscribe_timeout' };
+  }
+  try {
+    await channel.send({ type: 'broadcast', event, payload });
+    return { ok: true, topic, event };
+  } catch {
+    channelPool.delete(topic);
+    return { ok: false, topic, event, reason: 'send_failed' };
+  }
 }
 
 /** Быстрый fan-out: не блокирует ответ API, канал переиспользуется на warm-инстансе. */
-export function broadcastToConversation(
+export async function broadcastToConversation(
   _supabase: unknown,
   conversationId: number,
   event: string,
   payload: Record<string, unknown>,
 ) {
-  sendPooled(`conversation:${conversationId}`, event, payload);
+  return publishRealtimeBroadcast(`conversation:${conversationId}`, event, payload);
 }
 
-export function broadcastToUser(
+export async function broadcastToUser(
   _supabase: unknown,
   userId: string,
   event: string,
   payload: Record<string, unknown>,
 ) {
-  sendPooled(`user:${userId}`, event, payload);
+  return publishRealtimeBroadcast(`user:${userId}`, event, payload);
 }

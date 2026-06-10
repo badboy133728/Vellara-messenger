@@ -1,6 +1,6 @@
 import { requireAuth } from '@/lib/auth';
 import { ensureMember } from '@/lib/chat/conversations';
-import { broadcastToConversation } from '@/lib/realtime/broadcast';
+import { publishConversationTyping } from '@/lib/realtime/publish';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 const TYPING_TTL_MS = 6000;
@@ -63,9 +63,10 @@ export async function POST(
   const payload = {
     conversation_id: convId,
     user_id: user.id,
+    last_typing_at: now,
   };
 
-  broadcastToConversation(supabase, convId, 'UserTyping', payload);
+  await publishConversationTyping(payload);
 
   return Response.json({ ok: true });
 }

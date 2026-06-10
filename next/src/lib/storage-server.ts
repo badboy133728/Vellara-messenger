@@ -1,39 +1,14 @@
+import {
+  contentTypeForExtension,
+  maxBytesForFile,
+  resolveFileType,
+} from '@/lib/chat/attachmentTypes';
 import { compressMessageImageBuffer } from '@/lib/chatImageCompressServer';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 const BUCKET_AVATARS = 'avatars';
 const BUCKET_BACKGROUNDS = 'backgrounds';
 const BUCKET_MESSAGES = 'messages';
-
-const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'heic', 'heif']);
-
-function contentTypeForExtension(ext: string): string {
-  if (ext === 'png') return 'image/png';
-  if (ext === 'webp') return 'image/webp';
-  if (ext === 'gif') return 'image/gif';
-  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
-  if (ext === 'pdf') return 'application/pdf';
-  if (ext === 'webm') return 'audio/webm';
-  if (ext === 'ogg') return 'audio/ogg';
-  if (ext === 'mp3') return 'audio/mpeg';
-  if (ext === 'm4a') return 'audio/mp4';
-  return 'application/octet-stream';
-}
-
-function resolveFileTypeFromFile(file: File): string {
-  const mime = file.type || '';
-  const name = file.name.toLowerCase();
-  const ext = name.split('.').pop() ?? '';
-
-  if (mime.startsWith('image/') || IMAGE_EXTENSIONS.has(ext)) return 'image';
-  if (mime.startsWith('audio/')) return 'voice';
-  if (name.startsWith('voice.')) return 'voice';
-  if (['webm', 'ogg', 'mp3', 'm4a', 'wav', 'opus', 'aac'].includes(ext)) {
-    if (ext === 'webm' && mime.startsWith('video/')) return 'voice';
-    return 'voice';
-  }
-  return 'document';
-}
 
 export async function uploadProfileImage(
   userId: string,
@@ -66,7 +41,11 @@ export async function uploadMessageFile(
   userId: string,
   file: File,
 ): Promise<{ path: string; fileType: string; originalName: string }> {
-  const fileType = resolveFileTypeFromFile(file);
+  const fileType = resolveFileType(file.type, file.name);
+
+  if (file.size > maxBytesForFile(file)) {
+    throw new Error(fileType === 'video' ? 'Видео больше 50 МБ' : 'Файл больше 15 МБ');
+  }
   let ext = file.name.split('.').pop()?.toLowerCase() ?? 'bin';
   let body: Buffer = Buffer.from(await file.arrayBuffer());
   let contentType = file.type || contentTypeForExtension(ext);

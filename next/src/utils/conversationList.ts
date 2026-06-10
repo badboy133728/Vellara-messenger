@@ -7,6 +7,7 @@ export function formatIncomingMessagePreview(
   if (msg.message_type === 'system') return msg.content || 'Системное сообщение';
   if (msg.file_type === 'voice') return 'Голосовое сообщение';
   if (msg.file_type === 'image') return 'Фото';
+  if (msg.file_type === 'video') return 'Видео';
   if (msg.file_type === 'document') return msg.file_original_name || 'Файл';
   const text = (msg.content || '').trim();
   if (!text) return 'Сообщение';

@@ -46,6 +46,7 @@ export type PendingFeedItem = {
   clientId: string;
   content: string;
   previewUrls: string[];
+  videoPreviewUrls: string[];
 };
 
 export type DateFeedItem = {

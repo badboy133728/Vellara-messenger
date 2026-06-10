@@ -3,6 +3,7 @@ import { formatMessage } from '@/lib/chat/formatters';
 import { formatMessagesWithReplies } from '@/lib/chat/messageList';
 import { getOrCreateSavedConversation } from '@/lib/chat/savedConversation';
 import { broadcastToConversation } from '@/lib/realtime/broadcast';
+import { maxBytesForFile } from '@/lib/chat/attachmentTypes';
 import { uploadMessageFile } from '@/lib/storage-server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { MessageRow, Profile } from '@/lib/types';
@@ -142,7 +143,7 @@ export async function POST(request: Request) {
     };
 
     if (file) {
-      if (file.size > 15 * 1024 * 1024) {
+      if (file.size > maxBytesForFile(file)) {
         throw new Error('Файл слишком большой');
       }
       const uploaded = await uploadMessageFile(user.id, file);

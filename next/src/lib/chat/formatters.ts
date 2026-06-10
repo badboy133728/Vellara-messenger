@@ -40,6 +40,7 @@ export function messagePreview(msg: MessageRow, viewerId: string, albumCount = 1
   if (msg.file_type === 'image') {
     return albumCount > 1 ? `${albumCount} фото` : 'Фото';
   }
+  if (msg.file_type === 'video') return 'Видео';
   if (msg.file_type === 'document') return msg.file_original_name || 'Файл';
   const text = (msg.content || '').trim();
   if (!text) return 'Сообщение';
@@ -198,14 +199,4 @@ export function formatConversationForList(
   };
 }
 
-export function resolveFileType(mime: string, fileName: string): string {
-  const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
-  if (mime.startsWith('image/')) return 'image';
-  if (mime.startsWith('audio/')) return 'voice';
-  if (fileName.toLowerCase().startsWith('voice.')) return 'voice';
-  if (['webm', 'ogg', 'mp3', 'm4a', 'wav', 'opus', 'aac'].includes(ext)) {
-    if (ext === 'webm' && mime.startsWith('video/')) return 'voice';
-    return 'voice';
-  }
-  return 'document';
-}
+export { resolveFileType } from '@/lib/chat/attachmentTypes';

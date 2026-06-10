@@ -4,6 +4,7 @@ import { formatMessagesWithReplies } from '@/lib/chat/messageList';
 import { canManageGroup } from '@/lib/chat/permissions';
 import { broadcastToConversation } from '@/lib/realtime/broadcast';
 import { notifyConversationPush } from '@/lib/push/notify';
+import { maxBytesForFile } from '@/lib/chat/attachmentTypes';
 import { uploadMessageFile } from '@/lib/storage-server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { MessageRow, Profile } from '@/lib/types';
@@ -128,7 +129,7 @@ export async function POST(
   }
 
   if (file && file.size > 0) {
-    if (file.size > 15 * 1024 * 1024) {
+    if (file.size > maxBytesForFile(file)) {
       return Response.json({ message: 'Файл слишком большой' }, { status: 422 });
     }
 

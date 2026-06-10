@@ -12,6 +12,11 @@ import { useSwipeBack } from '@/hooks/useSwipeGesture';
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
 import { storageDisplayUrl } from '@/lib/storage';
 import type { ConversationListItem, FormattedMessage, MessageReplyPreview } from '@/lib/types';
+import {
+  isImageAttachment,
+  isVideoAttachment,
+  maxBytesForFile,
+} from '@/lib/chat/attachmentTypes';
 import type { SendMessageOptions } from '@/lib/chat/sendMessage';
 import {
   buildMessageFeed,
@@ -46,7 +51,6 @@ const emptyMenu: MsgMenuState = {
   isSaved: false,
 };
 
-const MAX_FILE_BYTES = 15 * 1024 * 1024;
 const CHAT_FILE_INPUT_ID = 'chat-attach-input';
 
 type PendingAttachment = {
@@ -54,6 +58,7 @@ type PendingAttachment = {
   file: File;
   previewUrl: string | null;
   isImage: boolean;
+  isVideo: boolean;
   previewLoading: boolean;
 };
 
@@ -61,16 +66,12 @@ type PendingSend = {
   clientId: string;
   content: string;
   previewUrls: string[];
+  videoPreviewUrls: string[];
   fileCount: number;
   created_at: string;
   expectedIds: number[];
   baselineMessageIds: number[];
 };
-
-function isImageAttachment(file: File) {
-  if (file.type.startsWith('image/')) return true;
-  return /\.(jpe?g|png|gif|webp|bmp|heic|heif)$/i.test(file.name);
-}
 
 /** Скрываем pending в том же кадре, когда реальное сообщение уже в ленте — без дубля пузырей. */
 function pendingStillVisible(
@@ -92,6 +93,11 @@ function pendingStillVisible(
   if (pending.previewUrls.length > 0) {
     const newImages = newFromMe.filter((m) => m.file_type === 'image');
     return newImages.length < pending.previewUrls.length;
+  }
+
+  if (pending.videoPreviewUrls.length > 0) {
+    const newVideos = newFromMe.filter((m) => m.file_type === 'video');
+    return newVideos.length < pending.videoPreviewUrls.length;
   }
 
   if (pending.fileCount > 0) {
@@ -215,6 +221,7 @@ export function ChatPanel({
           created_at: p.created_at,
           content: p.content,
           previewUrls: p.previewUrls,
+          videoPreviewUrls: p.videoPreviewUrls,
         })),
       ),
     [messages, visiblePendingSends],
@@ -424,7 +431,9 @@ export function ChatPanel({
       if (next.length === prev.length) return prev;
       for (const removed of prev) {
         if (next.some((p) => p.clientId === removed.clientId)) continue;
-        for (const url of removed.previewUrls) URL.revokeObjectURL(url);
+        for (const url of [...removed.previewUrls, ...removed.videoPreviewUrls]) {
+          URL.revokeObjectURL(url);
+        }
       }
       return next;
     });
@@ -463,17 +472,22 @@ export function ChatPanel({
   };
 
   const addAttachmentFile = (file: File) => {
-    if (file.size > MAX_FILE_BYTES) {
-      window.alert(`«${file.name}» больше 15 МБ`);
+    const limit = maxBytesForFile(file);
+    if (file.size > limit) {
+      window.alert(
+        `«${file.name}» больше ${isVideoAttachment(file) ? '50' : '15'} МБ`,
+      );
       return;
     }
     const isImage = isImageAttachment(file);
+    const isVideo = !isImage && isVideoAttachment(file);
+    const needsPreview = isImage || isVideo;
     const id = crypto.randomUUID();
     setPendingAttachments((prev) => [
       ...prev,
-      { id, file, isImage, previewUrl: null, previewLoading: isImage },
+      { id, file, isImage, isVideo, previewUrl: null, previewLoading: needsPreview },
     ]);
-    if (isImage) loadAttachmentPreview(id, file);
+    if (needsPreview) loadAttachmentPreview(id, file);
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -723,6 +737,7 @@ export function ChatPanel({
     if (msg.is_deleted) return 'Сообщение удалено';
     if (msg.file_type === 'voice') return 'Голосовое сообщение';
     if (msg.file_type === 'image') return 'Фото';
+    if (msg.file_type === 'video') return 'Видео';
     if (msg.file_type === 'document') return 'Файл';
     const text = (msg.content || '').trim();
     return text.length > 80 ? `${text.slice(0, 80)}…` : text || 'Сообщение';
@@ -856,11 +871,16 @@ export function ChatPanel({
     const previewUrls = pendingAttachments
       .filter((a) => a.isImage && a.previewUrl)
       .map((a) => a.previewUrl!);
+    const videoPreviewUrls = pendingAttachments
+      .filter((a) => a.isVideo && a.previewUrl)
+      .map((a) => a.previewUrl!);
     const replyToId = replyTo?.id;
     const clientId = crypto.randomUUID();
     const created_at = new Date().toISOString();
 
-    for (const url of previewUrls) attachmentUrlsRef.current.delete(url);
+    for (const url of [...previewUrls, ...videoPreviewUrls]) {
+      attachmentUrlsRef.current.delete(url);
+    }
 
     setText('');
     setReplyTo(null);
@@ -871,6 +891,7 @@ export function ChatPanel({
       clientId,
       content,
       previewUrls,
+      videoPreviewUrls,
       fileCount: files.length,
       created_at,
       expectedIds: [],
@@ -892,6 +913,7 @@ export function ChatPanel({
       setPendingSends((prev) => {
         const item = prev.find((p) => p.clientId === clientId);
         item?.previewUrls.forEach((url) => URL.revokeObjectURL(url));
+        item?.videoPreviewUrls.forEach((url) => URL.revokeObjectURL(url));
         return prev.filter((p) => p.clientId !== clientId);
       });
       window.alert(err instanceof Error ? err.message : 'Не удалось отправить сообщение');
@@ -965,23 +987,19 @@ export function ChatPanel({
   };
 
   const renderPendingBubble = (item: PendingFeedItem) => {
-    const count = item.previewUrls.length;
-    const gridClass =
-      count <= 1
-        ? 'msg-album-grid--1'
-        : count === 2
-          ? 'msg-album-grid--2'
-          : count === 3
-            ? 'msg-album-grid--3'
-            : 'msg-album-grid--4plus';
-
     return (
       <div className="message-bubble my message-bubble--pending">
-        {count > 0 && (
-          <div className={`msg-album-grid ${gridClass}`}>
+        {(item.previewUrls.length > 0 || item.videoPreviewUrls.length > 0) && (
+          <div className="msg-pending-media">
             {item.previewUrls.map((url, idx) => (
-              <div key={`${item.clientId}-${idx}`} className="msg-album-cell msg-album-cell--pending">
+              <div key={`${item.clientId}-img-${idx}`} className="msg-album-cell msg-album-cell--pending">
                 <img src={url} alt="" decoding="async" />
+                <div className="attachment-preview-shimmer" aria-hidden="true" />
+              </div>
+            ))}
+            {item.videoPreviewUrls.map((url, idx) => (
+              <div key={`${item.clientId}-vid-${idx}`} className="msg-video-wrap msg-video-wrap--pending">
+                <video className="msg-video" src={url} muted playsInline preload="metadata" />
                 <div className="attachment-preview-shimmer" aria-hidden="true" />
               </div>
             ))}
@@ -1006,7 +1024,11 @@ export function ChatPanel({
     const voiceOnly = m.file_type === 'voice' && !m.content;
     const hasMedia =
       Boolean(albumMessages?.length) ||
-      Boolean(m.file_path && m.file_type === 'image' && !albumMessages?.length);
+      Boolean(
+        m.file_path &&
+          (m.file_type === 'image' || m.file_type === 'video') &&
+          !albumMessages?.length,
+      );
 
     if (isSystem) {
       return (
@@ -1055,6 +1077,18 @@ export function ChatPanel({
                     />
                   </button>
                 )}
+            {m.file_path && m.file_type === 'video' && storageDisplayUrl(m.file_path) && (
+              <div className="msg-video-wrap">
+                <video
+                  className="msg-video"
+                  src={storageDisplayUrl(m.file_path) ?? ''}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  onLoadedMetadata={handleMessageMediaLoad}
+                />
+              </div>
+            )}
             {m.file_path && m.file_type === 'voice' && (
               <VoiceMessagePlayer
                 src={storageDisplayUrl(m.file_path) ?? ''}
@@ -1341,7 +1375,7 @@ export function ChatPanel({
             ref={fileRef}
             type="file"
             className="composer-file-input"
-            accept="image/*,.heic,.heif,.pdf,.doc,.docx,.webp"
+            accept="image/*,video/*,.heic,.heif,.mp4,.mov,.m4v,.webm,.3gp,.pdf,.doc,.docx,.webp"
             multiple
             onChange={handleFileSelect}
             onClick={() => onFilePickerOpen?.()}
@@ -1352,7 +1386,9 @@ export function ChatPanel({
                 <span>
                   {pendingAttachments.every((a) => a.isImage)
                     ? `Фото · ${pendingAttachments.length}`
-                    : `Вложения · ${pendingAttachments.length}`}
+                    : pendingAttachments.every((a) => a.isVideo)
+                      ? `Видео · ${pendingAttachments.length}`
+                      : `Вложения · ${pendingAttachments.length}`}
                 </span>
                 <button type="button" className="attachments-clear" onClick={clearAttachments}>
                   Убрать все
@@ -1362,7 +1398,7 @@ export function ChatPanel({
                 {pendingAttachments.map((att) => (
                   <div
                     key={att.id}
-                    className={`attachment-item ${att.isImage ? '' : 'attachment-item--doc'}`}
+                    className={`attachment-item ${att.isImage || att.isVideo ? '' : 'attachment-item--doc'}`}
                   >
                     {att.isImage && att.previewUrl ? (
                       <>
@@ -1371,10 +1407,23 @@ export function ChatPanel({
                           <div className="attachment-preview-shimmer" aria-hidden="true" />
                         )}
                       </>
-                    ) : att.isImage ? (
+                    ) : att.isVideo && att.previewUrl ? (
+                      <>
+                        <video
+                          className="attachment-thumb attachment-thumb--video"
+                          src={att.previewUrl}
+                          muted
+                          playsInline
+                          preload="metadata"
+                        />
+                        {att.previewLoading && (
+                          <div className="attachment-preview-shimmer" aria-hidden="true" />
+                        )}
+                      </>
+                    ) : att.isImage || att.isVideo ? (
                       <div className="attachment-item-photo-placeholder attachment-item-photo-placeholder--loading">
                         <div className="attachment-preview-shimmer" aria-hidden="true" />
-                        <VellaraIcon name="image" size={24} />
+                        <VellaraIcon name={att.isVideo ? 'video' : 'image'} size={24} />
                       </div>
                     ) : (
                       <div className="attachment-doc">

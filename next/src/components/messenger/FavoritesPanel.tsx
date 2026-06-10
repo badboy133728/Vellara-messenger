@@ -5,6 +5,11 @@ import { EmojiPicker } from '@/components/EmojiPicker';
 import { ImageLightbox } from '@/components/ImageLightbox';
 import { VellaraIcon } from '@/components/icons/VellaraIcon';
 import { api } from '@/lib/api';
+import {
+  isImageAttachment,
+  isVideoAttachment,
+  maxBytesForFile,
+} from '@/lib/chat/attachmentTypes';
 import { prepareChatImageForUpload } from '@/lib/chatImageUpload';
 import { publicStorageUrl } from '@/lib/storage';
 import type { FormattedMessage } from '@/lib/types';
@@ -27,13 +32,7 @@ type PendingAttachment = {
   isImage: boolean;
 };
 
-const MAX_FILE_BYTES = 15 * 1024 * 1024;
 const FAV_FILE_INPUT_ID = 'favorites-attach-input';
-
-function isImageAttachment(file: File) {
-  if (file.type.startsWith('image/')) return true;
-  return /\.(jpe?g|png|gif|webp|bmp|heic|heif)$/i.test(file.name);
-}
 
 export function FavoritesPanel({
   onForwardMessage,
@@ -137,8 +136,10 @@ export function FavoritesPanel({
   };
 
   const addAttachmentFile = (file: File) => {
-    if (file.size > MAX_FILE_BYTES) {
-      window.alert(`«${file.name}» больше 15 МБ`);
+    if (file.size > maxBytesForFile(file)) {
+      window.alert(
+        `«${file.name}» больше ${isVideoAttachment(file) ? '50' : '15'} МБ`,
+      );
       return;
     }
     const isImage = isImageAttachment(file);
@@ -307,6 +308,17 @@ export function FavoritesPanel({
             </button>
           )
         )}
+        {m.file_path && m.file_type === 'video' && (
+          <div className="msg-video-wrap">
+            <video
+              className="msg-video"
+              src={publicStorageUrl(m.file_path) ?? ''}
+              controls
+              playsInline
+              preload="metadata"
+            />
+          </div>
+        )}
         {m.file_path && m.file_type === 'voice' && (
           <audio controls src={publicStorageUrl(m.file_path) ?? ''} />
         )}
@@ -423,7 +435,7 @@ export function FavoritesPanel({
             ref={fileRef}
             type="file"
             className="composer-file-input"
-            accept="image/*,.heic,.heif,.pdf,.doc,.docx,.webp"
+            accept="image/*,video/*,.heic,.heif,.mp4,.mov,.m4v,.webm,.3gp,.pdf,.doc,.docx,.webp"
             multiple
             onChange={handleFileSelect}
           />

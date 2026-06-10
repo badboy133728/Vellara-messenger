@@ -22,6 +22,16 @@ describe('messagePreview', () => {
     } as MessageRow;
     expect(messagePreview(msg, 'me')).toBe('Вы: Hello world');
   });
+
+  it('shows video preview', () => {
+    const msg = {
+      content: '',
+      user_id: 'a',
+      file_type: 'video',
+      deleted_at: null,
+    } as MessageRow;
+    expect(messagePreview(msg, 'b')).toBe('Видео');
+  });
 });
 
 describe('resolveFileType', () => {
@@ -31,5 +41,13 @@ describe('resolveFileType', () => {
 
   it('detects voice webm', () => {
     expect(resolveFileType('video/webm', 'voice.webm')).toBe('voice');
+  });
+
+  it('detects video mp4', () => {
+    expect(resolveFileType('video/mp4', 'clip.mp4')).toBe('video');
+  });
+
+  it('detects video mov', () => {
+    expect(resolveFileType('video/quicktime', 'movie.mov')).toBe('video');
   });
 });

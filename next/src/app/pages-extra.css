@@ -1299,6 +1299,39 @@
   opacity: 0.92;
 }
 
+.msg-video-wrap {
+  max-width: min(320px, 100%);
+  border-radius: 10px;
+  overflow: hidden;
+  line-height: 0;
+  background: #000;
+}
+
+.msg-video-wrap--pending {
+  position: relative;
+}
+
+.msg-video {
+  display: block;
+  width: 100%;
+  max-width: min(320px, 100%);
+  max-height: 360px;
+  height: auto;
+  border-radius: 10px;
+  background: #000;
+}
+
+.msg-pending-media {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.attachment-thumb--video {
+  object-fit: cover;
+  background: #000;
+}
+
 .profile-avatar--zoomable { cursor: zoom-in; }
 
 @media (max-width: 640px) {

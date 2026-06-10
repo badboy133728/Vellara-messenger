@@ -28,6 +28,7 @@ function messagePreviewText(msg: FormattedMessage) {
   if (msg.is_deleted) return 'Сообщение удалено';
   if (msg.file_type === 'voice') return 'Голосовое сообщение';
   if (msg.file_type === 'image') return 'Фото';
+  if (msg.file_type === 'video') return 'Видео';
   if (msg.file_type === 'document') return msg.file_original_name || 'Файл';
   const text = (msg.content || '').trim();
   return text.length > 120 ? `${text.slice(0, 120)}…` : text || 'Сообщение';

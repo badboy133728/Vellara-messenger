@@ -838,7 +838,7 @@ export function ChatPanel({
               key={img.id}
               type="button"
               className="msg-album-cell"
-              onClick={() => openImageLightbox(anchor)}
+              onClick={() => openImageLightbox(img)}
             >
               <img
                 src={url}
@@ -896,6 +896,9 @@ export function ChatPanel({
   ) => {
     const isSystem = m.message_type === 'system';
     const voiceOnly = m.file_type === 'voice' && !m.content;
+    const hasMedia =
+      Boolean(albumMessages?.length) ||
+      Boolean(m.file_path && m.file_type === 'image' && !albumMessages?.length);
 
     if (isSystem) {
       return (
@@ -908,7 +911,7 @@ export function ChatPanel({
 
     return (
       <div
-        className={`message-bubble ${mine ? 'my' : 'other'} ${m.is_deleted ? 'message-bubble--deleted' : ''} ${voiceOnly ? 'voice-only' : ''}`}
+        className={`message-bubble ${mine ? 'my' : 'other'} ${hasMedia ? 'message-bubble--media' : ''} ${m.is_deleted ? 'message-bubble--deleted' : ''} ${voiceOnly ? 'voice-only' : ''}`}
       >
         {m.is_deleted ? (
           <span className="msg-deleted">Сообщение удалено</span>

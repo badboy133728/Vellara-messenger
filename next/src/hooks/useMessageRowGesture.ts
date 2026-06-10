@@ -4,6 +4,8 @@ import type { MouseEvent, TouchEvent } from 'react';
 type Point = { x: number; y: number };
 type SwipeDirection = 'ltr' | 'rtl';
 
+const RTL_REVEAL_MAX = 44;
+
 type Options = {
   selectDelay?: number;
   swipeThreshold?: number;
@@ -11,7 +13,9 @@ type Options = {
   moveSlop?: number;
   /** Свайп справа-налево — меню действий с сообщением. */
   onSwipeOpenActions: (event: { clientX: number; clientY: number }, payload: unknown) => void;
-  /** Свайп слева-направо — назад (список чатов / меню). */
+  /** Свайп слева-направо — сдвиг панели чата во время жеста. */
+  onSwipeBackDrag?: (offset: number) => void;
+  /** Свайп слева-направо — закрыть чат с анимацией. */
   onSwipeBack?: (swipeOffset: number) => void;
   onForwardSelectStart: (payload: unknown) => void;
 };
@@ -22,6 +26,7 @@ export function useMessageRowGesture({
   maxVerticalDrift = 36,
   moveSlop = 12,
   onSwipeOpenActions,
+  onSwipeBackDrag,
   onSwipeBack,
   onForwardSelectStart,
 }: Options) {
@@ -30,6 +35,7 @@ export function useMessageRowGesture({
   const [swipeDirection, setSwipeDirection] = useState<SwipeDirection | null>(null);
   const swipeOffsetRef = useRef(0);
   const swipeDirectionRef = useRef<SwipeDirection | null>(null);
+  const ltrDragOffsetRef = useRef(0);
 
   const activeRef = useRef<{
     payload: unknown;
@@ -41,8 +47,10 @@ export function useMessageRowGesture({
   } | null>(null);
 
   const onSwipeOpenActionsRef = useRef(onSwipeOpenActions);
+  const onSwipeBackDragRef = useRef(onSwipeBackDrag);
   const onSwipeBackRef = useRef(onSwipeBack);
   onSwipeOpenActionsRef.current = onSwipeOpenActions;
+  onSwipeBackDragRef.current = onSwipeBackDrag;
   onSwipeBackRef.current = onSwipeBack;
 
   const clearSelectTimer = () => {
@@ -53,7 +61,7 @@ export function useMessageRowGesture({
     }
   };
 
-  const resetSwipeVisual = useCallback(() => {
+  const resetRtlVisual = useCallback(() => {
     swipeOffsetRef.current = 0;
     swipeDirectionRef.current = null;
     setSwipeRowId(null);
@@ -61,29 +69,53 @@ export function useMessageRowGesture({
     setSwipeDirection(null);
   }, []);
 
+  const resetLtrDrag = useCallback(() => {
+    if (ltrDragOffsetRef.current > 0) {
+      ltrDragOffsetRef.current = 0;
+      onSwipeBackDragRef.current?.(0);
+    }
+  }, []);
+
+  const resetSwipeVisual = useCallback(() => {
+    resetLtrDrag();
+    resetRtlVisual();
+  }, [resetLtrDrag, resetRtlVisual]);
+
   const finishGesture = useCallback(() => {
     const active = activeRef.current;
     if (!active) return;
 
     clearSelectTimer();
 
-    const offset = swipeOffsetRef.current;
     const direction = active.direction ?? swipeDirectionRef.current;
 
-    if (active.swiping && offset >= swipeThreshold && direction) {
-      if (direction === 'rtl') {
-        onSwipeOpenActionsRef.current(
-          { clientX: active.start.x, clientY: active.start.y },
-          active.payload,
-        );
-      } else if (direction === 'ltr') {
+    if (active.swiping && direction === 'rtl' && swipeOffsetRef.current >= swipeThreshold) {
+      onSwipeOpenActionsRef.current(
+        { clientX: active.start.x, clientY: active.start.y },
+        active.payload,
+      );
+      activeRef.current = null;
+      resetRtlVisual();
+      return;
+    }
+
+    if (active.swiping && direction === 'ltr') {
+      const offset = ltrDragOffsetRef.current;
+      activeRef.current = null;
+      ltrDragOffsetRef.current = 0;
+      resetRtlVisual();
+
+      if (offset >= swipeThreshold) {
         onSwipeBackRef.current?.(offset);
+      } else {
+        onSwipeBackDragRef.current?.(0);
       }
+      return;
     }
 
     activeRef.current = null;
     resetSwipeVisual();
-  }, [resetSwipeVisual, swipeThreshold]);
+  }, [resetRtlVisual, resetSwipeVisual, swipeThreshold]);
 
   const processTouchMove = useCallback(
     (touch: { clientX: number; clientY: number }, event?: { stopPropagation: () => void; preventDefault: () => void }) => {
@@ -108,7 +140,9 @@ export function useMessageRowGesture({
         active.swiping = true;
         active.direction = dx > 0 ? 'ltr' : 'rtl';
         swipeDirectionRef.current = active.direction;
-        setSwipeDirection(active.direction);
+        if (active.direction === 'rtl') {
+          setSwipeDirection('rtl');
+        }
         event?.stopPropagation();
       }
 
@@ -117,7 +151,14 @@ export function useMessageRowGesture({
       event?.stopPropagation();
       event?.preventDefault();
 
-      const magnitude = Math.min(Math.abs(dx), 120);
+      if (active.direction === 'ltr') {
+        const magnitude = Math.max(0, dx);
+        ltrDragOffsetRef.current = magnitude;
+        onSwipeBackDragRef.current?.(magnitude);
+        return;
+      }
+
+      const magnitude = Math.min(Math.abs(dx), RTL_REVEAL_MAX);
       swipeOffsetRef.current = magnitude;
       setSwipeRowId(active.rowId);
       setSwipeOffset(magnitude);

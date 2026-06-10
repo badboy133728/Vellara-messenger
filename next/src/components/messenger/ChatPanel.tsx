@@ -495,8 +495,13 @@ export function ChatPanel({
 
   const bindChatAreaRef = (node: HTMLElement | null) => {
     chatAreaRef.current = node;
-    swipeBack.bindRef(node);
   };
+
+  const resetChatSwipe = swipeBack.reset;
+
+  useEffect(() => {
+    resetChatSwipe();
+  }, [conversation?.id, resetChatSwipe]);
 
   useLayoutEffect(() => {
     if (!isMobile || !conversation) return;
@@ -638,6 +643,13 @@ export function ChatPanel({
       if (forwardSelectMode) return;
       openMessageMenu(event, payload as FormattedMessage);
     },
+    onSwipeBackDrag:
+      isMobile && onBack
+        ? (offset) => {
+            if (offset > 0) swipeBack.setDragOffset(offset);
+            else swipeBack.snapBack();
+          }
+        : undefined,
     onSwipeBack: isMobile && onBack ? (offset) => swipeBack.animateBack(offset) : undefined,
     onForwardSelectStart: (payload) => {
       enterForwardSelectMode(payload as FormattedMessage);
@@ -1119,7 +1131,7 @@ export function ChatPanel({
     return (
       <div
         key={item.key}
-        className={`message-row ${mine ? 'message-row--mine' : 'message-row--other'}${forwardSelectMode && canSelect ? ' message-row--selectable' : ''}${isSelected ? ' message-row--selected' : ''}${isSwipeActive && swipeDir === 'rtl' ? ' message-row--swiping message-row--swiping-rtl' : ''}${isSwipeActive && swipeDir === 'ltr' ? ' message-row--swiping-ltr' : ''}`}
+        className={`message-row ${mine ? 'message-row--mine' : 'message-row--other'}${forwardSelectMode && canSelect ? ' message-row--selectable' : ''}${isSelected ? ' message-row--selected' : ''}${isSwipeActive && swipeDir === 'rtl' ? ' message-row--swiping message-row--swiping-rtl' : ''}`}
         onClick={handleRowClick}
         onContextMenu={(e) => {
           if (forwardSelectMode) return;
@@ -1164,9 +1176,7 @@ export function ChatPanel({
           style={
             swipeOffset > 0 && swipeDir === 'rtl'
               ? { transform: `translateX(-${swipeOffset}px)` }
-              : swipeOffset > 0 && swipeDir === 'ltr'
-                ? { transform: `translateX(${swipeOffset}px)` }
-                : undefined
+              : undefined
           }
         >
           {showGroupSenderAvatar(m) && (
@@ -1197,7 +1207,9 @@ export function ChatPanel({
   return (
     <section
       ref={bindChatAreaRef}
-      className={`chat-area${isMobile ? ' chat-area--mobile' : ''}${!chatReady ? ' chat-area--loading' : ''}${enterAnim ? ' chat-area--enter' : ''}${swipeBack.isDragging ? ' chat-area--dragging' : ''}${swipeBack.isClosing ? ' chat-area--closing' : ''}`}
+      className={`chat-area${isMobile ? ' chat-area--mobile' : ''}${!chatReady ? ' chat-area--loading' : ''}${enterAnim && !swipeBack.isDragging && !swipeBack.isClosing ? ' chat-area--enter' : ''}${swipeBack.isDragging ? ' chat-area--dragging' : ''}${swipeBack.isClosing ? ' chat-area--closing' : ''}`}
+      style={swipeBack.panelStyle}
+      onTransitionEnd={swipeBack.onPanelTransitionEnd}
       onTouchStart={swipeBack.handlers.onTouchStart}
       onTouchMove={swipeBack.handlers.onTouchMove}
       onTouchEnd={swipeBack.handlers.onTouchEnd}

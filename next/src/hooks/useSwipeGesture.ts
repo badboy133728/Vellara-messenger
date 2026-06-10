@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useMemo, useRef, useState } from 'react';
-import type { TouchEvent } from 'react';
+import type { CSSProperties, TransitionEvent, TouchEvent } from 'react';
 
 const SWIPE_CLOSE_MS = 420;
 const SWIPE_EASING = 'cubic-bezier(0.32, 0.72, 0, 1)';
@@ -152,47 +152,69 @@ export function useSwipeBack({
   const startRef = useRef<{ x: number; y: number } | null>(null);
   const draggingRef = useRef(false);
   const closingRef = useRef(false);
-  const nodeRef = useRef<HTMLElement | null>(null);
+  const closeDoneRef = useRef(false);
+  const closeTimerRef = useRef<number | null>(null);
   const onBackRef = useRef(onBack);
+  const offsetRef = useRef(0);
+  const [panelOffset, setPanelOffset] = useState(0);
+  const [panelAnimated, setPanelAnimated] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
 
   onBackRef.current = onBack;
 
-  const readOffset = () => {
-    if (!nodeRef.current) return 0;
-    const match = nodeRef.current.style.transform.match(/translateX\(([-\d.]+)px\)/);
-    return match ? parseFloat(match[1]) : 0;
-  };
+  const clearCloseTimer = useCallback(() => {
+    if (closeTimerRef.current != null) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  }, []);
 
-  const setOffset = useCallback((value: number, animate = false) => {
-    const node = nodeRef.current;
-    if (!node) return;
-
-    const max = window.innerWidth;
+  const applyOffset = useCallback((value: number, animate: boolean) => {
+    const max = typeof window !== 'undefined' ? window.innerWidth : value;
     const clamped = Math.max(0, Math.min(value, max));
-    const progress = max > 0 ? clamped / max : 0;
-
-    node.style.transform = clamped > 0 ? `translateX(${clamped}px)` : '';
-    node.style.opacity = clamped > 0 ? String(1 - progress * 0.28) : '';
-    node.style.setProperty('--chat-swipe-progress', String(progress));
-
-    const transition = animate
-      ? `transform ${SWIPE_CLOSE_MS}ms ${SWIPE_EASING}, opacity ${SWIPE_CLOSE_MS}ms ${SWIPE_EASING}`
-      : draggingRef.current
-        ? 'none'
-        : `transform ${SWIPE_CLOSE_MS}ms ${SWIPE_EASING}, opacity ${SWIPE_CLOSE_MS}ms ${SWIPE_EASING}`;
-    node.style.transition = transition;
+    offsetRef.current = clamped;
+    setPanelAnimated(animate);
+    setPanelOffset(clamped);
   }, []);
 
-  const clearSwipeStyles = useCallback(() => {
-    const node = nodeRef.current;
-    if (!node) return;
-    node.style.transform = '';
-    node.style.opacity = '';
-    node.style.transition = '';
-    node.style.removeProperty('--chat-swipe-progress');
-  }, []);
+  const completeClose = useCallback(() => {
+    if (closeDoneRef.current) return;
+    closeDoneRef.current = true;
+    clearCloseTimer();
+    onBackRef.current();
+  }, [clearCloseTimer]);
+
+  const reset = useCallback(() => {
+    clearCloseTimer();
+    closingRef.current = false;
+    closeDoneRef.current = false;
+    draggingRef.current = false;
+    startRef.current = null;
+    offsetRef.current = 0;
+    setPanelOffset(0);
+    setPanelAnimated(false);
+    setIsDragging(false);
+    setIsClosing(false);
+  }, [clearCloseTimer]);
+
+  const setDragOffset = useCallback(
+    (value: number) => {
+      if (!enabled || closingRef.current) return;
+      const next = Math.max(0, value);
+      draggingRef.current = next > 0;
+      setIsDragging(next > 0);
+      applyOffset(next, false);
+    },
+    [applyOffset, enabled],
+  );
+
+  const snapBack = useCallback(() => {
+    if (!enabled || closingRef.current) return;
+    draggingRef.current = false;
+    setIsDragging(false);
+    applyOffset(0, true);
+  }, [applyOffset, enabled]);
 
   const animateBack = useCallback(
     (startOffset = 0) => {
@@ -208,51 +230,47 @@ export function useSwipeBack({
       setIsDragging(false);
       startRef.current = null;
 
-      const node = nodeRef.current;
-      const finish = () => onBackRef.current();
-
-      if (!node) {
-        finish();
-        return;
-      }
-
       const runClose = () => {
-        setOffset(window.innerWidth, true);
-
-        let done = false;
-        const complete = () => {
-          if (done) return;
-          done = true;
-          node.removeEventListener('transitionend', onTransitionEnd);
-          window.clearTimeout(fallback);
-          finish();
-        };
-
-        const onTransitionEnd = (event: TransitionEvent) => {
-          if (event.target !== node || event.propertyName !== 'transform') return;
-          complete();
-        };
-
-        const fallback = window.setTimeout(complete, SWIPE_CLOSE_MS + 48);
-        node.addEventListener('transitionend', onTransitionEnd);
+        applyOffset(typeof window !== 'undefined' ? window.innerWidth : startOffset, true);
+        clearCloseTimer();
+        closeTimerRef.current = window.setTimeout(completeClose, SWIPE_CLOSE_MS + 64);
       };
 
       if (startOffset > 8) {
-        setOffset(startOffset, false);
+        applyOffset(startOffset, false);
         requestAnimationFrame(() => requestAnimationFrame(runClose));
       } else {
         runClose();
       }
     },
-    [enabled, setOffset],
+    [applyOffset, clearCloseTimer, completeClose, enabled],
   );
 
-  const bindRef = (node: HTMLElement | null) => {
-    if (nodeRef.current && nodeRef.current !== node) {
-      clearSwipeStyles();
-    }
-    nodeRef.current = node;
-  };
+  const onPanelTransitionEnd = useCallback(
+    (event: TransitionEvent<HTMLElement>) => {
+      if (!closingRef.current || event.propertyName !== 'transform') return;
+      completeClose();
+    },
+    [completeClose],
+  );
+
+  const panelStyle = useMemo((): CSSProperties => {
+    if (panelOffset <= 0 && !isClosing) return {};
+
+    const max = typeof window !== 'undefined' ? window.innerWidth : 1;
+    const progress = max > 0 ? panelOffset / max : 0;
+
+    return {
+      transform: panelOffset > 0 ? `translateX(${panelOffset}px)` : undefined,
+      opacity: panelOffset > 0 ? 1 - progress * 0.28 : undefined,
+      transition: panelAnimated
+        ? `transform ${SWIPE_CLOSE_MS}ms ${SWIPE_EASING}, opacity ${SWIPE_CLOSE_MS}ms ${SWIPE_EASING}`
+        : isDragging
+          ? 'none'
+          : undefined,
+      ['--chat-swipe-progress' as string]: progress > 0 ? String(progress) : undefined,
+    };
+  }, [panelOffset, panelAnimated, isDragging, isClosing]);
 
   const handlers = useMemo(
     () => ({
@@ -272,7 +290,7 @@ export function useSwipeBack({
         draggingRef.current = false;
       },
       onTouchMove: (event: TouchEvent) => {
-        if (!enabled || !startRef.current || event.touches.length !== 1) return;
+        if (!enabled || closingRef.current || !startRef.current || event.touches.length !== 1) return;
         const touch = event.touches[0];
         const dx = touch.clientX - startRef.current.x;
         const dy = touch.clientY - startRef.current.y;
@@ -288,33 +306,43 @@ export function useSwipeBack({
         }
 
         event.preventDefault();
-        setOffset(dx);
+        setDragOffset(dx);
       },
       onTouchEnd: () => {
-        if (!enabled || !startRef.current) return;
+        if (!enabled || closingRef.current || !startRef.current) return;
         startRef.current = null;
         if (!draggingRef.current) return;
 
         draggingRef.current = false;
         setIsDragging(false);
-        const offset = readOffset();
+        const offset = offsetRef.current;
 
         if (offset >= threshold) {
           animateBack(offset);
           return;
         }
 
-        setOffset(0, true);
+        snapBack();
       },
       onTouchCancel: () => {
         startRef.current = null;
         draggingRef.current = false;
         setIsDragging(false);
-        setOffset(0, true);
+        snapBack();
       },
     }),
-    [enabled, threshold, maxVerticalDrift, animateBack, setOffset],
+    [enabled, threshold, maxVerticalDrift, animateBack, setDragOffset, snapBack],
   );
 
-  return { bindRef, handlers, isDragging, isClosing, animateBack };
+  return {
+    handlers,
+    isDragging,
+    isClosing,
+    animateBack,
+    setDragOffset,
+    snapBack,
+    reset,
+    panelStyle,
+    onPanelTransitionEnd,
+  };
 }

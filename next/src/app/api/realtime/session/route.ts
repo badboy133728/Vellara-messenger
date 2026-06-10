@@ -4,6 +4,15 @@ import { createClient } from '@/lib/supabase/server';
 export async function GET() {
   const supabase = await createClient();
   const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return Response.json({ access_token: null }, { status: 401 });
+  }
+
+  const {
     data: { session },
   } = await supabase.auth.getSession();
 

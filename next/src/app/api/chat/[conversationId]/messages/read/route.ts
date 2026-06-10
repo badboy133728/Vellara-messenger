@@ -68,12 +68,22 @@ export async function POST(
     .eq('conversation_id', convId)
     .eq('user_id', user.id);
 
-  if (updated > 0) {
+  const { data: readPartnerMessages } = await admin
+    .from('messages')
+    .select('id')
+    .eq('conversation_id', convId)
+    .neq('user_id', user.id)
+    .not('read_at', 'is', null);
+
+  const notifyIds =
+    messageIds.length > 0 ? messageIds : (readPartnerMessages ?? []).map((m) => m.id as number);
+
+  if (notifyIds.length > 0) {
     await broadcastToConversation(supabase, convId, 'MessagesRead', {
       conversation_id: convId,
       reader_id: user.id,
       read_at: now,
-      message_ids: messageIds,
+      message_ids: notifyIds,
     });
   }
 

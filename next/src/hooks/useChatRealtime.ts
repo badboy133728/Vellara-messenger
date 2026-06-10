@@ -177,10 +177,14 @@ export function useActiveConversationRealtime(activeId: number | null, handlers:
       if (disposed || binding) return;
       binding = true;
       try {
-        if (hardReconnect) {
-          await reconnectSupabaseRealtime(supabase);
-        } else {
-          await syncSupabaseRealtimeAuth(supabase);
+        const authOk = hardReconnect
+          ? await reconnectSupabaseRealtime(supabase)
+          : await syncSupabaseRealtimeAuth(supabase);
+        if (!authOk) {
+          window.setTimeout(() => {
+            if (!disposed) void bind(true);
+          }, 2000);
+          return;
         }
         if (disposed) return;
         if (channel) {
@@ -236,10 +240,14 @@ export function useChatRealtime(conversationIdsKey: string, handlers: Pick<Handl
       if (disposed || binding) return;
       binding = true;
       try {
-        if (hardReconnect) {
-          await reconnectSupabaseRealtime(supabase);
-        } else {
-          await syncSupabaseRealtimeAuth(supabase);
+        const authOk = hardReconnect
+          ? await reconnectSupabaseRealtime(supabase)
+          : await syncSupabaseRealtimeAuth(supabase);
+        if (!authOk) {
+          window.setTimeout(() => {
+            if (!disposed) void bindAll(true);
+          }, 2000);
+          return;
         }
         if (disposed) return;
 
@@ -330,7 +338,13 @@ export function useUserRealtime(userId: string | undefined, handlers: UserRealti
       if (disposed || binding) return;
       binding = true;
       try {
-        await reconnectSupabaseRealtime(supabase);
+        const authOk = await reconnectSupabaseRealtime(supabase);
+        if (!authOk) {
+          window.setTimeout(() => {
+            if (!disposed) void bind();
+          }, 2000);
+          return;
+        }
         if (disposed) return;
         if (channel) await supabase.removeChannel(channel);
 

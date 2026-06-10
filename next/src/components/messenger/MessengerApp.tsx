@@ -43,6 +43,7 @@ import { useMessageNotifications } from '@/hooks/useMessageNotifications';
 import { useLastSeenHeartbeat } from '@/hooks/useLastSeenHeartbeat';
 import { usePushActivePing } from '@/hooks/usePushActivePing';
 import { usePresenceRealtime } from '@/hooks/usePresenceRealtime';
+import { useRealtimeInit } from '@/hooks/useRealtimeInit';
 import { isOnline } from '@/lib/presence';
 import { CallScreen } from '@/components/CallScreen';
 import { IncomingCallModal } from '@/components/IncomingCallModal';
@@ -270,6 +271,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
 
   useLastSeenHeartbeat(true);
   usePushActivePing(true);
+  useRealtimeInit(user.id);
 
   const presenceUserIds = useMemo(
     () =>
@@ -373,6 +375,15 @@ function MessengerAppInner({ user }: { user: Profile }) {
     void refreshIncomingCount();
   }, [refreshIncomingCount]);
 
+  useEffect(() => {
+    const pollContacts = () => {
+      if (document.visibilityState !== 'visible') return;
+      setContactsRefreshKey((k) => k + 1);
+    };
+    const contactsTimer = window.setInterval(pollContacts, 30_000);
+    return () => window.clearInterval(contactsTimer);
+  }, []);
+
   useUserRealtime(user.id, {
     onCallSignaling,
     onContactsChanged,
@@ -429,7 +440,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
   const applyGroupRead = useCallback(
     (msgs: FormattedMessage[], readState: MemberRead[], convId: number | null) => {
       const conv = conversationsRef.current.find((c) => c.id === convId);
-      if (conv?.type !== 'group') return msgs;
+      if (conv?.type !== 'group' && conv?.type !== 'channel') return msgs;
       const enriched = enrichMessageSenders(msgs, groupMembersRef.current, userRef.current);
       return applyGroupReadStatuses(enriched, readState, userRef.current.id);
     },
@@ -807,9 +818,43 @@ function MessengerAppInner({ user }: { user: Profile }) {
       if (document.visibilityState !== 'visible') return;
       loadConversations().catch(() => {});
     };
-    const listTimer = window.setInterval(pollConversations, 180_000);
+    const listTimer = window.setInterval(pollConversations, 45_000);
     return () => window.clearInterval(listTimer);
   }, [loadConversations]);
+
+  useEffect(() => {
+    if (!activeId) return;
+    const conv = conversationsRef.current.find((c) => c.id === activeId);
+    if (!conv || conv.type === 'channel') return;
+
+    const syncReadState = () => {
+      if (document.visibilityState !== 'visible') return;
+      api<{
+        messages: FormattedMessage[];
+        members_read: MemberRead[];
+      }>(`/api/chat/${activeId}/messages?limit=40`)
+        .then((data) => {
+          if (activeIdRef.current !== activeId) return;
+          setMembersRead(data.members_read ?? []);
+          const freshById = new Map((data.messages ?? []).map((m) => [m.id, m]));
+          setMessages((prev) => {
+            const next = prev.map((m) => {
+              const fresh = freshById.get(m.id);
+              if (!fresh) return m;
+              return {
+                ...m,
+                read_at: fresh.read_at ?? m.read_at,
+              };
+            });
+            return applyGroupRead(next, data.members_read ?? [], activeId);
+          });
+        })
+        .catch(() => {});
+    };
+
+    const readTimer = window.setInterval(syncReadState, 12_000);
+    return () => window.clearInterval(readTimer);
+  }, [activeId, applyGroupRead]);
 
   const handleListRealtimeMessage = useCallback(
     (msg: FormattedMessage) => {
@@ -916,6 +961,8 @@ function MessengerAppInner({ user }: { user: Profile }) {
             sender: enriched.sender ?? m.sender,
             forwarded_from: enriched.forwarded_from ?? m.forwarded_from,
             forwarded_from_id: enriched.forwarded_from_id ?? m.forwarded_from_id,
+            e2e_plaintext: enriched.e2e_plaintext ?? m.e2e_plaintext,
+            e2e_file_name: enriched.e2e_file_name ?? m.e2e_file_name,
           };
         });
         return applyGroupRead(next, membersReadRef.current, convId);

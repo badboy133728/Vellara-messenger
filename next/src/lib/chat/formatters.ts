@@ -156,27 +156,37 @@ export function unreadCount(
 }
 
 export function formatConversationForList(
-  conv: { id: number; type: string; title: string | null; allow_voice_messages: boolean; updated_at: string },
+  conv: {
+    id: number;
+    type: string;
+    title: string | null;
+    allow_voice_messages: boolean;
+    allow_comments?: boolean;
+    updated_at: string;
+  },
   members: (MemberRow & { profiles: Profile })[],
   messages: MessageRow[],
   userId: string,
 ): ConversationListItem {
   const selfMember = members.find((m) => m.user_id === userId);
   const isGroup = conv.type === 'group';
+  const isChannel = conv.type === 'channel';
+  const isMultiParty = isGroup || isChannel;
   const lastMsg = messages[0] ?? null;
   const albumCount = lastMsg?.album_group_id
     ? messages.filter((m) => m.album_group_id === lastMsg.album_group_id).length
     : 1;
-  const count = unreadCount(messages, selfMember, userId, isGroup);
-  const other = isGroup ? null : members.find((m) => m.user_id !== userId)?.profiles ?? null;
+  const count = unreadCount(messages, selfMember, userId, isMultiParty);
+  const other = isMultiParty ? null : members.find((m) => m.user_id !== userId)?.profiles ?? null;
 
   return {
     id: conv.id,
     type: conv.type || 'private',
-    title: isGroup ? conv.title : null,
-    members_count: isGroup ? members.length : null,
+    title: isMultiParty ? conv.title : null,
+    members_count: isMultiParty ? members.length : null,
     my_role: selfMember?.role || 'member',
     allow_voice_messages: isGroup ? conv.allow_voice_messages : null,
+    allow_comments: isChannel ? !!conv.allow_comments : null,
     other_user: other
       ? {
           id: other.id,

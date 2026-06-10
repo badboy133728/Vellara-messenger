@@ -7,6 +7,7 @@ export type MessengerNavState = {
   showGroupSettings: boolean;
   showGroupPanel: boolean;
   showCreateGroup: boolean;
+  showCreateChannel: boolean;
 };
 
 export const MESSENGER_NAV_KEY = 'vellara';
@@ -18,6 +19,7 @@ export const DEFAULT_MESSENGER_NAV: MessengerNavState = {
   showGroupSettings: false,
   showGroupPanel: false,
   showCreateGroup: false,
+  showCreateChannel: false,
 };
 
 /** Bottom nav tabs — swipe left/right cycles these (mobile). */

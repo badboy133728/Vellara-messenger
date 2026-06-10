@@ -199,6 +199,17 @@ export function ChatPanel({
   const menuCloseLockRef = useRef(0);
   const attachmentUrlsRef = useRef<Set<string>>(new Set());
 
+  const isGroup = conversation?.type === 'group';
+  const isChannel = conversation?.type === 'channel';
+  const isBroadcast = isGroup || isChannel;
+  const isGroupAdmin = conversation?.my_role === 'admin';
+  const isChannelAdmin = isChannel && isGroupAdmin;
+  const allowChannelComments = !!conversation?.allow_comments;
+  const canSendVoice =
+    !isBroadcast ||
+    (isGroup && conversation?.allow_voice_messages !== false) ||
+    isGroupAdmin;
+
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
@@ -228,6 +239,17 @@ export function ChatPanel({
     () => pendingSends.filter((p) => pendingStillVisible(p, messages, currentUserId)),
     [pendingSends, messages, currentUserId],
   );
+
+  const commentCounts = useMemo(() => {
+    const map = new Map<number, number>();
+    if (!isChannel) return map;
+    for (const m of messages) {
+      if (m.reply_to_id) {
+        map.set(m.reply_to_id, (map.get(m.reply_to_id) ?? 0) + 1);
+      }
+    }
+    return map;
+  }, [messages, isChannel]);
 
   const feed = useMemo(
     () =>
@@ -518,7 +540,10 @@ export function ChatPanel({
 
   const showMessages = !messagesLoading;
   const chatReady = showMessages && (messages.length === 0 || scrollReady);
-  const showComposerArea = showMessages && !selectionMode;
+  const canComposeInChannel =
+    isChannelAdmin || (isChannel && allowChannelComments && !!replyTo);
+  const showComposerArea =
+    showMessages && !selectionMode && (!isChannel || canComposeInChannel);
 
   const swipeBack = useSwipeBack({
     enabled: Boolean(isMobile && onBack && chatReady),
@@ -562,13 +587,6 @@ export function ChatPanel({
       setScrollReady(true);
     }
   }, [isMobile, messagesLoading, conversation?.id, messages.length]);
-
-  const isGroup = conversation?.type === 'group';
-  const isGroupAdmin = conversation?.my_role === 'admin';
-  const canSendVoice =
-    !isGroup ||
-    conversation?.allow_voice_messages !== false ||
-    isGroupAdmin;
 
   const canEditMsg = (msg: FormattedMessage) => {
     if (!msg || msg.is_deleted || msg.message_type === 'system') return false;
@@ -942,10 +960,13 @@ export function ChatPanel({
   const partner = conversation.other_user;
   const title = conversationTitle(conversation);
 
-  const headerLetter = isGroup
-    ? (conversation.title?.[0] || 'G').toUpperCase()
-    : `${partner?.name?.[0] || ''}${partner?.last_name?.[0] || ''}`.toUpperCase() || '?';
-  const headerAvatar = !isGroup && partner?.avatar ? storageDisplayUrl(partner.avatar) : null;
+  const headerLetter = isChannel
+    ? (conversation.title?.[0] || 'C').toUpperCase()
+    : isGroup
+      ? (conversation.title?.[0] || 'G').toUpperCase()
+      : `${partner?.name?.[0] || ''}${partner?.last_name?.[0] || ''}`.toUpperCase() || '?';
+  const headerAvatar =
+    !isBroadcast && partner?.avatar ? storageDisplayUrl(partner.avatar) : null;
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -970,6 +991,17 @@ export function ChatPanel({
     }
 
     if (!content && !pendingAttachments.length) return;
+
+    if (isChannel && !isChannelAdmin) {
+      if (!allowChannelComments) {
+        window.alert('В канале могут публиковать только администраторы');
+        return;
+      }
+      if (!replyTo || replyTo.reply_to_id) {
+        window.alert('Подписчики могут только комментировать посты канала');
+        return;
+      }
+    }
 
     const files = pendingAttachments.map((a) => a.file);
     const previewUrls = pendingAttachments
@@ -1255,6 +1287,9 @@ export function ChatPanel({
     const swipeOffset = isSwipeActive ? rowGesture.swipeOffset : 0;
     const swipeDir = isSwipeActive ? rowGesture.swipeDirection : null;
     const canSelect = canSelectMsg(m);
+    const isChannelPost =
+      isChannel && m.message_type === 'user' && !m.is_deleted && !m.reply_to_id;
+    const isChannelComment = isChannel && !!m.reply_to_id;
 
     if (isSystem) {
       return (
@@ -1273,7 +1308,7 @@ export function ChatPanel({
     return (
       <div
         key={item.key}
-        className={`message-row ${mine ? 'message-row--mine' : 'message-row--other'}${selectionMode && canSelect ? ' message-row--selectable' : ''}${isSelected ? ' message-row--selected' : ''}${isSwipeActive && swipeDir === 'rtl' ? ' message-row--swiping-rtl' : ''}`}
+        className={`message-row ${mine ? 'message-row--mine' : 'message-row--other'}${isChannelPost ? ' message-row--channel-post' : ''}${isChannelComment ? ' message-row--channel-comment' : ''}${selectionMode && canSelect ? ' message-row--selectable' : ''}${isSelected ? ' message-row--selected' : ''}${isSwipeActive && swipeDir === 'rtl' ? ' message-row--swiping-rtl' : ''}`}
         style={
           isSwipeActive && swipeDir === 'rtl'
             ? ({ '--rtl-swipe': String(swipeOffset / RTL_REVEAL_MAX) } as React.CSSProperties)
@@ -1319,7 +1354,7 @@ export function ChatPanel({
           </span>
         )}
         <div
-          className={`message-row-body ${mine ? 'message-row-body--mine' : 'message-row-body--other'} ${isGroup ? 'message-row-body--group' : ''}`}
+          className={`message-row-body ${mine ? 'message-row-body--mine' : 'message-row-body--other'} ${isGroup ? 'message-row-body--group' : ''} ${isChannelPost ? 'message-row-body--channel-post' : ''}`}
         >
           {showGroupSenderAvatar(m) && (
             <button type="button" className="msg-avatar-btn" title="Профиль">
@@ -1337,7 +1372,31 @@ export function ChatPanel({
                 {senderDisplayName(m.sender)}
               </p>
             )}
+            {isChannelComment && !mine && (
+              <p className="msg-sender-name" style={{ color: senderColorForUserId(m.user_id) }}>
+                {senderDisplayName(m.sender)}
+              </p>
+            )}
             {renderBubble(m, mine, albumMessages)}
+            {isChannelPost && allowChannelComments && !isChannelAdmin && (
+              <div className="channel-post-actions">
+                <button
+                  type="button"
+                  className="channel-post-actions__btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditingMessage(null);
+                    setReplyTo(m);
+                    window.setTimeout(() => textareaRef.current?.focus(), 0);
+                  }}
+                >
+                  <VellaraIcon name="reply" size={14} />
+                  {commentCounts.get(m.id)
+                    ? `${commentCounts.get(m.id)} коммент.`
+                    : 'Комментировать'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1427,9 +1486,11 @@ export function ChatPanel({
           <button
             type="button"
             className="header-profile-link"
-            onClick={isGroup ? onOpenGroupInfo : onOpenPartnerProfile}
+            onClick={isBroadcast ? onOpenGroupInfo : onOpenPartnerProfile}
           >
-            <div className={`header-avatar ${isGroup ? 'header-avatar--group' : ''}`}>
+            <div
+              className={`header-avatar ${isGroup ? 'header-avatar--group' : ''} ${isChannel ? 'header-avatar--channel' : ''}`}
+            >
               {headerAvatar ? (
                 <img src={headerAvatar} alt="" className="header-avatar-img" />
               ) : (
@@ -1438,7 +1499,12 @@ export function ChatPanel({
             </div>
             <div className="header-content">
               <h3>{title}</h3>
-              {isGroup ? (
+              {isChannel ? (
+                <span className="header-group-meta">
+                  {conversation.members_count ?? 0} подписчиков
+                  {isChannelAdmin ? ' · вы администратор' : ' · канал'}
+                </span>
+              ) : isGroup ? (
                 <span className="header-group-meta">
                   {conversation.members_count ?? 0} участников
                   {isGroupAdmin ? ' · вы админ' : ''}
@@ -1450,7 +1516,7 @@ export function ChatPanel({
           </button>
 
           <div className="chat-header__actions">
-            {isGroup && isGroupAdmin && onOpenGroupSettings && (
+            {isBroadcast && isGroupAdmin && onOpenGroupSettings && (
               <button
                 type="button"
                 className="btn-group-settings"
@@ -1678,7 +1744,13 @@ export function ChatPanel({
                       void handleSubmit();
                     }
                   }}
-                  placeholder={editingMessage ? 'Редактирование…' : 'Сообщение'}
+                  placeholder={
+                    editingMessage
+                      ? 'Редактирование…'
+                      : isChannel && !isChannelAdmin
+                        ? 'Комментарий…'
+                        : 'Сообщение'
+                  }
                   maxLength={2000}
                 />
               </div>
@@ -1722,7 +1794,13 @@ export function ChatPanel({
         x={msgMenu.x}
         y={msgMenu.y}
         isMobile={isMobile}
-        canReply={!!msgMenu.message && !msgMenu.message.is_deleted}
+        canReply={
+          !!msgMenu.message &&
+          !msgMenu.message.is_deleted &&
+          (!isChannel ||
+            isChannelAdmin ||
+            (allowChannelComments && !msgMenu.message.reply_to_id))
+        }
         canCopy={!!msgMenu.message && !!getMessageCopyText(msgMenu.message)}
         canEdit={msgMenu.canEdit}
         canDelete={msgMenu.canDelete}

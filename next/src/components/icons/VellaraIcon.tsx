@@ -38,7 +38,8 @@ export type VellaraIconName =
   | 'more'
   | 'copy'
   | 'edit'
-  | 'select';
+  | 'select'
+  | 'channel';
 
 type Props = {
   name: VellaraIconName;
@@ -307,6 +308,14 @@ function IconPaths({ name }: { name: VellaraIconName }) {
         <>
           <circle cx="12" cy="12" r="9" />
           <polyline points="9 12 11 14 15 10" />
+        </>
+      );
+    case 'channel':
+      return (
+        <>
+          <path d="M4 11v2a2 2 0 0 0 2 2h1l4 4V5L7 9H6a2 2 0 0 0-2 2z" />
+          <path d="M16 8.5a4.5 4.5 0 0 1 0 7" />
+          <path d="M19 6a7.5 7.5 0 0 1 0 12" />
         </>
       );
     default:

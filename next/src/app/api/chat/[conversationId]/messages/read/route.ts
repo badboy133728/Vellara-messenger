@@ -26,7 +26,7 @@ export async function POST(
     .eq('id', convId)
     .single();
 
-  if (conv?.type === 'group') {
+  if (conv?.type === 'group' || conv?.type === 'channel') {
     await admin
       .from('conversation_members')
       .update({ last_read_at: now })

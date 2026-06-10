@@ -52,7 +52,10 @@ import { ContactsPanel } from './ContactsPanel';
 import { CallsPanel } from './CallsPanel';
 import { DashboardPanel } from './DashboardPanel';
 import { FavoritesPanel } from './FavoritesPanel';
+import { CreateChannelModal } from './CreateChannelModal';
 import { CreateGroupModal } from './CreateGroupModal';
+import { ChannelInfoPanel } from './ChannelInfoPanel';
+import { ChannelSettingsModal } from './ChannelSettingsModal';
 import { ForwardDestinationModal } from './ForwardDestinationModal';
 import { GroupSettingsModal } from './GroupSettingsModal';
 import { GroupInfoPanel } from './GroupInfoPanel';
@@ -147,6 +150,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
   const [typingUserId, setTypingUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [showCreateChannel, setShowCreateChannel] = useState(false);
   const [forwardPayload, setForwardPayload] = useState<{
     messages: FormattedMessage[];
     excludeConversationId: number | null;
@@ -186,6 +190,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
     showGroupSettings: false,
     showGroupPanel: false,
     showCreateGroup: false,
+    showCreateChannel: false,
   });
 
   navStateRef.current = {
@@ -195,6 +200,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
     showGroupSettings,
     showGroupPanel,
     showCreateGroup,
+    showCreateChannel,
   };
 
   const applyNavState = useCallback((state: MessengerNavState) => {
@@ -205,6 +211,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
     setShowGroupSettings(state.showGroupSettings);
     setShowGroupPanel(state.showGroupPanel);
     setShowCreateGroup(state.showCreateGroup);
+    setShowCreateChannel(state.showCreateChannel);
   }, []);
 
   const { navigate, goBack } = useMessengerHistory({
@@ -241,7 +248,8 @@ function MessengerAppInner({ user }: { user: Profile }) {
     tab !== 'dashboard' &&
     !showGroupSettings &&
     !showGroupPanel &&
-    !showCreateGroup;
+    !showCreateGroup &&
+    !showCreateChannel;
 
   const switchTab = useCallback(
     (next: Tab, direction: 'left' | 'right', history: 'push' | 'replace' = 'push') => {
@@ -409,8 +417,44 @@ function MessengerAppInner({ user }: { user: Profile }) {
     [],
   );
 
+  const syncChannelMembers = useCallback(async (convId: number) => {
+    try {
+      const data = await api<{
+        members: Array<{
+          id: string;
+          name: string;
+          last_name: string;
+          avatar: string | null;
+          last_read_at?: string | null;
+        }>;
+      }>(`/api/chat/channels/${convId}`);
+      groupMembersRef.current = membersMapFromGroupApi(
+        (data.members ?? []).map((m) => ({
+          id: m.id,
+          name: m.name,
+          last_name: m.last_name,
+          avatar: m.avatar,
+          last_read_at: m.last_read_at ?? null,
+        })),
+      );
+      setMembersRead(
+        (data.members ?? []).map((m) => ({
+          user_id: m.id,
+          last_read_at: m.last_read_at ?? null,
+        })),
+      );
+      return data;
+    } catch {
+      groupMembersRef.current = new Map();
+      return null;
+    }
+  }, []);
+
   const syncGroupMembers = useCallback(async (convId: number) => {
     const conv = conversationsRef.current.find((c) => c.id === convId);
+    if (conv?.type === 'channel') {
+      return syncChannelMembers(convId);
+    }
     if (conv?.type !== 'group') {
       groupMembersRef.current = new Map();
       return null;
@@ -466,12 +510,13 @@ function MessengerAppInner({ user }: { user: Profile }) {
     } catch {
       return null;
     }
-  }, []);
+  }, [syncChannelMembers]);
 
   const getE2EContext = useCallback(
     (convId: number, partnerOverride?: string | null): ConversationKeyContext | null => {
       const conv = conversationsRef.current.find((c) => c.id === convId);
       const convType = conv?.type ?? 'private';
+      if (convType === 'channel' || convType === 'saved') return null;
       const partnerId = partnerOverride ?? conv?.other_user?.id ?? null;
       const memberIds =
         convType === 'group'
@@ -555,7 +600,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
       if (!opts?.silent && !opts?.fromCache) setMessagesLoading(true);
       setConversationReadLocal(convId);
       const conv = conversationsRef.current.find((c) => c.id === convId);
-      if (conv?.type === 'group') {
+      if (conv?.type === 'group' || conv?.type === 'channel') {
         await syncGroupMembers(convId);
       } else {
         groupMembersRef.current = new Map();
@@ -568,7 +613,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
           has_more?: boolean;
         }>(`/api/chat/${convId}/messages`);
         const readState =
-          conv?.type === 'group' && groupMembersRef.current.size
+          (conv?.type === 'group' || conv?.type === 'channel') && groupMembersRef.current.size
             ? [...groupMembersRef.current.keys()].map((userId) => {
                 const fromApi = (data.members_read ?? []).find((m) => m.user_id === userId);
                 return { user_id: userId, last_read_at: fromApi?.last_read_at ?? null };
@@ -914,7 +959,12 @@ function MessengerAppInner({ user }: { user: Profile }) {
       conversationsRef.current.find((c) => c.id === convId)?.other_user?.id ??
       null;
     const e2eCtx = getE2EContext(convId, partnerId);
-    if (text && activeConv?.type !== 'group' && !e2eCtx) {
+    if (
+      text &&
+      activeConv?.type !== 'group' &&
+      activeConv?.type !== 'channel' &&
+      !e2eCtx
+    ) {
       throw new Error('Не удалось определить собеседника для шифрования. Обновите страницу.');
     }
     const e2eFiles = e2eCtx ? buildE2EFileTransform(user.id, e2eCtx) : undefined;
@@ -1439,6 +1489,13 @@ function MessengerAppInner({ user }: { user: Profile }) {
                   setContactsForGroup(list);
                   navigate({ showCreateGroup: true }, 'push');
                 }}
+                onCreateChannel={async () => {
+                  const list = await api<
+                    { id: string; name: string; last_name: string; email?: string; avatar?: string | null }[]
+                  >('/api/contacts/my');
+                  setContactsForGroup(list);
+                  navigate({ showCreateChannel: true }, 'push');
+                }}
               />
               {activeId ? (
                 <ChatPanel
@@ -1463,18 +1520,21 @@ function MessengerAppInner({ user }: { user: Profile }) {
                   onForwardMessage={(msg) => requestForwardMessages(msg, activeId)}
                   onTyping={sendTyping}
                   onOpenGroupInfo={
-                    activeConv?.type === 'group'
+                    activeConv?.type === 'group' || activeConv?.type === 'channel'
                       ? () => navigate({ showGroupPanel: true }, 'push')
                       : undefined
                   }
                   onOpenPartnerProfile={
-                    activeConv?.type !== 'group' && activeConv?.other_user?.id
+                    activeConv?.type !== 'group' &&
+                    activeConv?.type !== 'channel' &&
+                    activeConv?.other_user?.id
                       ? () =>
                           navigate({ profileUserId: activeConv.other_user!.id }, 'push')
                       : undefined
                   }
                   onOpenGroupSettings={
-                    activeConv?.type === 'group' && activeConv.my_role === 'admin'
+                    (activeConv?.type === 'group' || activeConv?.type === 'channel') &&
+                    activeConv.my_role === 'admin'
                       ? () => navigate({ showGroupSettings: true }, 'push')
                       : undefined
                   }
@@ -1535,6 +1595,16 @@ function MessengerAppInner({ user }: { user: Profile }) {
           }}
         />
       )}
+      {showCreateChannel && (
+        <CreateChannelModal
+          contacts={contactsForGroup}
+          onClose={() => goBack()}
+          onCreated={async (id) => {
+            await loadConversations();
+            navigate({ activeId: id, tab: 'chats', showCreateChannel: false }, 'replace');
+          }}
+        />
+      )}
       {convActionsMenu && (
         <ConversationActionsMenu
           conversation={convActionsMenu.conv}
@@ -1563,7 +1633,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
           }
         />
       )}
-      {showGroupPanel && activeId && (
+      {showGroupPanel && activeId && activeConv?.type === 'group' && (
         <GroupInfoPanel
           conversationId={activeId}
           currentUserId={user.id}
@@ -1591,7 +1661,35 @@ function MessengerAppInner({ user }: { user: Profile }) {
           }}
         />
       )}
-      {showGroupSettings && activeId && (
+      {showGroupPanel && activeId && activeConv?.type === 'channel' && (
+        <ChannelInfoPanel
+          conversationId={activeId}
+          currentUserId={user.id}
+          onClose={() => goBack()}
+          onUpdated={async (payload) => {
+            if (payload?.title) {
+              setConversations((prev) =>
+                prev.map((c) => (c.id === activeId ? { ...c, title: payload.title! } : c)),
+              );
+            } else {
+              loadConversations();
+            }
+            await syncGroupMembers(activeId);
+            setMessages((prev) =>
+              applyGroupRead(
+                enrichMessageSenders(prev, groupMembersRef.current, user),
+                membersRead,
+                activeId,
+              ),
+            );
+          }}
+          onLeft={() => {
+            navigate({ showGroupPanel: false, activeId: null }, 'replace');
+            loadConversations();
+          }}
+        />
+      )}
+      {showGroupSettings && activeId && activeConv?.type === 'group' && (
         <GroupSettingsModal
           conversationId={activeId}
           onClose={() => goBack()}
@@ -1600,6 +1698,17 @@ function MessengerAppInner({ user }: { user: Profile }) {
               prev.map((c) =>
                 c.id === activeId ? { ...c, allow_voice_messages } : c,
               ),
+            );
+          }}
+        />
+      )}
+      {showGroupSettings && activeId && activeConv?.type === 'channel' && (
+        <ChannelSettingsModal
+          conversationId={activeId}
+          onClose={() => goBack()}
+          onSaved={({ allow_comments }) => {
+            setConversations((prev) =>
+              prev.map((c) => (c.id === activeId ? { ...c, allow_comments } : c)),
             );
           }}
         />

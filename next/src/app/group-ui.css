@@ -210,6 +210,10 @@
   animation: group-panel-slide 0.24s ease;
 }
 
+.group-panel--channel .group-panel__head h2 {
+  color: #7eb8e8;
+}
+
 .group-panel__head {
   display: flex;
   align-items: center;

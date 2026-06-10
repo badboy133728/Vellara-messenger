@@ -443,6 +443,26 @@ a {
   overflow: hidden;
 }
 
+.modal--channel .modal-card__head h2 {
+  color: #7eb8e8;
+}
+
+.modal-field--checkbox {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.modal-field--checkbox input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  flex-shrink: 0;
+  accent-color: #5b9bd5;
+}
+
 .modal-card__head {
   display: flex;
   align-items: center;

@@ -122,6 +122,7 @@ export type ConversationListItem = {
   members_count: number | null;
   my_role: string;
   allow_voice_messages: boolean | null;
+  allow_comments: boolean | null;
   other_user: {
     id: string;
     name: string;

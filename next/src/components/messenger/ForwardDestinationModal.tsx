@@ -8,6 +8,7 @@ import type { ConversationListItem, FormattedMessage } from '@/lib/types';
 
 function convTitle(c: ConversationListItem) {
   if (c.type === 'group') return c.title ?? 'Группа';
+  if (c.type === 'channel') return c.title ?? 'Канал';
   if (c.other_user) return `${c.other_user.name} ${c.other_user.last_name}`.trim();
   return 'Чат';
 }
@@ -15,6 +16,9 @@ function convTitle(c: ConversationListItem) {
 function convAvatar(c: ConversationListItem): { type: 'image' | 'letter'; value: string } {
   if (c.type === 'group') {
     return { type: 'letter', value: (c.title?.[0] || 'G').toUpperCase() };
+  }
+  if (c.type === 'channel') {
+    return { type: 'letter', value: (c.title?.[0] || 'C').toUpperCase() };
   }
   if (c.other_user?.avatar) {
     const url = storageDisplayUrl(c.other_user.avatar);
@@ -159,7 +163,7 @@ export function ForwardDestinationModal({
                     onClick={() => toggle(c.id)}
                   >
                     <div
-                      className={`avatar-small avatar-small--modal ${c.type === 'group' ? 'avatar-small--group' : ''}`}
+                      className={`avatar-small avatar-small--modal ${c.type === 'group' ? 'avatar-small--group' : ''} ${c.type === 'channel' ? 'avatar-small--channel' : ''}`}
                     >
                       {avatar.type === 'image' ? (
                         <img src={avatar.value} alt="" className="avatar-img" />
@@ -173,6 +177,9 @@ export function ForwardDestinationModal({
                       </div>
                       {c.type === 'group' && (
                         <div className="conv-preview">{c.members_count ?? 0} участников</div>
+                      )}
+                      {c.type === 'channel' && (
+                        <div className="conv-preview">{c.members_count ?? 0} подписчиков</div>
                       )}
                     </div>
                     {isSelected && (

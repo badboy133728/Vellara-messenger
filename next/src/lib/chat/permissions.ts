@@ -5,6 +5,10 @@ export function canManageGroup(role: string): boolean {
   return role === ROLE_ADMIN;
 }
 
+export function canManageChannel(role: string): boolean {
+  return role === ROLE_ADMIN;
+}
+
 export function isMember(memberUserIds: string[], userId: string): boolean {
   return memberUserIds.includes(userId);
 }

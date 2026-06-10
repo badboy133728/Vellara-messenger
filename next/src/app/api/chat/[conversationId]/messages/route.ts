@@ -1,4 +1,5 @@
 import { requireAuth } from '@/lib/auth';
+import { assertCanPostToConversation } from '@/lib/chat/channelAccess';
 import { ensureMember } from '@/lib/chat/conversations';
 import { formatMessagesWithReplies } from '@/lib/chat/messageList';
 import { canManageGroup } from '@/lib/chat/permissions';
@@ -69,7 +70,7 @@ export async function GET(
     .single();
 
   let membersRead: MemberRead[] = [];
-  if (conv?.type === 'group') {
+  if (conv?.type === 'group' || conv?.type === 'channel') {
     const { data: members } = await supabase
       .from('conversation_members')
       .select('user_id, last_read_at')
@@ -187,6 +188,16 @@ export async function POST(
       { message: 'Введите текст, прикрепите файл или запишите голосовое' },
       { status: 422 },
     );
+  }
+
+  const channelError = await assertCanPostToConversation(
+    supabase,
+    convId,
+    user.id,
+    insert.reply_to_id as number | undefined,
+  );
+  if (channelError) {
+    return Response.json({ message: channelError }, { status: 403 });
   }
 
   const { data: message, error } = await supabase

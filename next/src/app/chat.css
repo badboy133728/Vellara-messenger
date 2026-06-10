@@ -75,6 +75,16 @@
   background: rgba(201, 168, 133, 0.22);
 }
 
+.btn-new-group--channel {
+  background: rgba(91, 155, 213, 0.14);
+  color: #7eb8e8;
+  border-color: rgba(91, 155, 213, 0.35);
+}
+
+.btn-new-group--channel:hover {
+  background: rgba(91, 155, 213, 0.24);
+}
+
 .conv-preview {
   font-size: 13px;
   color: var(--vellara-text-muted, #94a3b8);
@@ -1944,4 +1954,47 @@
     width: 44px;
     height: 44px;
   }
+}
+
+/* ——— Channel posts & comments ——— */
+.message-row--channel-post {
+  justify-content: center;
+  padding: 4px 12px;
+}
+
+.message-row--channel-post .message-row-body {
+  max-width: min(560px, 100%);
+  width: 100%;
+}
+
+.message-row-body--channel-post .message-bubble {
+  width: 100%;
+  border-radius: 14px;
+}
+
+.message-row--channel-comment .message-row-body {
+  max-width: min(480px, 92%);
+}
+
+.channel-post-actions {
+  display: flex;
+  margin-top: 6px;
+}
+
+.channel-post-actions__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: rgba(91, 155, 213, 0.12);
+  color: #7eb8e8;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.channel-post-actions__btn:hover {
+  background: rgba(91, 155, 213, 0.22);
 }

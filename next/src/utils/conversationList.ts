@@ -38,6 +38,7 @@ export function conversationPreviewFromMessage(
 
 export function conversationTitle(c: ConversationListItem): string {
   if (c.type === 'group') return c.title ?? 'Группа';
+  if (c.type === 'channel') return c.title ?? 'Канал';
   if (c.other_user) return displayFullName(c.other_user.name, c.other_user.last_name, 'Чат');
   return 'Чат';
 }

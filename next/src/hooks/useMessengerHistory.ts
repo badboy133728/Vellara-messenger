@@ -30,7 +30,8 @@ function isRootNav(state: MessengerNavState): boolean {
     state.profileUserId === null &&
     !state.showGroupSettings &&
     !state.showGroupPanel &&
-    !state.showCreateGroup
+    !state.showCreateGroup &&
+    !state.showCreateChannel
   );
 }
 

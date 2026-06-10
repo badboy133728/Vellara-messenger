@@ -15,6 +15,10 @@ function convAvatar(c: ConversationListItem): { type: 'image' | 'letter'; value:
     const letter = (c.title?.[0] || 'G').toUpperCase();
     return { type: 'letter', value: letter };
   }
+  if (c.type === 'channel') {
+    const letter = (c.title?.[0] || 'C').toUpperCase();
+    return { type: 'letter', value: letter };
+  }
   if (c.other_user?.avatar) {
     const url = storageDisplayUrl(c.other_user.avatar);
     if (url) return { type: 'image', value: url };
@@ -41,6 +45,7 @@ export function ConversationSidebar({
   onSelect,
   onRefresh,
   onCreateGroup,
+  onCreateChannel,
   onPinConversation,
   onArchiveConversation,
   onDeleteConversation,
@@ -52,6 +57,7 @@ export function ConversationSidebar({
   onSelect: (id: number) => void;
   onRefresh: () => void;
   onCreateGroup?: () => void;
+  onCreateChannel?: () => void;
   onPinConversation: (conv: ConversationListItem) => Promise<void>;
   onArchiveConversation: (conv: ConversationListItem) => Promise<void>;
   onDeleteConversation: (conv: ConversationListItem) => Promise<void>;
@@ -125,6 +131,12 @@ export function ConversationSidebar({
               Группа
             </button>
           )}
+          {onCreateChannel && (
+            <button type="button" className="btn-new-group btn-new-group--channel" onClick={onCreateChannel}>
+              <VellaraIcon name="channel" size={14} />
+              Канал
+            </button>
+          )}
           <button type="button" className="btn-new-group btn-new-group--icon" onClick={onRefresh} aria-label="Обновить">
             <VellaraIcon name="refresh" size={16} />
           </button>
@@ -175,7 +187,9 @@ export function ConversationSidebar({
                 onTouchEnd={longPress.onTouchEnd}
                 onTouchCancel={longPress.onTouchCancel}
               >
-                <div className={`avatar-small ${c.type === 'group' ? 'avatar-small--group' : ''}`}>
+                <div
+                  className={`avatar-small ${c.type === 'group' ? 'avatar-small--group' : ''} ${c.type === 'channel' ? 'avatar-small--channel' : ''}`}
+                >
                   {av.type === 'image' ? (
                     <img src={av.value} alt="" className="avatar-img" />
                   ) : (

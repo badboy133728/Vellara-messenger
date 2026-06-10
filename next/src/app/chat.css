@@ -1794,6 +1794,24 @@
     min-height: 0;
   }
 
+  .message-row-check {
+    left: 4px;
+  }
+
+  .message-row--mine .message-row-check {
+    left: auto;
+    right: 18px;
+  }
+
+  .message-row--selectable .message-row-body {
+    padding-left: 24px;
+  }
+
+  .message-row--selectable.message-row--mine .message-row-body {
+    padding-left: 0;
+    padding-right: 34px;
+  }
+
   .message-row-body {
     max-width: 92%;
   }

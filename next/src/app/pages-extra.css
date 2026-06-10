@@ -820,11 +820,13 @@
   position: fixed;
   z-index: 10025;
   min-width: 160px;
+  max-height: calc(100dvh - 24px);
+  overflow-x: hidden;
+  overflow-y: auto;
   background: var(--vellara-panel, #1a1a1a);
   border: 1px solid var(--vellara-border-subtle, #2e2e2e);
   border-radius: 10px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
-  overflow: hidden;
   padding: 4px;
 }
 
@@ -836,6 +838,10 @@
   display: flex;
   align-items: flex-end;
   justify-content: center;
+}
+
+.msg-menu-backdrop--desktop {
+  display: block;
 }
 
 .msg-context-menu--sheet {

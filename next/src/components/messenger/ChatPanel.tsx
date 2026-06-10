@@ -585,7 +585,7 @@ export function ChatPanel({
     setMsgMenu({
       show: true,
       x: Math.min(Math.max(clientX, 12), window.innerWidth - 192),
-      y: Math.min(Math.max(clientY, 12), window.innerHeight - 120),
+      y: Math.max(clientY, 12),
       message: msg,
       canEdit,
       canDelete,

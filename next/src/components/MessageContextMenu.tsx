@@ -1,7 +1,10 @@
 'use client';
 
+import { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { VellaraIcon } from '@/components/icons/VellaraIcon';
+
+const MENU_VIEWPORT_EDGE = 12;
 
 export function MessageContextMenu({
   show,
@@ -42,13 +45,52 @@ export function MessageContextMenu({
   onDelete: () => void;
   onClose: () => void;
 }) {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [desktopPos, setDesktopPos] = useState({ top: y, left: x });
+
+  useLayoutEffect(() => {
+    if (!show || isMobile) return;
+
+    const menu = menuRef.current;
+    if (!menu) return;
+
+    const { width, height } = menu.getBoundingClientRect();
+    const maxTop = window.innerHeight - height - MENU_VIEWPORT_EDGE;
+    const maxLeft = window.innerWidth - width - MENU_VIEWPORT_EDGE;
+
+    let top = y;
+    if (top > maxTop) {
+      top = Math.max(MENU_VIEWPORT_EDGE, y - height);
+    }
+    top = Math.min(Math.max(top, MENU_VIEWPORT_EDGE), Math.max(MENU_VIEWPORT_EDGE, maxTop));
+
+    const left = Math.min(Math.max(x, MENU_VIEWPORT_EDGE), Math.max(MENU_VIEWPORT_EDGE, maxLeft));
+
+    setDesktopPos({ top, left });
+  }, [
+    show,
+    isMobile,
+    x,
+    y,
+    canReply,
+    canEdit,
+    canDelete,
+    canSave,
+    canForward,
+    canSelectForForward,
+  ]);
+
   if (!show || typeof document === 'undefined') return null;
 
   return createPortal(
-    <div className="msg-menu-backdrop" onClick={onClose}>
+    <div
+      className={`msg-menu-backdrop ${isMobile ? '' : 'msg-menu-backdrop--desktop'}`}
+      onClick={onClose}
+    >
       <div
+        ref={menuRef}
         className={`msg-context-menu ${isMobile ? 'msg-context-menu--sheet' : ''}`}
-        style={isMobile ? undefined : { top: y, left: x }}
+        style={isMobile ? undefined : { top: desktopPos.top, left: desktopPos.left }}
         onClick={(e) => e.stopPropagation()}
       >
         {canReply && onReply && (

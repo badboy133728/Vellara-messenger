@@ -305,6 +305,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
   const activeIdRef = useRef<number | null>(null);
   const tabRef = useRef<Tab>('chats');
   const conversationsRef = useRef(conversations);
+  const messagesRef = useRef(messages);
   const groupMembersRef = useRef<Map<string, SenderProfile>>(new Map());
   const userRef = useRef(user);
   const membersReadRef = useRef(membersRead);
@@ -318,6 +319,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
   activeIdRef.current = activeId;
   tabRef.current = tab;
   conversationsRef.current = conversations;
+  messagesRef.current = messages;
   userRef.current = user;
   membersReadRef.current = membersRead;
 

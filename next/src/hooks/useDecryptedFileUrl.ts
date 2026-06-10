@@ -71,7 +71,7 @@ export function useDecryptedFileUrl(
         if (cached !== revoked) URL.revokeObjectURL(revoked);
       }
     };
-  }, [userId, convId, partnerId, convType, filePath, fileOriginalName, mimeHint]);
+  }, [userId, ctx, convId, partnerId, convType, filePath, fileOriginalName, mimeHint]);
 
   return url;
 }

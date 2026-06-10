@@ -1,17 +1,17 @@
-import { createClient } from '@/lib/supabase/client';
 import {
   contentTypeForExtension,
   isVideoAttachment,
   maxBytesForFile,
   resolveFileType,
 } from '@/lib/chat/attachmentTypes';
+import { uploadBlobInChunks } from '@/lib/chat/chunkedUploadClient';
 import { CHAT_UPLOAD_MAX_BYTES, prepareChatImageForUpload } from '@/lib/chatImageUpload';
 
 export type PreparedMessageFile =
   | { mode: 'inline'; file: File }
   | { mode: 'uploaded'; path: string; fileType: string; originalName: string };
 
-/** Vercel serverless: тело запроса ~4.5 MB — видео и крупные файлы грузим в Storage с клиента. */
+/** Vercel serverless: тело запроса ~4.5 MB — видео и крупные файлы грузим частями через API. */
 export function shouldUploadDirectToStorage(file: File): boolean {
   if (isVideoAttachment(file)) return true;
   if (file.type.startsWith('image/') || /\.(jpe?g|png|gif|webp|bmp|heic|heif)$/i.test(file.name)) {
@@ -21,7 +21,7 @@ export function shouldUploadDirectToStorage(file: File): boolean {
 }
 
 export async function uploadMessageFileClient(
-  userId: string,
+  _userId: string,
   file: File,
 ): Promise<{ path: string; fileType: string; originalName: string }> {
   const fileType = resolveFileType(file.type, file.name);
@@ -41,22 +41,7 @@ export async function uploadMessageFileClient(
     contentType = body.type || contentType;
   }
 
-  const key = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-  const supabase = createClient();
-  const { error } = await supabase.storage.from('messages').upload(key, body, {
-    contentType,
-    upsert: false,
-  });
-
-  if (error) {
-    throw new Error(error.message || 'Не удалось загрузить файл');
-  }
-
-  return {
-    path: `messages/${key}`,
-    fileType,
-    originalName: file.name,
-  };
+  return uploadBlobInChunks(body, file.name, contentType);
 }
 
 export async function prepareMessageFileForSend(

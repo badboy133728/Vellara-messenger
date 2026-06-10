@@ -26,13 +26,7 @@ export async function syncSupabaseRealtimeAuth(supabase: SupabaseClient): Promis
     const data = (await res.json()) as SessionPayload;
     if (!data.access_token) return false;
 
-    if (data.refresh_token) {
-      await supabase.auth.setSession({
-        access_token: data.access_token,
-        refresh_token: data.refresh_token,
-      });
-    }
-
+    // Только JWT для Realtime — без setSession (лишний запрос к supabase.co/auth).
     await supabase.realtime.setAuth(data.access_token);
     return true;
   } catch {

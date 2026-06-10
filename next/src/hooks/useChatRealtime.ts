@@ -66,6 +66,7 @@ function subscribeConversation(
   supabase: ReturnType<typeof createClient>,
   convId: number,
   handlersRef: RefObject<Handlers>,
+  onUnhealthy?: () => void,
 ): RealtimeChannel {
   return supabase
     .channel(`conversation:${convId}`, {
@@ -154,9 +155,7 @@ function subscribeConversation(
     )
     .subscribe((status: `${REALTIME_SUBSCRIBE_STATES}`) => {
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-        window.setTimeout(() => {
-          void reconnectSupabaseRealtime(supabase);
-        }, 1500);
+        window.setTimeout(() => onUnhealthy?.(), 1500);
       }
     });
 }
@@ -188,7 +187,9 @@ export function useActiveConversationRealtime(activeId: number | null, handlers:
           await supabase.removeChannel(channel);
           channel = null;
         }
-        channel = subscribeConversation(supabase, activeId, handlersRef);
+        channel = subscribeConversation(supabase, activeId, handlersRef, () => {
+          if (!disposed) void bind(true);
+        });
       } finally {
         binding = false;
       }
@@ -198,7 +199,7 @@ export function useActiveConversationRealtime(activeId: number | null, handlers:
 
     const onVisible = () => {
       if (document.visibilityState !== 'visible' || disposed) return;
-      void syncSupabaseRealtimeAuth(supabase);
+      void bind(true);
     };
     document.addEventListener('visibilitychange', onVisible);
 
@@ -249,7 +250,7 @@ export function useChatRealtime(conversationIdsKey: string, handlers: Pick<Handl
 
         conversationIds.forEach((convId) => {
           const channel = supabase
-            .channel(`conversation-list:${convId}`, {
+            .channel(`conversation:${convId}`, {
               config: { broadcast: { self: false } },
             })
             .on(
@@ -261,9 +262,17 @@ export function useChatRealtime(conversationIdsKey: string, handlers: Pick<Handl
                 );
               },
             )
+            .on('broadcast', { event: 'NewMessage' }, (message: { payload: FormattedMessage }) => {
+              const msg = message.payload;
+              if (msg?.conversation_id === convId) {
+                handlersRef.current.onMessage?.(msg);
+              }
+            })
             .subscribe((status: `${REALTIME_SUBSCRIBE_STATES}`) => {
               if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-                window.setTimeout(() => void syncSupabaseRealtimeAuth(supabase), 1500);
+                window.setTimeout(() => {
+                  if (!disposed) void bindAll(true);
+                }, 1500);
               }
             });
           channels.push(channel);
@@ -277,7 +286,7 @@ export function useChatRealtime(conversationIdsKey: string, handlers: Pick<Handl
 
     const onVisible = () => {
       if (document.visibilityState !== 'visible' || disposed) return;
-      void syncSupabaseRealtimeAuth(supabase);
+      void bindAll(true);
     };
     document.addEventListener('visibilitychange', onVisible);
 
@@ -315,103 +324,110 @@ export function useUserRealtime(userId: string | undefined, handlers: UserRealti
     const supabase = createClient();
     let disposed = false;
     let channel: RealtimeChannel | null = null;
+    let binding = false;
 
     const bind = async () => {
-      await reconnectSupabaseRealtime(supabase);
-      if (disposed) return;
-      if (channel) await supabase.removeChannel(channel);
+      if (disposed || binding) return;
+      binding = true;
+      try {
+        await reconnectSupabaseRealtime(supabase);
+        if (disposed) return;
+        if (channel) await supabase.removeChannel(channel);
 
-      const notifyContacts = () => handlersRef.current.onContactsChanged?.();
+        const notifyContacts = () => handlersRef.current.onContactsChanged?.();
 
-      channel = supabase
-        .channel(`user:${userId}`)
-        .on('broadcast', { event: 'CallSignaling' }, (message: { payload: unknown }) =>
-          handlersRef.current.onCallSignaling?.(message.payload),
-        )
-        .on(
-          'broadcast',
-          { event: 'ContactRequestSent' },
-          (message: { payload: ContactRequestPayload }) => {
-            handlersRef.current.onContactRequest?.(message.payload ?? {});
-            notifyContacts();
-          },
-        )
-        .on('broadcast', { event: 'ContactRequestAccepted' }, notifyContacts)
-        .on('broadcast', { event: 'ContactRequestRejected' }, notifyContacts)
-        .on('broadcast', { event: 'ContactRemoved' }, notifyContacts)
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'user_contacts',
-            filter: `contact_id=eq.${userId}`,
-          },
-          (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
-            const row = payload.new as { user_id?: string; status?: string };
-            if (row.status === 'pending' && row.user_id) {
-              handlersRef.current.onContactRequest?.({ sender_id: row.user_id });
+        channel = supabase
+          .channel(`user:${userId}`)
+          .on('broadcast', { event: 'CallSignaling' }, (message: { payload: unknown }) =>
+            handlersRef.current.onCallSignaling?.(message.payload),
+          )
+          .on(
+            'broadcast',
+            { event: 'ContactRequestSent' },
+            (message: { payload: ContactRequestPayload }) => {
+              handlersRef.current.onContactRequest?.(message.payload ?? {});
+              notifyContacts();
+            },
+          )
+          .on('broadcast', { event: 'ContactRequestAccepted' }, notifyContacts)
+          .on('broadcast', { event: 'ContactRequestRejected' }, notifyContacts)
+          .on('broadcast', { event: 'ContactRemoved' }, notifyContacts)
+          .on(
+            'postgres_changes',
+            {
+              event: 'INSERT',
+              schema: 'public',
+              table: 'user_contacts',
+              filter: `contact_id=eq.${userId}`,
+            },
+            (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
+              const row = payload.new as { user_id?: string; status?: string };
+              if (row.status === 'pending' && row.user_id) {
+                handlersRef.current.onContactRequest?.({ sender_id: row.user_id });
+              }
+              notifyContacts();
+            },
+          )
+          .on(
+            'postgres_changes',
+            {
+              event: 'UPDATE',
+              schema: 'public',
+              table: 'user_contacts',
+              filter: `user_id=eq.${userId}`,
+            },
+            (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
+              const row = payload.new as { status?: string };
+              if (row?.status === 'accepted') notifyContacts();
+            },
+          )
+          .on(
+            'postgres_changes',
+            {
+              event: 'UPDATE',
+              schema: 'public',
+              table: 'user_contacts',
+              filter: `contact_id=eq.${userId}`,
+            },
+            notifyContacts,
+          )
+          .on(
+            'postgres_changes',
+            {
+              event: 'DELETE',
+              schema: 'public',
+              table: 'user_contacts',
+              filter: `contact_id=eq.${userId}`,
+            },
+            notifyContacts,
+          )
+          .on(
+            'postgres_changes',
+            {
+              event: 'DELETE',
+              schema: 'public',
+              table: 'user_contacts',
+              filter: `user_id=eq.${userId}`,
+            },
+            notifyContacts,
+          )
+          .subscribe((status: `${REALTIME_SUBSCRIBE_STATES}`) => {
+            if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+              window.setTimeout(() => {
+                if (!disposed) void bind();
+              }, 1500);
             }
-            notifyContacts();
-          },
-        )
-        .on(
-          'postgres_changes',
-          {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'user_contacts',
-            filter: `user_id=eq.${userId}`,
-          },
-          (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
-            const row = payload.new as { status?: string };
-            if (row?.status === 'accepted') notifyContacts();
-          },
-        )
-        .on(
-          'postgres_changes',
-          {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'user_contacts',
-            filter: `contact_id=eq.${userId}`,
-          },
-          notifyContacts,
-        )
-        .on(
-          'postgres_changes',
-          {
-            event: 'DELETE',
-            schema: 'public',
-            table: 'user_contacts',
-            filter: `contact_id=eq.${userId}`,
-          },
-          notifyContacts,
-        )
-        .on(
-          'postgres_changes',
-          {
-            event: 'DELETE',
-            schema: 'public',
-            table: 'user_contacts',
-            filter: `user_id=eq.${userId}`,
-          },
-          notifyContacts,
-        )
-        .subscribe((status: `${REALTIME_SUBSCRIBE_STATES}`) => {
-          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-            window.setTimeout(() => {
-              if (!disposed) void bind();
-            }, 1500);
-          }
-        });
+          });
+      } finally {
+        binding = false;
+      }
     };
 
     void bind();
 
     const onVisible = () => {
       if (document.visibilityState !== 'visible' || disposed) return;
-      void syncSupabaseRealtimeAuth(supabase);
+      void bind();
     };
     document.addEventListener('visibilitychange', onVisible);
 

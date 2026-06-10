@@ -196,22 +196,24 @@ export async function forwardMessageToConversations(
 
   const formatted = await formatMessagesWithReplies(created, profileMap, admin);
 
-  for (const msg of formatted) {
-    const convId = created.find((c) => c.id === msg.id)?.conversation_id;
-    if (!convId) continue;
-    const row = created.find((c) => c.id === msg.id)!;
-    void broadcastToConversation(supabase, convId, 'NewMessage', {
-      ...msg,
-      conversation_id: convId,
-    });
-    void notifyConversationPush(
-      supabase,
-      convId,
-      user.id,
-      `${profile.name} ${profile.last_name}`.trim(),
-      row,
-    );
-  }
+  await Promise.all(
+    formatted.map(async (msg) => {
+      const convId = created.find((c) => c.id === msg.id)?.conversation_id;
+      if (!convId) return;
+      const row = created.find((c) => c.id === msg.id)!;
+      await broadcastToConversation(supabase, convId, 'NewMessage', {
+        ...msg,
+        conversation_id: convId,
+      });
+      void notifyConversationPush(
+        supabase,
+        convId,
+        user.id,
+        `${profile.name} ${profile.last_name}`.trim(),
+        row,
+      );
+    }),
+  );
 
   return formatted.map((msg) => {
     const convId = created.find((c) => c.id === msg.id)?.conversation_id;

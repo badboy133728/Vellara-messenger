@@ -224,7 +224,7 @@ export async function POST(
     profileMap,
     admin,
   );
-  void broadcastToConversation(supabase, convId, 'NewMessage', {
+  await broadcastToConversation(supabase, convId, 'NewMessage', {
     ...formatted,
     conversation_id: convId,
   });

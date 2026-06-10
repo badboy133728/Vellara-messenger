@@ -23,43 +23,55 @@ export function usePresenceRealtime(
     const supabase = createClient();
     let disposed = false;
     const channels: RealtimeChannel[] = [];
+    let binding = false;
 
     const bindAll = async () => {
-      await reconnectSupabaseRealtime(supabase);
-      if (disposed) return;
-      while (channels.length) {
-        const ch = channels.pop();
-        if (ch) await supabase.removeChannel(ch);
+      if (disposed || binding) return;
+      binding = true;
+      try {
+        await reconnectSupabaseRealtime(supabase);
+        if (disposed) return;
+        while (channels.length) {
+          const ch = channels.pop();
+          if (ch) await supabase.removeChannel(ch);
+        }
+        uniqueIds.forEach((userId) => {
+          channels.push(
+            supabase
+              .channel(`presence:${userId}`)
+              .on(
+                'postgres_changes',
+                { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${userId}` },
+                (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
+                  const row = payload.new as { id?: string; last_seen_at?: string | null };
+                  if (!row.id) return;
+                  handlerRef.current(row.id, row.last_seen_at ?? null);
+                },
+              )
+              .subscribe(),
+          );
+        });
+      } finally {
+        binding = false;
       }
-      uniqueIds.forEach((userId) => {
-        channels.push(
-          supabase
-            .channel(`presence:${userId}`)
-            .on(
-              'postgres_changes',
-              { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${userId}` },
-              (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
-                const row = payload.new as { id?: string; last_seen_at?: string | null };
-                if (!row.id) return;
-                handlerRef.current(row.id, row.last_seen_at ?? null);
-              },
-            )
-            .subscribe(),
-        );
-      });
     };
 
     void bindAll();
 
     const onVisible = () => {
       if (document.visibilityState !== 'visible' || disposed) return;
-      void syncSupabaseRealtimeAuth(supabase);
+      void bindAll();
     };
     document.addEventListener('visibilitychange', onVisible);
+
+    const refreshAuth = window.setInterval(() => {
+      void syncSupabaseRealtimeAuth(supabase);
+    }, 3 * 60 * 1000);
 
     return () => {
       disposed = true;
       document.removeEventListener('visibilitychange', onVisible);
+      window.clearInterval(refreshAuth);
       channels.forEach((ch) => supabase.removeChannel(ch));
     };
   }, [idsKey]);

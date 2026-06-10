@@ -54,6 +54,15 @@ export async function reconnectSupabaseRealtime(supabase: SupabaseClient): Promi
     if (!rt.isConnected() && !isRealtimeConnecting(supabase)) {
       rt.connect();
     }
+
+    for (let i = 0; i < 40; i++) {
+      if (rt.isConnected()) break;
+      if (isRealtimeConnecting(supabase)) {
+        await new Promise((resolve) => window.setTimeout(resolve, 50));
+        continue;
+      }
+      break;
+    }
   } catch {
     /* ignore */
   }

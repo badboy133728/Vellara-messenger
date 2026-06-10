@@ -282,9 +282,12 @@
   to { transform: rotate(360deg); }
 }
 
-.chat-area--dragging {
-  will-change: transform;
-  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.35);
+.chat-area--dragging,
+.chat-area--closing {
+  will-change: transform, opacity;
+  box-shadow: calc(-8px - 10px * var(--chat-swipe-progress, 0)) 0
+    calc(28px + 20px * var(--chat-swipe-progress, 0))
+    rgba(0, 0, 0, calc(0.28 + 0.22 * var(--chat-swipe-progress, 0)));
 }
 
 .input-area--ready {
@@ -1732,7 +1735,7 @@
 
   .chat-layout.chat-open .chat-area.chat-area--dragging,
   .chat-layout.chat-open .chat-area.chat-area--closing {
-    will-change: transform;
+    will-change: transform, opacity;
   }
 
   .chat-layout.chat-open .chat-header,
@@ -1772,6 +1775,10 @@
   .chat-area--dragging,
   .chat-area--closing {
     animation: none !important;
+  }
+
+  .chat-area--closing {
+    pointer-events: none;
   }
 
   @keyframes chat-enter {

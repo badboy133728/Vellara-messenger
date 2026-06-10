@@ -638,7 +638,7 @@ export function ChatPanel({
       if (forwardSelectMode) return;
       openMessageMenu(event, payload as FormattedMessage);
     },
-    onSwipeBack: isMobile && onBack ? () => onBack() : undefined,
+    onSwipeBack: isMobile && onBack ? (offset) => swipeBack.animateBack(offset) : undefined,
     onForwardSelectStart: (payload) => {
       enterForwardSelectMode(payload as FormattedMessage);
     },
@@ -1205,7 +1205,12 @@ export function ChatPanel({
     >
       <header className="chat-header" ref={headerRef}>
         {onBack && (
-          <button type="button" className="btn-back-chat" aria-label="Назад к списку" onClick={onBack}>
+          <button
+            type="button"
+            className="btn-back-chat"
+            aria-label="Назад к списку"
+            onClick={() => swipeBack.animateBack()}
+          >
             <VellaraIcon name="back" size={20} />
           </button>
         )}

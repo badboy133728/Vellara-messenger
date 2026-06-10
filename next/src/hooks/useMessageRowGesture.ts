@@ -12,7 +12,7 @@ type Options = {
   /** Свайп справа-налево — меню действий с сообщением. */
   onSwipeOpenActions: (event: { clientX: number; clientY: number }, payload: unknown) => void;
   /** Свайп слева-направо — назад (список чатов / меню). */
-  onSwipeBack?: () => void;
+  onSwipeBack?: (swipeOffset: number) => void;
   onForwardSelectStart: (payload: unknown) => void;
 };
 
@@ -77,7 +77,7 @@ export function useMessageRowGesture({
           active.payload,
         );
       } else if (direction === 'ltr') {
-        onSwipeBackRef.current?.();
+        onSwipeBackRef.current?.(offset);
       }
     }
 

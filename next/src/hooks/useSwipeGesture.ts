@@ -1,7 +1,10 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import type { TouchEvent } from 'react';
+
+const SWIPE_CLOSE_MS = 420;
+const SWIPE_EASING = 'cubic-bezier(0.32, 0.72, 0, 1)';
 
 type SwipeOptions = {
   enabled?: boolean;
@@ -150,21 +153,104 @@ export function useSwipeBack({
   const draggingRef = useRef(false);
   const closingRef = useRef(false);
   const nodeRef = useRef<HTMLElement | null>(null);
+  const onBackRef = useRef(onBack);
   const [isDragging, setIsDragging] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
 
-  const setOffset = (value: number, animate = false) => {
-    if (!nodeRef.current) return;
-    const clamped = Math.max(0, Math.min(value, window.innerWidth * 0.92));
-    nodeRef.current.style.transform = clamped > 0 ? `translateX(${clamped}px)` : '';
-    nodeRef.current.style.transition = animate
-      ? 'transform 0.32s cubic-bezier(0.32, 0.72, 0, 1)'
-      : draggingRef.current
-        ? 'none'
-        : 'transform 0.32s cubic-bezier(0.32, 0.72, 0, 1)';
+  onBackRef.current = onBack;
+
+  const readOffset = () => {
+    if (!nodeRef.current) return 0;
+    const match = nodeRef.current.style.transform.match(/translateX\(([-\d.]+)px\)/);
+    return match ? parseFloat(match[1]) : 0;
   };
 
+  const setOffset = useCallback((value: number, animate = false) => {
+    const node = nodeRef.current;
+    if (!node) return;
+
+    const max = window.innerWidth;
+    const clamped = Math.max(0, Math.min(value, max));
+    const progress = max > 0 ? clamped / max : 0;
+
+    node.style.transform = clamped > 0 ? `translateX(${clamped}px)` : '';
+    node.style.opacity = clamped > 0 ? String(1 - progress * 0.28) : '';
+    node.style.setProperty('--chat-swipe-progress', String(progress));
+
+    const transition = animate
+      ? `transform ${SWIPE_CLOSE_MS}ms ${SWIPE_EASING}, opacity ${SWIPE_CLOSE_MS}ms ${SWIPE_EASING}`
+      : draggingRef.current
+        ? 'none'
+        : `transform ${SWIPE_CLOSE_MS}ms ${SWIPE_EASING}, opacity ${SWIPE_CLOSE_MS}ms ${SWIPE_EASING}`;
+    node.style.transition = transition;
+  }, []);
+
+  const clearSwipeStyles = useCallback(() => {
+    const node = nodeRef.current;
+    if (!node) return;
+    node.style.transform = '';
+    node.style.opacity = '';
+    node.style.transition = '';
+    node.style.removeProperty('--chat-swipe-progress');
+  }, []);
+
+  const animateBack = useCallback(
+    (startOffset = 0) => {
+      if (!enabled) {
+        onBackRef.current();
+        return;
+      }
+      if (closingRef.current) return;
+
+      closingRef.current = true;
+      setIsClosing(true);
+      draggingRef.current = false;
+      setIsDragging(false);
+      startRef.current = null;
+
+      const node = nodeRef.current;
+      const finish = () => onBackRef.current();
+
+      if (!node) {
+        finish();
+        return;
+      }
+
+      const runClose = () => {
+        setOffset(window.innerWidth, true);
+
+        let done = false;
+        const complete = () => {
+          if (done) return;
+          done = true;
+          node.removeEventListener('transitionend', onTransitionEnd);
+          window.clearTimeout(fallback);
+          finish();
+        };
+
+        const onTransitionEnd = (event: TransitionEvent) => {
+          if (event.target !== node || event.propertyName !== 'transform') return;
+          complete();
+        };
+
+        const fallback = window.setTimeout(complete, SWIPE_CLOSE_MS + 48);
+        node.addEventListener('transitionend', onTransitionEnd);
+      };
+
+      if (startOffset > 8) {
+        setOffset(startOffset, false);
+        requestAnimationFrame(() => requestAnimationFrame(runClose));
+      } else {
+        runClose();
+      }
+    },
+    [enabled, setOffset],
+  );
+
   const bindRef = (node: HTMLElement | null) => {
+    if (nodeRef.current && nodeRef.current !== node) {
+      clearSwipeStyles();
+    }
     nodeRef.current = node;
   };
 
@@ -192,7 +278,7 @@ export function useSwipeBack({
         const dy = touch.clientY - startRef.current.y;
 
         if (!draggingRef.current) {
-          if (dx <= 0 || Math.abs(dy) > maxVerticalDrift && Math.abs(dy) > Math.abs(dx)) {
+          if (dx <= 0 || (Math.abs(dy) > maxVerticalDrift && Math.abs(dy) > Math.abs(dx))) {
             startRef.current = null;
             return;
           }
@@ -211,17 +297,10 @@ export function useSwipeBack({
 
         draggingRef.current = false;
         setIsDragging(false);
-        const offset = nodeRef.current
-          ? parseFloat(nodeRef.current.style.transform.replace(/[^\d.-]/g, '') || '0')
-          : 0;
+        const offset = readOffset();
 
         if (offset >= threshold) {
-          closingRef.current = true;
-          setIsClosing(true);
-          setOffset(window.innerWidth, true);
-          window.setTimeout(() => {
-            onBack();
-          }, 300);
+          animateBack(offset);
           return;
         }
 
@@ -234,8 +313,8 @@ export function useSwipeBack({
         setOffset(0, true);
       },
     }),
-    [enabled, threshold, maxVerticalDrift, onBack],
+    [enabled, threshold, maxVerticalDrift, animateBack, setOffset],
   );
 
-  return { bindRef, handlers, isDragging, isClosing };
+  return { bindRef, handlers, isDragging, isClosing, animateBack };
 }

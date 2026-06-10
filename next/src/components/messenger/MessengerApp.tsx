@@ -754,6 +754,9 @@ function MessengerAppInner({ user }: { user: Profile }) {
       setMessages(cached);
       setHasMoreOlder(true);
       setMessagesLoading(false);
+      // If we render from cache first, still acknowledge read state on server.
+      setConversationReadLocal(activeId);
+      api(`/api/chat/${activeId}/messages/read`, { method: 'POST' }).catch(() => {});
       void loadMessagesRef.current(activeId, { silent: true, fromCache: true });
     } else {
       setMessages([]);
@@ -832,9 +835,16 @@ function MessengerAppInner({ user }: { user: Profile }) {
           const hasNewMessages = freshMessages.some(
             (m) => !messagesRef.current.some((local) => local.id === m.id),
           );
+          const hasUnreadFromOthers = freshMessages.some(
+            (m) => m.user_id !== user.id && !m.read_at && (m.message_type || 'user') === 'user' && !m.is_deleted,
+          );
           // Fallback when realtime transport drops: reload latest messages batch.
           if (hasNewMessages) {
             void loadMessagesRef.current(activeId, { silent: true, fromCache: true });
+          }
+          if (hasUnreadFromOthers) {
+            void api(`/api/chat/${activeId}/messages/read`, { method: 'POST' }).catch(() => {});
+            setConversationReadLocal(activeId);
           }
           setMembersRead(data.members_read ?? []);
           const freshById = new Map(freshMessages.map((m) => [m.id, m]));

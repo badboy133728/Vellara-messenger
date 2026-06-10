@@ -18,6 +18,7 @@ import {
   encryptOutgoingText,
 } from '@/lib/e2e/messageCrypto';
 import { useE2EInit } from '@/hooks/useE2EInit';
+import { ensureIdentityKeys } from '@/lib/crypto/identity';
 import type { SendMessageOptions } from '@/lib/chat/sendMessage';
 import { readCachedMessages, writeCachedMessages } from '@/lib/chat/messageCache';
 import type { ConversationListItem, FormattedMessage, Profile } from '@/lib/types';
@@ -465,28 +466,32 @@ function MessengerAppInner({ user }: { user: Profile }) {
   }, []);
 
   const getE2EContext = useCallback(
-    (convId: number): ConversationKeyContext | null => {
+    (convId: number, partnerOverride?: string | null): ConversationKeyContext | null => {
       const conv = conversationsRef.current.find((c) => c.id === convId);
-      if (!conv) return null;
+      const convType = conv?.type ?? 'private';
+      const partnerId = partnerOverride ?? conv?.other_user?.id ?? null;
       const memberIds =
-        conv.type === 'group'
+        convType === 'group'
           ? [...groupMembersRef.current.keys()]
-          : [user.id, conv.other_user?.id].filter((id): id is string => !!id);
-      return buildE2EContextFromConversation(
-        convId,
-        conv.type,
-        memberIds,
-        user.id,
-        conv.other_user?.id,
-      );
+          : [user.id, partnerId].filter((id): id is string => !!id);
+      if (convType === 'private' && !partnerId && memberIds.length < 2) {
+        return null;
+      }
+      return buildE2EContextFromConversation(convId, convType, memberIds, user.id, partnerId);
     },
     [user.id],
   );
 
   const decryptConvMessages = useCallback(
     async (convId: number, list: FormattedMessage[]) => {
-      const ctx = getE2EContext(convId);
-      if (!ctx || !list.length) return list;
+      if (!list.length) return list;
+      const partnerHint =
+        list.find((m) => m.user_id !== user.id)?.user_id ??
+        list.find((m) => m.sender?.id && m.sender.id !== user.id)?.sender?.id ??
+        null;
+      const ctx = getE2EContext(convId, partnerHint);
+      if (!ctx) return list;
+      await ensureIdentityKeys(user.id).catch(() => {});
       return decryptMessagesForConversation(user.id, ctx, list);
     },
     [getE2EContext, user.id],
@@ -503,6 +508,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
         groupMembersRef.current = new Map();
       }
       try {
+        await ensureIdentityKeys(userRef.current.id).catch(() => {});
         const data = await api<{
           messages: FormattedMessage[];
           members_read: MemberRead[];
@@ -840,7 +846,9 @@ function MessengerAppInner({ user }: { user: Profile }) {
     const files = options?.files ?? [];
     const replyToId = options?.replyToId;
     const convId = activeId;
-    const e2eCtx = getE2EContext(convId);
+    await ensureIdentityKeys(user.id);
+    const partnerId = activeConv?.other_user?.id ?? null;
+    const e2eCtx = getE2EContext(convId, partnerId);
     const e2eFiles = e2eCtx ? buildE2EFileTransform(user.id, e2eCtx) : undefined;
 
     const postOne = async (form: FormData, plainText?: string, plainFileName?: string) => {

@@ -26,7 +26,10 @@ export async function PUT(request: Request) {
     .eq('id', user.id);
 
   if (error) {
-    return Response.json({ message: error.message }, { status: 500 });
+    const hint = error.message.includes('identity_public_key')
+      ? ' Выполните миграцию 015_e2e_encryption.sql в Supabase.'
+      : '';
+    return Response.json({ message: error.message + hint }, { status: 500 });
   }
 
   return Response.json({ ok: true });

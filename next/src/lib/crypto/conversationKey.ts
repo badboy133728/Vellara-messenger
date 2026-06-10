@@ -21,10 +21,27 @@ export type ConversationKeyContext = {
   partnerUserId?: string | null;
 };
 
-async function fetchUserPublicKey(userId: string): Promise<string> {
+async function fetchUserPublicKey(userId: string, retry = true): Promise<string> {
   const data = await api<{ public_key: string | null }>(`/api/users/${userId}/e2e-key`);
-  if (!data.public_key) throw new Error('У собеседника нет ключа шифрования');
+  if (!data.public_key) {
+    if (retry) {
+      await new Promise((r) => window.setTimeout(r, 400));
+      return fetchUserPublicKey(userId, false);
+    }
+    throw new Error(
+      'У собеседника нет ключа шифрования. Попросите его открыть мессенджер и обновить страницу.',
+    );
+  }
   return data.public_key;
+}
+
+function resolvePartnerId(ctx: ConversationKeyContext, userId: string): string {
+  const partnerId =
+    ctx.partnerUserId ?? ctx.memberUserIds.find((id) => id !== userId) ?? null;
+  if (!partnerId) {
+    throw new Error('Не удалось определить собеседника для расшифровки');
+  }
+  return partnerId;
 }
 
 async function derivePrivateChatKey(
@@ -107,8 +124,7 @@ export async function getConversationKey(
       privateKey,
     );
   } else {
-    const partnerId = ctx.partnerUserId;
-    if (!partnerId) throw new Error('Не найден собеседник для шифрования');
+    const partnerId = resolvePartnerId(ctx, userId);
     const partnerPub = await fetchUserPublicKey(partnerId);
     key = await derivePrivateChatKey(ctx.conversationId, privateKey, partnerPub);
   }

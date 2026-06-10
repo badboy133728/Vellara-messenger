@@ -69,13 +69,15 @@ export async function decryptMessagesForConversation(
   if (!messages.length) return [];
 
   let key: CryptoKey | null = null;
+  let keyError = '';
   try {
     key = await getConversationKey(userId, ctx);
-  } catch {
+  } catch (err) {
+    keyError = err instanceof Error ? err.message : 'Не удалось получить ключ';
     return messages.map((m) => ({
       ...m,
       e2e_failed: isE2EContent(m.content) || isE2EFileName(m.file_original_name),
-      e2e_plaintext: isE2EContent(m.content) ? '🔒 Не удалось расшифровать' : m.content,
+      e2e_plaintext: isE2EContent(m.content) ? `🔒 ${keyError}` : m.content,
     }));
   }
 

@@ -48,6 +48,13 @@ async function writeIdentity(record: IdentityRecord): Promise<void> {
   });
 }
 
+async function uploadPublicKey(publicKeyB64: string): Promise<void> {
+  await api('/api/user/e2e-key', {
+    method: 'PUT',
+    body: JSON.stringify({ public_key: publicKeyB64 }),
+  });
+}
+
 let cachedPrivateKey: CryptoKey | null = null;
 let cachedPublicB64: string | null = null;
 let cachedUserId: string | null = null;
@@ -64,19 +71,11 @@ export async function ensureIdentityKeys(userId: string): Promise<{ publicKeyB64
     const privateKeyB64 = await exportPrivateKeyB64(pair.privateKey);
     record = { userId, privateKeyB64, publicKeyB64 };
     await writeIdentity(record);
-    await api('/api/user/e2e-key', {
-      method: 'PUT',
-      body: JSON.stringify({ public_key: publicKeyB64 }),
-    });
+    await uploadPublicKey(publicKeyB64);
   } else {
-    try {
-      await api('/api/user/e2e-key', {
-        method: 'PUT',
-        body: JSON.stringify({ public_key: record.publicKeyB64 }),
-      });
-    } catch {
-      /* already registered */
-    }
+    await uploadPublicKey(record.publicKeyB64).catch(() => {
+      /* повторная синхронизация не критична */
+    });
   }
 
   const privateKey = await importPrivateKeyB64(record.privateKeyB64);

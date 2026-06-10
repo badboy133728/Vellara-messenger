@@ -15,8 +15,8 @@ export async function exportPublicKeyB64(publicKey: CryptoKey): Promise<string> 
 }
 
 export async function importPublicKeyB64(b64: string): Promise<CryptoKey> {
-  const raw = base64ToBytes(b64);
-  return crypto.subtle.importKey('raw', raw.buffer as ArrayBuffer, { name: 'X25519' }, true, []);
+  const keyData = new Uint8Array(base64ToBytes(b64));
+  return crypto.subtle.importKey('raw', keyData, { name: 'X25519' }, true, []);
 }
 
 export async function exportPrivateKeyB64(privateKey: CryptoKey): Promise<string> {
@@ -25,8 +25,8 @@ export async function exportPrivateKeyB64(privateKey: CryptoKey): Promise<string
 }
 
 export async function importPrivateKeyB64(b64: string): Promise<CryptoKey> {
-  const raw = base64ToBytes(b64);
-  return crypto.subtle.importKey('pkcs8', raw.buffer as ArrayBuffer, { name: 'X25519' }, true, [
+  const keyData = new Uint8Array(base64ToBytes(b64));
+  return crypto.subtle.importKey('pkcs8', keyData, { name: 'X25519' }, true, [
     'deriveKey',
     'deriveBits',
   ]);

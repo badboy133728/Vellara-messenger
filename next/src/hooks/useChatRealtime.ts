@@ -8,6 +8,7 @@ import type {
 } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/client';
 import { reconnectSupabaseRealtime, syncSupabaseRealtimeAuth } from '@/lib/realtime/clientAuth';
+import { forwardPreviewFromStoredName } from '@/lib/chat/formatters';
 import type { FormattedMessage } from '@/lib/types';
 
 type Handlers = {
@@ -28,6 +29,11 @@ type Handlers = {
 };
 
 function rowToMessage(row: Record<string, unknown>, convId: number): FormattedMessage {
+  const forwardedFromId = (row.forwarded_from_id as number | null) ?? null;
+  const forwardedFromSenderName = (row.forwarded_from_sender_name as string | null) ?? null;
+  const forwardedFromConversationId =
+    (row.forwarded_from_conversation_id as number | null) ?? null;
+
   return {
     id: row.id as number,
     conversation_id: convId,
@@ -42,6 +48,12 @@ function rowToMessage(row: Record<string, unknown>, convId: number): FormattedMe
     voice_duration: row.voice_duration as number | null,
     album_group_id: row.album_group_id as string | null,
     reply_to_id: (row.reply_to_id as number | null) ?? null,
+    forwarded_from_id: forwardedFromId,
+    forwarded_from: forwardPreviewFromStoredName(
+      forwardedFromId,
+      forwardedFromConversationId,
+      forwardedFromSenderName,
+    ),
     is_edited: !!row.is_edited,
     edited_at: row.edited_at as string | null,
     is_deleted: !!row.deleted_at,

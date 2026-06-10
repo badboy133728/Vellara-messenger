@@ -50,6 +50,19 @@ export function messagePreview(msg: MessageRow, viewerId: string, albumCount = 1
   return prefix + (text.length > 60 ? text.slice(0, 60) + '…' : text);
 }
 
+export function forwardPreviewFromStoredName(
+  forwardedFromId: number | null | undefined,
+  forwardedFromConversationId: number | null | undefined,
+  storedName: string | null | undefined,
+): MessageForwardPreview | null {
+  if (!forwardedFromId && !storedName?.trim()) return null;
+  return {
+    id: forwardedFromId ?? 0,
+    conversation_id: forwardedFromConversationId ?? 0,
+    sender_name: storedName?.trim() || 'Контакт',
+  };
+}
+
 function buildForwardPreview(
   row: MessageRow | undefined,
   profileMap: Map<string, Profile>,

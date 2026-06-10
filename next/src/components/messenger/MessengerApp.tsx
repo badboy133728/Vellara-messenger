@@ -778,7 +778,19 @@ function MessengerAppInner({ user }: { user: Profile }) {
         if (viewing && activeIdRef.current === convId) {
           setMessages((prev) => {
             const enriched = enrichMessageReply(displayMsg, prev);
-            if (prev.some((m) => m.id === enriched.id)) return prev;
+            const idx = prev.findIndex((m) => m.id === enriched.id);
+            if (idx >= 0) {
+              const next = [...prev];
+              next[idx] = {
+                ...next[idx],
+                ...enriched,
+                forwarded_from: enriched.forwarded_from ?? next[idx]?.forwarded_from,
+                forwarded_from_id: enriched.forwarded_from_id ?? next[idx]?.forwarded_from_id,
+                e2e_plaintext: enriched.e2e_plaintext ?? next[idx]?.e2e_plaintext,
+                e2e_file_name: enriched.e2e_file_name ?? next[idx]?.e2e_file_name,
+              };
+              return applyGroupRead(next, membersReadRef.current, convId);
+            }
             return applyGroupRead([...prev, enriched], membersReadRef.current, convId);
           });
           api(`/api/chat/${convId}/messages/read`, { method: 'POST' }).catch(() => {});
@@ -822,6 +834,8 @@ function MessengerAppInner({ user }: { user: Profile }) {
             ...enriched,
             read_at: enriched.read_at ?? m.read_at,
             sender: enriched.sender ?? m.sender,
+            forwarded_from: enriched.forwarded_from ?? m.forwarded_from,
+            forwarded_from_id: enriched.forwarded_from_id ?? m.forwarded_from_id,
           };
         });
         return applyGroupRead(next, membersReadRef.current, convId);
@@ -1131,8 +1145,20 @@ function MessengerAppInner({ user }: { user: Profile }) {
           let next = prev;
           for (const msg of decrypted) {
             const withReply = enrichMessageReply(msg, next);
-            if (next.some((m) => m.id === withReply.id)) continue;
-            next = applyGroupRead([...next, withReply], membersRead, convId);
+            const idx = next.findIndex((m) => m.id === withReply.id);
+            if (idx >= 0) {
+              next = [...next];
+              next[idx] = {
+                ...next[idx],
+                ...withReply,
+                forwarded_from: withReply.forwarded_from ?? next[idx]?.forwarded_from,
+                forwarded_from_id: withReply.forwarded_from_id ?? next[idx]?.forwarded_from_id,
+                e2e_plaintext: withReply.e2e_plaintext ?? next[idx]?.e2e_plaintext,
+                e2e_file_name: withReply.e2e_file_name ?? next[idx]?.e2e_file_name,
+              };
+            } else {
+              next = applyGroupRead([...next, withReply], membersRead, convId);
+            }
           }
           return next;
         });

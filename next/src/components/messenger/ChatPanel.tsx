@@ -6,12 +6,23 @@ import { EmojiPicker } from '@/components/EmojiPicker';
 import { ImageLightbox } from '@/components/ImageLightbox';
 import { MessageContextMenu } from '@/components/MessageContextMenu';
 import { StatusDot } from '@/components/StatusDot';
-import { VoiceMessagePlayer } from '@/components/VoiceMessagePlayer';
 import { RTL_REVEAL_MAX, useMessageRowGesture } from '@/hooks/useMessageRowGesture';
 import { useSwipeBack } from '@/hooks/useSwipeGesture';
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
+import type { ConversationKeyContext } from '@/lib/crypto/conversationKey';
+import { isE2EContent } from '@/lib/crypto/message';
+import {
+  displayMessageContent,
+  resolveDecryptedMediaUrl,
+} from '@/lib/e2e/messageCrypto';
 import { storageDisplayUrl } from '@/lib/storage';
 import type { ConversationListItem, FormattedMessage, MessageReplyPreview } from '@/lib/types';
+import {
+  E2EDocumentAttachment,
+  E2EImageAttachment,
+  E2EVideoAttachment,
+  E2EVoiceAttachment,
+} from '@/components/messenger/E2EMessageAttachment';
 import {
   isImageAttachment,
   isVideoAttachment,
@@ -115,6 +126,7 @@ function pendingStillVisible(
 
 export function ChatPanel({
   conversation,
+  e2eContext = null,
   messages,
   messagesLoading = false,
   hasMoreOlder = false,
@@ -141,6 +153,7 @@ export function ChatPanel({
   onFilePickerDone,
 }: {
   conversation: ConversationListItem | null;
+  e2eContext?: ConversationKeyContext | null;
   messages: FormattedMessage[];
   messagesLoading?: boolean;
   hasMoreOlder?: boolean;
@@ -739,21 +752,42 @@ export function ChatPanel({
     if (msg.file_type === 'image') return 'Фото';
     if (msg.file_type === 'video') return 'Видео';
     if (msg.file_type === 'document') return 'Файл';
-    const text = (msg.content || '').trim();
+    const text = displayMessageContent(msg as FormattedMessage).trim();
+    if (isE2EContent(msg.content) && !text.startsWith('🔒')) {
+      return '🔒 Сообщение';
+    }
     return text.length > 80 ? `${text.slice(0, 80)}…` : text || 'Сообщение';
   };
 
-  const openImageLightbox = (m: FormattedMessage) => {
-    const url = storageDisplayUrl(m.file_path) ?? '';
+  const openImageLightbox = async (m: FormattedMessage) => {
+    const url =
+      (e2eContext
+        ? await resolveDecryptedMediaUrl(currentUserId, e2eContext, m.file_path, m.file_original_name, 'image/jpeg')
+        : null) ?? storageDisplayUrl(m.file_path) ?? '';
     if (!url) return;
     let urls = [url];
     let index = 0;
     if (m.album_group_id) {
-      urls = messages
-        .filter((x) => x.album_group_id === m.album_group_id && x.file_type === 'image')
-        .map((x) => storageDisplayUrl(x.file_path))
-        .filter((u): u is string => !!u);
-      index = Math.max(0, urls.indexOf(url));
+      const albumMsgs = messages.filter(
+        (x) => x.album_group_id === m.album_group_id && x.file_type === 'image',
+      );
+      urls = (
+        await Promise.all(
+          albumMsgs.map(
+            async (x) =>
+              (e2eContext
+                ? await resolveDecryptedMediaUrl(
+                    currentUserId,
+                    e2eContext,
+                    x.file_path,
+                    x.file_original_name,
+                    'image/jpeg',
+                  )
+                : null) ?? storageDisplayUrl(x.file_path) ?? '',
+          ),
+        )
+      ).filter(Boolean);
+      index = Math.max(0, albumMsgs.findIndex((x) => x.id === m.id));
     }
     setLightbox({ urls, index });
   };
@@ -961,20 +995,19 @@ export function ChatPanel({
     return (
       <div className={`msg-album-grid ${gridClass}`}>
         {images.slice(0, 4).map((img, idx) => {
-          const url = storageDisplayUrl(img.file_path);
-          if (!url) return null;
           return (
             <button
               key={img.id}
               type="button"
               className="msg-album-cell"
-              onClick={() => openImageLightbox(img)}
+              onClick={() => void openImageLightbox(img)}
             >
-              <img
-                src={url}
-                alt="Фото"
-                decoding="async"
-                onLoad={handleMessageMediaLoad}
+              <E2EImageAttachment
+                message={img}
+                userId={currentUserId}
+                e2eContext={e2eContext}
+                isMine={img.user_id === currentUserId}
+                onMediaLoad={handleMessageMediaLoad}
               />
               {count > 4 && idx === 3 && (
                 <span className="msg-album-more">+{count - 4}</span>
@@ -1063,51 +1096,51 @@ export function ChatPanel({
             )}
             {albumMessages && albumMessages.length > 1
               ? renderAlbumGrid(albumMessages)
-              : m.file_path && m.file_type === 'image' && storageDisplayUrl(m.file_path) && (
+              : m.file_path && m.file_type === 'image' && (
                   <button
                     type="button"
                     className="msg-image-btn"
-                    onClick={() => openImageLightbox(m)}
+                    onClick={() => void openImageLightbox(m)}
                   >
-                    <img
-                      src={storageDisplayUrl(m.file_path) ?? ''}
-                      alt="Фото"
-                      decoding="async"
-                      onLoad={handleMessageMediaLoad}
+                    <E2EImageAttachment
+                      message={m}
+                      userId={currentUserId}
+                      e2eContext={e2eContext}
+                      isMine={mine}
+                      onMediaLoad={handleMessageMediaLoad}
                     />
                   </button>
                 )}
-            {m.file_path && m.file_type === 'video' && storageDisplayUrl(m.file_path) && (
+            {m.file_path && m.file_type === 'video' && (
               <div className="msg-video-wrap">
-                <video
-                  className="msg-video"
-                  src={storageDisplayUrl(m.file_path) ?? ''}
-                  controls
-                  playsInline
-                  preload="metadata"
-                  onLoadedMetadata={handleMessageMediaLoad}
+                <E2EVideoAttachment
+                  message={m}
+                  userId={currentUserId}
+                  e2eContext={e2eContext}
+                  isMine={mine}
+                  onMediaLoad={handleMessageMediaLoad}
                 />
               </div>
             )}
             {m.file_path && m.file_type === 'voice' && (
-              <VoiceMessagePlayer
-                src={storageDisplayUrl(m.file_path) ?? ''}
-                duration={m.voice_duration || 0}
+              <E2EVoiceAttachment
+                message={m}
+                userId={currentUserId}
+                e2eContext={e2eContext}
                 isMine={mine}
               />
             )}
             {m.file_path && m.file_type === 'document' && (
-              <a
-                className="msg-doc-link"
-                href={storageDisplayUrl(m.file_path) ?? '#'}
-                target="_blank"
-                rel="noreferrer"
-              >
-                <span className="msg-doc-icon"><VellaraIcon name="document" size={18} /></span>
-                <span className="msg-doc-name">{m.file_original_name ?? 'Файл'}</span>
-              </a>
+              <E2EDocumentAttachment
+                message={m}
+                userId={currentUserId}
+                e2eContext={e2eContext}
+                isMine={mine}
+              />
             )}
-            {m.content && <div className="msg-content">{m.content}</div>}
+            {displayMessageContent(m) && (
+              <div className="msg-content">{displayMessageContent(m)}</div>
+            )}
             <div className="msg-meta">
               {m.is_edited && <span className="msg-edited">изм.</span>}
               <span className="msg-time">{formatMessageTime(m.created_at)}</span>

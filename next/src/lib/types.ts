@@ -3,6 +3,7 @@ export type Profile = {
   email: string;
   name: string;
   last_name: string;
+  identity_public_key?: string | null;
   avatar: string | null;
   background: string | null;
   background_gradient: string | null;
@@ -108,6 +109,10 @@ export type FormattedMessage = {
   reply_to?: MessageReplyPreview | null;
   forwarded_from_id?: number | null;
   forwarded_from?: MessageForwardPreview | null;
+  /** Расшифрованный текст (только на клиенте). */
+  e2e_plaintext?: string;
+  e2e_file_name?: string;
+  e2e_failed?: boolean;
 };
 
 export type ConversationListItem = {

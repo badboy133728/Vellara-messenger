@@ -1,3 +1,4 @@
+import { isE2EContent } from '@/lib/crypto/message';
 import { isOnline } from '@/lib/presence';
 import { capitalizeNamePart } from '@/utils/formatName';
 import type {
@@ -45,6 +46,7 @@ export function messagePreview(msg: MessageRow, viewerId: string, albumCount = 1
   const text = (msg.content || '').trim();
   if (!text) return 'Сообщение';
   const prefix = msg.user_id === viewerId ? 'Вы: ' : '';
+  if (isE2EContent(text)) return `${prefix}🔒 Сообщение`;
   return prefix + (text.length > 60 ? text.slice(0, 60) + '…' : text);
 }
 

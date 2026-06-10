@@ -10,6 +10,14 @@ import {
   appendPreparedFileToForm,
   prepareMessageFileForSend,
 } from '@/lib/chat/messageFileUpload';
+import type { ConversationKeyContext } from '@/lib/crypto/conversationKey';
+import { buildE2EFileTransform } from '@/lib/e2e/fileTransform';
+import {
+  buildE2EContextFromConversation,
+  decryptMessagesForConversation,
+  encryptOutgoingText,
+} from '@/lib/e2e/messageCrypto';
+import { useE2EInit } from '@/hooks/useE2EInit';
 import type { SendMessageOptions } from '@/lib/chat/sendMessage';
 import { readCachedMessages, writeCachedMessages } from '@/lib/chat/messageCache';
 import type { ConversationListItem, FormattedMessage, Profile } from '@/lib/types';
@@ -78,6 +86,8 @@ export function MessengerApp() {
 }
 
 function MessengerAppInner({ user }: { user: Profile }) {
+  useE2EInit(user.id);
+
   const {
     phase,
     mode,
@@ -454,6 +464,34 @@ function MessengerAppInner({ user }: { user: Profile }) {
     }
   }, []);
 
+  const getE2EContext = useCallback(
+    (convId: number): ConversationKeyContext | null => {
+      const conv = conversationsRef.current.find((c) => c.id === convId);
+      if (!conv) return null;
+      const memberIds =
+        conv.type === 'group'
+          ? [...groupMembersRef.current.keys()]
+          : [user.id, conv.other_user?.id].filter((id): id is string => !!id);
+      return buildE2EContextFromConversation(
+        convId,
+        conv.type,
+        memberIds,
+        user.id,
+        conv.other_user?.id,
+      );
+    },
+    [user.id],
+  );
+
+  const decryptConvMessages = useCallback(
+    async (convId: number, list: FormattedMessage[]) => {
+      const ctx = getE2EContext(convId);
+      if (!ctx || !list.length) return list;
+      return decryptMessagesForConversation(user.id, ctx, list);
+    },
+    [getE2EContext, user.id],
+  );
+
   const loadMessages = useCallback(
     async (convId: number, opts?: { silent?: boolean; fromCache?: boolean }) => {
       if (!opts?.silent && !opts?.fromCache) setMessagesLoading(true);
@@ -479,7 +517,8 @@ function MessengerAppInner({ user }: { user: Profile }) {
             : (data.members_read ?? []);
         setMembersRead(readState);
         const enriched = enrichMessageSenders(data.messages ?? [], groupMembersRef.current, userRef.current);
-        const nextMessages = applyGroupReadStatuses(enriched, readState, userRef.current.id);
+        let nextMessages = applyGroupReadStatuses(enriched, readState, userRef.current.id);
+        nextMessages = await decryptConvMessages(convId, nextMessages);
         setHasMoreOlder(data.has_more ?? (nextMessages.length >= 50));
         setMessages((prev) => {
           if (!opts?.silent || prev.length === 0) return nextMessages;
@@ -494,7 +533,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
         if (!opts?.silent && !opts?.fromCache) setMessagesLoading(false);
       }
     },
-    [setConversationReadLocal, syncGroupMembers],
+    [decryptConvMessages, setConversationReadLocal, syncGroupMembers],
   );
   loadMessagesRef.current = loadMessages;
 
@@ -515,7 +554,8 @@ function MessengerAppInner({ user }: { user: Profile }) {
       }>(`/api/chat/${convId}/messages?before_id=${firstId}&limit=50`);
       const enriched = enrichMessageSenders(data.messages ?? [], groupMembersRef.current, userRef.current);
       const readState = membersRead;
-      const older = applyGroupReadStatuses(enriched, readState, userRef.current.id);
+      let older = applyGroupReadStatuses(enriched, readState, userRef.current.id);
+      older = await decryptConvMessages(convId, older);
       setHasMoreOlder(data.has_more ?? older.length >= 50);
       setMessages((prev) => {
         const seen = new Set(prev.map((m) => m.id));
@@ -526,7 +566,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
     } finally {
       setLoadingOlder(false);
     }
-  }, [hasMoreOlder, loadingOlder, membersRead]);
+  }, [decryptConvMessages, hasMoreOlder, loadingOlder, membersRead]);
 
   useEffect(() => {
     loadConversations()
@@ -697,14 +737,19 @@ function MessengerAppInner({ user }: { user: Profile }) {
       });
 
       if (viewing && activeIdRef.current === convId) {
-        setMessages((prev) => {
-          const enriched = enrichMessageReply(
+        void (async () => {
+          let enriched = enrichMessageReply(
             enrichMessageSender(msg, groupMembersRef.current, userRef.current),
-            prev,
+            [],
           );
-          if (prev.some((m) => m.id === enriched.id)) return prev;
-          return applyGroupRead([...prev, enriched], membersReadRef.current, convId);
-        });
+          const [decrypted] = await decryptConvMessages(convId, [enriched]);
+          enriched = decrypted ?? enriched;
+          setMessages((prev) => {
+            enriched = enrichMessageReply(enriched, prev);
+            if (prev.some((m) => m.id === enriched.id)) return prev;
+            return applyGroupRead([...prev, enriched], membersReadRef.current, convId);
+          });
+        })();
         api(`/api/chat/${convId}/messages/read`, { method: 'POST' }).catch(() => {});
         setConversationReadLocal(convId);
         return;
@@ -720,6 +765,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
       loadConversations,
       notifyIncomingMessage,
       setConversationReadLocal,
+      decryptConvMessages,
     ],
   );
 
@@ -787,27 +833,37 @@ function MessengerAppInner({ user }: { user: Profile }) {
   });
 
   const activeConv = conversations.find((c) => c.id === activeId) ?? null;
+  const activeE2eContext = activeId ? getE2EContext(activeId) : null;
 
   const sendMessage = async (text: string, options?: SendMessageOptions): Promise<number[]> => {
     if (!activeId) return [];
     const files = options?.files ?? [];
     const replyToId = options?.replyToId;
     const convId = activeId;
+    const e2eCtx = getE2EContext(convId);
+    const e2eFiles = e2eCtx ? buildE2EFileTransform(user.id, e2eCtx) : undefined;
 
-    const postOne = async (form: FormData) => {
+    const postOne = async (form: FormData, plainText?: string, plainFileName?: string) => {
       const msg = await api<FormattedMessage>(`/api/chat/${convId}/messages`, {
         method: 'POST',
         body: form,
         headers: {},
       });
-      return enrichMessageSender(msg, groupMembersRef.current, user);
+      const enriched = enrichMessageSender(msg, groupMembersRef.current, user);
+      if (plainText) enriched.e2e_plaintext = plainText;
+      if (plainFileName) enriched.e2e_file_name = plainFileName;
+      return enriched;
     };
 
     if (!files.length) {
       const form = new FormData();
-      if (text) form.append('content', text);
+      const plainText = text;
+      if (text) {
+        const payload = e2eCtx ? await encryptOutgoingText(user.id, e2eCtx, text) : text;
+        form.append('content', payload);
+      }
       if (replyToId) form.append('reply_to_id', String(replyToId));
-      const enriched = await postOne(form);
+      const enriched = await postOne(form, plainText || undefined);
       setMessages((prev) => {
         const withReply = enrichMessageReply(enriched, prev);
         if (prev.some((m) => m.id === withReply.id)) return prev;
@@ -823,13 +879,18 @@ function MessengerAppInner({ user }: { user: Profile }) {
 
     const created: FormattedMessage[] = [];
     for (let i = 0; i < files.length; i++) {
-      const prepared = await prepareMessageFileForSend(user.id, files[i]!);
+      const file = files[i]!;
+      const prepared = await prepareMessageFileForSend(user.id, file, e2eFiles);
       const form = new FormData();
-      if (i === 0 && text) form.append('content', text);
+      const plainText = i === 0 ? text : '';
+      if (i === 0 && text) {
+        const payload = e2eCtx ? await encryptOutgoingText(user.id, e2eCtx, text) : text;
+        form.append('content', payload);
+      }
       appendPreparedFileToForm(form, prepared);
       if (albumGroupId) form.append('album_group_id', albumGroupId);
       if (replyToId && i === 0) form.append('reply_to_id', String(replyToId));
-      const enriched = await postOne(form);
+      const enriched = await postOne(form, plainText || undefined, file.name);
       created.push(enriched);
     }
 
@@ -849,8 +910,18 @@ function MessengerAppInner({ user }: { user: Profile }) {
   const sendVoiceMessage = async (blob: Blob, duration: number, mimeType: string) => {
     if (!activeId) return;
     const ext = mimeType.includes('ogg') ? 'ogg' : mimeType.includes('mp4') ? 'm4a' : 'webm';
+    const e2eCtx = getE2EContext(activeId);
+    const e2eFiles = e2eCtx ? buildE2EFileTransform(user.id, e2eCtx) : undefined;
+    let body: Blob = blob;
+    const voiceName = `voice.${ext}`;
+    if (e2eFiles) {
+      body = await e2eFiles.encryptBlob(blob);
+    }
     const form = new FormData();
-    form.append('file', blob, `voice.${ext}`);
+    form.append('file', body, e2eFiles ? 'encrypted.e2e' : voiceName);
+    if (e2eFiles) {
+      form.append('file_original_name', await e2eFiles.encryptName(voiceName));
+    }
     form.append('voice_duration', String(duration));
     const msg = await api<FormattedMessage>(`/api/chat/${activeId}/messages`, {
       method: 'POST',
@@ -858,6 +929,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
       headers: {},
     });
     const enriched = enrichMessageSender(msg, groupMembersRef.current, user);
+    enriched.e2e_file_name = voiceName;
     setMessages((prev) => {
       if (prev.some((m) => m.id === enriched.id)) return prev;
       return applyGroupRead([...prev, enriched], membersRead, activeId);
@@ -866,14 +938,18 @@ function MessengerAppInner({ user }: { user: Profile }) {
   };
 
   const editMessage = async (messageId: number, content: string) => {
+    const convId = activeId;
+    const e2eCtx = convId ? getE2EContext(convId) : null;
+    const payload = e2eCtx ? await encryptOutgoingText(user.id, e2eCtx, content) : content;
     const updated = enrichMessageSender(
       await api<FormattedMessage>(`/api/chat/messages/${messageId}`, {
         method: 'PATCH',
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content: payload }),
       }),
       groupMembersRef.current,
       user,
     );
+    updated.e2e_plaintext = content;
     setMessages((prev) => {
       const next = prev.map((m) => (m.id === updated.id ? { ...m, ...updated, sender: updated.sender ?? m.sender } : m));
       return applyGroupRead(next, membersRead, activeId);
@@ -1190,6 +1266,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
               {activeId ? (
                 <ChatPanel
                   conversation={activeConv}
+                  e2eContext={activeE2eContext}
                   messages={messages}
                   messagesLoading={messagesLoading}
                   hasMoreOlder={hasMoreOlder}

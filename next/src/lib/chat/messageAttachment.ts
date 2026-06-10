@@ -2,7 +2,7 @@ import { maxBytesForFile } from '@/lib/chat/attachmentTypes';
 import { uploadMessageFile } from '@/lib/storage-server';
 
 export type MessageAttachmentInput =
-  | { kind: 'file'; file: File }
+  | { kind: 'file'; file: File; originalNameOverride?: string }
   | { kind: 'uploaded'; path: string; fileType: string; originalName: string };
 
 export function isValidUserMessagePath(path: string, userId: string): boolean {
@@ -12,8 +12,13 @@ export function isValidUserMessagePath(path: string, userId: string): boolean {
 
 export function getMessageAttachmentFromForm(formData: FormData): MessageAttachmentInput | null {
   const file = formData.get('file');
+  const inlineOriginalName = (formData.get('file_original_name') as string | null)?.trim();
   if (file instanceof File && file.size > 0) {
-    return { kind: 'file', file };
+    return {
+      kind: 'file',
+      file,
+      originalNameOverride: inlineOriginalName || undefined,
+    };
   }
 
   const filePath = formData.get('file_path') as string | null;
@@ -43,7 +48,7 @@ export async function applyMessageAttachment(
     const uploaded = await uploadMessageFile(userId, attachment.file);
     insert.file_path = uploaded.path;
     insert.file_type = uploaded.fileType;
-    insert.file_original_name = uploaded.originalName;
+    insert.file_original_name = attachment.originalNameOverride ?? uploaded.originalName;
     return { fileType: uploaded.fileType };
   }
 

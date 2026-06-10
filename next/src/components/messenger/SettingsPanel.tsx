@@ -10,6 +10,7 @@ import dynamic from 'next/dynamic';
 import { resolveProfileMedia, coverStyleFromMedia } from '@/lib/profileCover';
 import { AvatarImg } from '@/components/AvatarImg';
 import { VellaraIcon } from '@/components/icons/VellaraIcon';
+import { E2EBackupSection } from '@/components/messenger/E2EBackupSection';
 
 const AvatarCropModal = dynamic(
   () => import('@/components/AvatarCropModal').then((m) => ({ default: m.AvatarCropModal })),
@@ -57,7 +58,7 @@ export function SettingsPanel({
   showMobileBack?: boolean;
   onBack?: () => void;
 } = {}) {
-  const { refresh, isAuthenticated } = useAuth();
+  const { refresh, isAuthenticated, user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -454,6 +455,8 @@ export function SettingsPanel({
       </section>
 
       <PushNotificationsSection />
+
+      {user?.id && <E2EBackupSection userId={user.id} />}
 
       <section className="settings-card">
         <h2>Приватность</h2>

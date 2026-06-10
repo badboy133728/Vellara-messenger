@@ -19,6 +19,7 @@ import {
 } from '@/lib/e2e/messageCrypto';
 import { buildForwardReencryptUpdates } from '@/lib/e2e/reencryptForward';
 import { useE2EInit } from '@/hooks/useE2EInit';
+import { E2ERecoveryModal } from '@/components/messenger/E2ERecoveryModal';
 import { ensureIdentityKeys } from '@/lib/crypto/identity';
 import type { SendMessageOptions } from '@/lib/chat/sendMessage';
 import { readCachedMessages, writeCachedMessages } from '@/lib/chat/messageCache';
@@ -88,7 +89,8 @@ export function MessengerApp() {
 }
 
 function MessengerAppInner({ user }: { user: Profile }) {
-  useE2EInit(user.id);
+  const { e2eStatus, e2eError, restoreE2E } = useE2EInit(user.id);
+  const e2eStatusRef = useRef(e2eStatus);
 
   const {
     phase,
@@ -637,26 +639,28 @@ function MessengerAppInner({ user }: { user: Profile }) {
   }, [loadSavedIds]);
 
   useEffect(() => {
-    if (activeId) {
-      const cached = readCachedMessages(user.id, activeId);
-      if (cached.length) {
-        setMessages(cached);
-        setHasMoreOlder(true);
-        setMessagesLoading(false);
-        void loadMessagesRef.current(activeId, { silent: true, fromCache: true });
-      } else {
+    if (!activeId || e2eStatus !== 'ready') {
+      if (!activeId) {
         setMessages([]);
+        setMembersRead([]);
         setHasMoreOlder(false);
-        setMessagesLoading(true);
-        void loadMessagesRef.current(activeId);
+        setMessagesLoading(false);
       }
+      return;
+    }
+    const cached = readCachedMessages(user.id, activeId);
+    if (cached.length) {
+      setMessages(cached);
+      setHasMoreOlder(true);
+      setMessagesLoading(false);
+      void loadMessagesRef.current(activeId, { silent: true, fromCache: true });
     } else {
       setMessages([]);
-      setMembersRead([]);
       setHasMoreOlder(false);
-      setMessagesLoading(false);
+      setMessagesLoading(true);
+      void loadMessagesRef.current(activeId);
     }
-  }, [activeId, user.id]);
+  }, [activeId, user.id, e2eStatus]);
 
   useEffect(() => {
     if (!activeId || !messages.length) return;
@@ -1563,6 +1567,13 @@ function MessengerAppInner({ user }: { user: Profile }) {
             <span>{messageNotification.body}</span>
           </span>
         </button>
+      )}
+      {(e2eStatus === 'recovery' || e2eStatus === 'no_backup') && (
+        <E2ERecoveryModal
+          mode={e2eStatus === 'no_backup' ? 'no_backup' : 'recovery'}
+          error={e2eError}
+          onRestore={restoreE2E}
+        />
       )}
     </div>
   );

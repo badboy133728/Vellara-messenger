@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { aesDecrypt, aesEncrypt, generateAesKey } from '@/lib/crypto/aes';
+import { createKeyBackup, restoreKeyBackup } from '@/lib/crypto/keyBackup';
+import {
+  exportPrivateKeyB64,
+  exportPublicKeyB64,
+  generateX25519KeyPair,
+} from '@/lib/crypto/x25519';
 import { decryptText, encryptText } from '@/lib/crypto/message';
 import {
   deriveConversationAesKey,
@@ -28,6 +34,16 @@ describe('e2e crypto', () => {
     const a = new Uint8Array(await crypto.subtle.exportKey('raw', convKey));
     const b = new Uint8Array(await crypto.subtle.exportKey('raw', unwrapped));
     expect(b).toEqual(a);
+  });
+
+  it('backs up and restores identity keys with passphrase', async () => {
+    const pair = await generateX25519KeyPair();
+    const publicKeyB64 = await exportPublicKeyB64(pair.publicKey);
+    const privateKeyB64 = await exportPrivateKeyB64(pair.privateKey);
+    const backup = await createKeyBackup(privateKeyB64, publicKeyB64, 'my-secret-code');
+    const restored = await restoreKeyBackup(backup, 'my-secret-code');
+    expect(restored.publicKeyB64).toBe(publicKeyB64);
+    expect(restored.privateKeyB64).toBe(privateKeyB64);
   });
 
   it('derives the same private chat key for both sides', async () => {

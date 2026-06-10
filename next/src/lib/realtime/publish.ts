@@ -11,6 +11,12 @@ import {
   type RealtimePublishResult,
 } from '@/lib/realtime/broadcast';
 
+function createEventId(): string {
+  const maybeUuid = globalThis.crypto?.randomUUID?.();
+  if (maybeUuid) return maybeUuid;
+  return `evt_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
+}
+
 function createRealtimeEnvelope<K extends RealtimeEventName>(
   event: K,
   payload: RealtimeEventPayload<K>,
@@ -18,7 +24,7 @@ function createRealtimeEnvelope<K extends RealtimeEventName>(
   return {
     meta: {
       version: REALTIME_EVENT_VERSION,
-      event_id: crypto.randomUUID(),
+      event_id: createEventId(),
       emitted_at: new Date().toISOString(),
       dedup_key: realtimeDedupKey(event, payload),
     },
@@ -31,12 +37,21 @@ async function publishConversationEvent<K extends RealtimeEventName>(
   event: K,
   payload: RealtimeEventPayload<K>,
 ): Promise<RealtimePublishResult> {
-  return broadcastToConversation(
-    null,
-    conversationId,
-    event,
-    createRealtimeEnvelope(event, payload) as unknown as Record<string, unknown>,
-  );
+  try {
+    return await broadcastToConversation(
+      null,
+      conversationId,
+      event,
+      createRealtimeEnvelope(event, payload) as unknown as Record<string, unknown>,
+    );
+  } catch {
+    return {
+      ok: false,
+      topic: `conversation:${conversationId}`,
+      event,
+      reason: 'send_failed',
+    };
+  }
 }
 
 async function publishUserEvent<K extends RealtimeEventName>(
@@ -44,12 +59,21 @@ async function publishUserEvent<K extends RealtimeEventName>(
   event: K,
   payload: RealtimeEventPayload<K>,
 ): Promise<RealtimePublishResult> {
-  return broadcastToUser(
-    null,
-    userId,
-    event,
-    createRealtimeEnvelope(event, payload) as unknown as Record<string, unknown>,
-  );
+  try {
+    return await broadcastToUser(
+      null,
+      userId,
+      event,
+      createRealtimeEnvelope(event, payload) as unknown as Record<string, unknown>,
+    );
+  } catch {
+    return {
+      ok: false,
+      topic: `user:${userId}`,
+      event,
+      reason: 'send_failed',
+    };
+  }
 }
 
 export async function publishConversationMessage(payload: RealtimeEventPayload<'NewMessage'>) {

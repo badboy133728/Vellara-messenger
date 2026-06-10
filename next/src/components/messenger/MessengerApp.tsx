@@ -20,7 +20,6 @@ import {
 import { buildForwardReencryptUpdates } from '@/lib/e2e/reencryptForward';
 import { useE2EInit } from '@/hooks/useE2EInit';
 import { E2ERecoveryModal } from '@/components/messenger/E2ERecoveryModal';
-import { clearConversationKeyCacheForUser } from '@/lib/crypto/conversationKey';
 import { ensureIdentityKeys } from '@/lib/crypto/identity';
 import type { SendMessageOptions } from '@/lib/chat/sendMessage';
 import { readCachedMessages, writeCachedMessages } from '@/lib/chat/messageCache';
@@ -517,15 +516,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
       const ctx = getE2EContext(convId, partnerHint);
       if (!ctx) return list;
       await ensureIdentityKeys(user.id);
-      let decrypted = await decryptMessagesForConversation(user.id, ctx, list);
-      const needsRetry = decrypted.some(
-        (m) => m.e2e_failed && (m.content?.startsWith('e2e:v1:') || m.e2e_plaintext?.startsWith('🔒')),
-      );
-      if (needsRetry) {
-        clearConversationKeyCacheForUser(user.id);
-        decrypted = await decryptMessagesForConversation(user.id, ctx, list);
-      }
-      return decrypted;
+      return decryptMessagesForConversation(user.id, ctx, list);
     },
     [getE2EContext, user.id],
   );
@@ -733,27 +724,16 @@ function MessengerAppInner({ user }: { user: Profile }) {
         })
         .catch(() => {});
     };
-    void pollTyping();
-    const typingTimer = window.setInterval(pollTyping, 2000);
+    const typingTimer = window.setInterval(pollTyping, 15_000);
     return () => window.clearInterval(typingTimer);
   }, [activeId, tab, user.id]);
-
-  useEffect(() => {
-    if (!activeId || tab !== 'chats') return;
-    const pollMessages = () => {
-      if (document.visibilityState !== 'visible') return;
-      loadMessages(activeId, { silent: true }).catch(() => {});
-    };
-    const messageTimer = window.setInterval(pollMessages, 5000);
-    return () => window.clearInterval(messageTimer);
-  }, [activeId, tab, loadMessages]);
 
   useEffect(() => {
     const pollConversations = () => {
       if (document.visibilityState !== 'visible') return;
       loadConversations().catch(() => {});
     };
-    const listTimer = window.setInterval(pollConversations, 15000);
+    const listTimer = window.setInterval(pollConversations, 60_000);
     return () => window.clearInterval(listTimer);
   }, [loadConversations]);
 
@@ -888,7 +868,11 @@ function MessengerAppInner({ user }: { user: Profile }) {
   });
 
   const activeConv = conversations.find((c) => c.id === activeId) ?? null;
-  const activeE2eContext = activeId ? getE2EContext(activeId) : null;
+  const activePartnerId = activeConv?.other_user?.id ?? null;
+  const activeE2eContext = useMemo(
+    () => (activeId ? getE2EContext(activeId, activePartnerId) : null),
+    [activeId, activePartnerId, getE2EContext],
+  );
 
   const sendMessage = async (text: string, options?: SendMessageOptions): Promise<number[]> => {
     if (!activeId) return [];
@@ -896,7 +880,6 @@ function MessengerAppInner({ user }: { user: Profile }) {
     const replyToId = options?.replyToId;
     const convId = activeId;
     await ensureIdentityKeys(user.id);
-    clearConversationKeyCacheForUser(user.id);
     const partnerId =
       activeConv?.other_user?.id ??
       conversationsRef.current.find((c) => c.id === convId)?.other_user?.id ??

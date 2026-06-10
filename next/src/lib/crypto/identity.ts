@@ -1,5 +1,6 @@
 import { api } from '@/lib/api';
 import { clearConversationKeyCacheForUser } from '@/lib/crypto/conversationKey';
+import { clearDecryptedMediaUrlCache } from '@/lib/e2e/mediaUrlCache';
 import { createKeyBackup, restoreKeyBackup } from '@/lib/crypto/keyBackup';
 import {
   exportPrivateKeyB64,
@@ -223,6 +224,7 @@ export async function setupKeyBackup(userId: string, passphrase: string): Promis
 
 export function clearIdentityCache() {
   if (cachedUserId) clearConversationKeyCacheForUser(cachedUserId);
+  clearDecryptedMediaUrlCache();
   cachedPrivateKey = null;
   cachedPublicB64 = null;
   cachedUserId = null;

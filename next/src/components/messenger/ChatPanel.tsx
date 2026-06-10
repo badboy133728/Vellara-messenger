@@ -382,7 +382,7 @@ export function ChatPanel({
   useEffect(() => {
     if (!text.trim()) return;
     onTyping();
-    const id = window.setInterval(() => onTyping(), 2000);
+    const id = window.setInterval(() => onTyping(), 4000);
     return () => window.clearInterval(id);
   }, [text, onTyping]);
 

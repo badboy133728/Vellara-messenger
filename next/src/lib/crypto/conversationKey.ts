@@ -9,6 +9,7 @@ import {
 } from '@/lib/crypto/x25519';
 
 const keyCache = new Map<string, CryptoKey>();
+const partnerPublicKeyCache = new Map<string, string>();
 
 function cacheKey(conversationId: number, userId: string, partnerPublicB64?: string | null) {
   const partnerPart = partnerPublicB64 ? `:${partnerPublicB64}` : '';
@@ -17,6 +18,7 @@ function cacheKey(conversationId: number, userId: string, partnerPublicB64?: str
 
 export function clearConversationKeyCache() {
   keyCache.clear();
+  partnerPublicKeyCache.clear();
 }
 
 export function clearConversationKeyCacheForUser(userId: string) {
@@ -34,6 +36,9 @@ export type ConversationKeyContext = {
 };
 
 async function fetchUserPublicKey(userId: string, retry = true): Promise<string> {
+  const cached = partnerPublicKeyCache.get(userId);
+  if (cached) return cached;
+
   const data = await api<{ public_key: string | null }>(`/api/users/${userId}/e2e-key`);
   if (!data.public_key) {
     if (retry) {
@@ -44,6 +49,7 @@ async function fetchUserPublicKey(userId: string, retry = true): Promise<string>
       'У собеседника нет ключа шифрования. Попросите его открыть мессенджер и обновить страницу.',
     );
   }
+  partnerPublicKeyCache.set(userId, data.public_key);
   return data.public_key;
 }
 

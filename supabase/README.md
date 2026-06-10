@@ -20,6 +20,7 @@
 1. `migrations/001_schema.sql`
 2. `migrations/002_rls.sql`
 3. `migrations/003_realtime_storage.sql`
+4. … остальные по номеру до **`014_messages_storage_private.sql`** (закрывает доступ к вложениям)
 
 После миграции включите **Email** в Authentication → Providers.
 

@@ -19,12 +19,15 @@ export function publicStorageUrl(path: string | null): string | null {
   const trimmed = path.trim();
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
 
+  const parsed = parseStoragePath(trimmed);
+  if (!parsed) return null;
+
+  // bucket messages — private, прямой public URL не отдаём.
+  if (parsed.bucket === 'messages') return null;
+
   const env = getSupabaseEnv();
   const base = env?.url?.replace(/\/$/, '');
   if (!base) return null;
-
-  const parsed = parseStoragePath(trimmed);
-  if (!parsed) return null;
 
   return `${base}/storage/v1/object/public/${parsed.bucket}/${parsed.key}`;
 }
@@ -45,7 +48,11 @@ export function storageProxyUrl(path: string | null | undefined): string | null 
 
 export function storageDisplayUrl(path: string | null | undefined): string | null {
   const proxy = storageProxyUrl(path);
-  if (!proxy) return publicStorageUrl(path ?? null);
+  if (!proxy) {
+    const pub = publicStorageUrl(path ?? null);
+    if (pub) return pub;
+    return null;
+  }
   const ts = path?.match(/(\d{10,})\./)?.[1];
   if (!ts) return proxy;
   return proxy.includes('?') ? `${proxy}&v=${ts}` : `${proxy}?v=${ts}`;

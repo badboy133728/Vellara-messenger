@@ -12,7 +12,7 @@ import {
   maxBytesForFile,
 } from '@/lib/chat/attachmentTypes';
 import { prepareMessageFileForSend, type PreparedMessageFile } from '@/lib/chat/messageFileUpload';
-import { publicStorageUrl } from '@/lib/storage';
+import { storageDisplayUrl } from '@/lib/storage';
 import type { FormattedMessage } from '@/lib/types';
 
 type SavedItem = {
@@ -258,7 +258,7 @@ export function FavoritesPanel({
   };
 
   const openImageLightbox = (m: FormattedMessage) => {
-    const url = publicStorageUrl(m.file_path) ?? '';
+    const url = storageDisplayUrl(m.file_path) ?? '';
     if (!url) return;
     let urls = [url];
     let index = 0;
@@ -266,7 +266,7 @@ export function FavoritesPanel({
       urls = items
         .map((i) => i.message)
         .filter((x) => x.album_group_id === m.album_group_id && x.file_type === 'image')
-        .map((x) => publicStorageUrl(x.file_path))
+        .map((x) => storageDisplayUrl(x.file_path))
         .filter((u): u is string => !!u);
       index = Math.max(0, urls.indexOf(url));
     }
@@ -302,7 +302,7 @@ export function FavoritesPanel({
                 className="msg-image-btn"
                 onClick={() => openImageLightbox(m)}
               >
-                <img src={publicStorageUrl(img.file_path) ?? ''} alt="Фото" loading="lazy" />
+                <img src={storageDisplayUrl(img.file_path) ?? ''} alt="Фото" loading="lazy" />
                 {albumMessages.length > 4 && idx === 3 && (
                   <span className="fav-album-more">+{albumMessages.length - 4}</span>
                 )}
@@ -317,7 +317,7 @@ export function FavoritesPanel({
               className="msg-image-btn"
               onClick={() => openImageLightbox(m)}
             >
-              <img src={publicStorageUrl(m.file_path) ?? ''} alt="Фото" loading="lazy" />
+              <img src={storageDisplayUrl(m.file_path) ?? ''} alt="Фото" loading="lazy" />
             </button>
           )
         )}
@@ -325,7 +325,7 @@ export function FavoritesPanel({
           <div className="msg-video-wrap">
             <video
               className="msg-video"
-              src={publicStorageUrl(m.file_path) ?? ''}
+              src={storageDisplayUrl(m.file_path) ?? ''}
               controls
               playsInline
               preload="metadata"
@@ -333,11 +333,11 @@ export function FavoritesPanel({
           </div>
         )}
         {m.file_path && m.file_type === 'voice' && (
-          <audio controls src={publicStorageUrl(m.file_path) ?? ''} />
+          <audio controls src={storageDisplayUrl(m.file_path) ?? ''} />
         )}
         {m.file_path && m.file_type === 'document' && (
           <a
-            href={publicStorageUrl(m.file_path) ?? '#'}
+            href={storageDisplayUrl(m.file_path) ?? '#'}
             className="msg-doc-link"
             target="_blank"
             rel="noreferrer"

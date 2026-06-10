@@ -148,6 +148,12 @@ export function CallProvider({ userId, children }: { userId: string; children: R
     }
   }));
 
+  const acceptingRef = useRef(false);
+  const pendingOfferRef = useRef<{
+    callId: number;
+    payload: { sdp: RTCSessionDescriptionInit };
+  } | null>(null);
+
   const syncStreams = useCallback(() => {
     const rtc = rtcRef.current;
     setState((s) => ({
@@ -180,6 +186,38 @@ export function CallProvider({ userId, children }: { userId: string; children: R
       setState((s) => ({ ...s, connectionState: 'connecting' }));
     },
     [syncStreams],
+  );
+
+  const ensureCalleePeer = useCallback(
+    async (callId: number, video: boolean) => {
+      const rtc = rtcRef.current;
+      if (rtc.hasPeer()) return;
+
+      if (!rtc.getLocalStream()?.getTracks().some((track) => track.readyState === 'live')) {
+        await rtc.acquireMedia(video);
+        syncStreams();
+        setState((s) => ({ ...s, videoEnabled: video }));
+      }
+
+      await rtc.createPeer(() => syncStreams(), (candidate) => {
+        api(`/api/calls/${callId}/signal`, {
+          method: 'POST',
+          body: JSON.stringify({ type: 'ice', payload: { candidate } }),
+        }).catch(() => {});
+      });
+      rtc.bindIceToCall(callId);
+    },
+    [syncStreams],
+  );
+
+  const handleIncomingOffer = useCallback(
+    async (callId: number, payload: { sdp: RTCSessionDescriptionInit }) => {
+      const current = stateRef.current;
+      const type = current.mode || current.incoming?.type || 'voice';
+      await ensureCalleePeer(callId, type === 'video');
+      await rtcRef.current.handleOffer(callId, payload);
+    },
+    [ensureCalleePeer],
   );
 
   const loadContactIds = useCallback(async () => {
@@ -229,6 +267,8 @@ export function CallProvider({ userId, children }: { userId: string; children: R
 
   const endCallInner = useCallback(async () => {
     stopRinging();
+    pendingOfferRef.current = null;
+    acceptingRef.current = false;
     const callId = stateRef.current.call?.id || stateRef.current.incoming?.call_id;
     setState((s) => ({ ...s, phase: 'ending', connectionState: 'ended' }));
     if (callId) {
@@ -245,12 +285,14 @@ export function CallProvider({ userId, children }: { userId: string; children: R
   const acceptIncoming = useCallback(async () => {
     stopRinging();
     const incoming = stateRef.current.incoming;
-    if (!incoming?.call_id) return;
+    if (!incoming?.call_id || stateRef.current.phase !== 'incoming') return;
+    if (acceptingRef.current) return;
 
     const callId = incoming.call_id;
     const type = incoming.type || 'voice';
     const rtc = rtcRef.current;
 
+    acceptingRef.current = true;
     try {
       await rtc.acquireMedia(type === 'video');
       syncStreams();
@@ -267,25 +309,25 @@ export function CallProvider({ userId, children }: { userId: string; children: R
         connectionState: 'connecting',
       }));
 
-      await rtc.createPeer(() => syncStreams(), (candidate) => {
-        api(`/api/calls/${callId}/signal`, {
-          method: 'POST',
-          body: JSON.stringify({ type: 'ice', payload: { candidate } }),
-        }).catch(() => {});
-      });
-      rtc.bindIceToCall(callId);
+      const pending = pendingOfferRef.current;
+      if (pending?.callId === callId) {
+        pendingOfferRef.current = null;
+        await handleIncomingOffer(callId, pending.payload);
+      }
     } catch (e) {
-      setState((s) => ({
-        ...s,
-        error: e instanceof Error ? e.message : 'Не удалось принять звонок',
-      }));
+      pendingOfferRef.current = null;
+      const message = e instanceof Error ? e.message : 'Не удалось принять звонок';
       await endCallInner();
-      throw e;
+      throw new Error(message);
+    } finally {
+      acceptingRef.current = false;
     }
-  }, [syncStreams, endCallInner]);
+  }, [syncStreams, endCallInner, handleIncomingOffer]);
 
   const rejectIncoming = useCallback(async () => {
     stopRinging();
+    pendingOfferRef.current = null;
+    acceptingRef.current = false;
     const callId = stateRef.current.incoming?.call_id;
     if (callId) {
       try {
@@ -359,26 +401,27 @@ export function CallProvider({ userId, children }: { userId: string; children: R
       const innerPayload = (payload as { payload?: Record<string, unknown> })?.payload;
 
       if (signal === 'call:offer' && fromUserId !== myId) {
-        if (!rtc.hasPeer()) {
-          const type = current.mode || current.incoming?.type || 'voice';
-          await rtc.acquireMedia(type === 'video');
-          syncStreams();
-          await rtc.createPeer(() => syncStreams(), (candidate) => {
-            api(`/api/calls/${callId}/signal`, {
-              method: 'POST',
-              body: JSON.stringify({ type: 'ice', payload: { candidate } }),
-            }).catch(() => {});
-          });
-          rtc.bindIceToCall(callId);
+        const offerPayload = innerPayload as { sdp: RTCSessionDescriptionInit };
+        if (acceptingRef.current) {
+          pendingOfferRef.current = { callId, payload: offerPayload };
+          return;
         }
-        await rtc.handleOffer(callId, innerPayload as { sdp: RTCSessionDescriptionInit });
+        try {
+          await handleIncomingOffer(callId, offerPayload);
+        } catch {
+          /* negotiation failed */
+        }
         return;
       }
 
       if (signal === 'call:answer' && fromUserId !== myId) {
-        await rtc.handleAnswer(innerPayload as { sdp: RTCSessionDescriptionInit });
-        setState((s) => ({ ...s, phase: 'active', connectionState: 'connected' }));
-        syncStreams();
+        try {
+          await rtc.handleAnswer(innerPayload as { sdp: RTCSessionDescriptionInit });
+          setState((s) => ({ ...s, phase: 'active', connectionState: 'connecting' }));
+          syncStreams();
+        } catch {
+          /* negotiation failed */
+        }
         return;
       }
 
@@ -386,7 +429,7 @@ export function CallProvider({ userId, children }: { userId: string; children: R
         await rtc.handleIce(innerPayload as { candidate?: RTCIceCandidateInit });
       }
     },
-    [userId, resetCallState, setupCallerPeer, syncStreams],
+    [userId, resetCallState, setupCallerPeer, syncStreams, handleIncomingOffer],
   );
 
   const toggleMute = useCallback(() => {

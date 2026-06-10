@@ -1,4 +1,5 @@
 import { api } from '@/lib/api';
+import { DEFAULT_CLIENT_ICE_SERVERS } from '@/lib/webrtc/iceServers';
 
 let cachedIceServers: RTCIceServer[] | null = null;
 
@@ -6,19 +7,18 @@ export async function fetchIceServers(): Promise<RTCIceServer[]> {
   if (cachedIceServers) return cachedIceServers;
   try {
     const data = await api<{ ice_servers: RTCIceServer[] }>('/api/calls/ice-config');
-    cachedIceServers = data.ice_servers?.length
-      ? data.ice_servers
-      : [{ urls: 'stun:stun.l.google.com:19302' }];
+    cachedIceServers = data.ice_servers?.length ? data.ice_servers : DEFAULT_CLIENT_ICE_SERVERS;
   } catch {
-    cachedIceServers = [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-    ];
+    cachedIceServers = DEFAULT_CLIENT_ICE_SERVERS;
   }
   return cachedIceServers;
 }
 
 export type WebRTCManager = ReturnType<typeof createWebRTCManager>;
+
+function hasLiveTracks(stream: MediaStream | null): boolean {
+  return !!stream?.getTracks().some((track) => track.readyState === 'live');
+}
 
 export function createWebRTCManager(onConnectionStateChange?: (state: string) => void) {
   let pc: RTCPeerConnection | null = null;
@@ -26,6 +26,7 @@ export function createWebRTCManager(onConnectionStateChange?: (state: string) =>
   let remoteStream: MediaStream | null = null;
   let iceCallback: ((candidate: RTCIceCandidateInit) => void) | null = null;
   let iceServers: RTCIceServer[] | null = null;
+  let pendingCandidates: RTCIceCandidateInit[] = [];
 
   const listeners = new Set<() => void>();
   const notify = () => listeners.forEach((fn) => fn());
@@ -41,11 +42,25 @@ export function createWebRTCManager(onConnectionStateChange?: (state: string) =>
     notify();
   };
 
+  const flushPendingCandidates = async () => {
+    if (!pc?.remoteDescription) return;
+    while (pendingCandidates.length) {
+      const candidate = pendingCandidates.shift();
+      if (!candidate) continue;
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch {
+        /* stale candidate */
+      }
+    }
+  };
+
   const closePeer = () => {
     pc?.close();
     pc = null;
     remoteStream = null;
     iceCallback = null;
+    pendingCandidates = [];
     notify();
   };
 
@@ -55,9 +70,24 @@ export function createWebRTCManager(onConnectionStateChange?: (state: string) =>
   };
 
   const acquireMedia = async (video: boolean) => {
+    const needsVideo = !!video;
+    const audioTrack = localStream?.getAudioTracks()[0];
+    const videoTrack = localStream?.getVideoTracks()[0];
+    const hasAudio = audioTrack?.readyState === 'live';
+    const hasVideo = videoTrack?.readyState === 'live';
+
+    if (hasLiveTracks(localStream) && hasAudio && (!needsVideo || hasVideo)) {
+      if (!needsVideo && videoTrack) {
+        videoTrack.stop();
+        localStream!.removeTrack(videoTrack);
+      }
+      return localStream!;
+    }
+
+    stopLocalStream();
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true },
-      video: video
+      video: needsVideo
         ? { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }
         : false,
     });
@@ -70,6 +100,7 @@ export function createWebRTCManager(onConnectionStateChange?: (state: string) =>
     onRemoteTrack?: (stream: MediaStream) => void,
     onIce?: (candidate: RTCIceCandidateInit) => void,
   ) => {
+    if (pc) closePeer();
     iceCallback = onIce ?? null;
     const servers = await ensureIce();
     const connection = new RTCPeerConnection({
@@ -126,10 +157,7 @@ export function createWebRTCManager(onConnectionStateChange?: (state: string) =>
 
   const createOffer = async (callId: number) => {
     if (!pc) throw new Error('No peer connection');
-    const offer = await pc.createOffer({
-      offerToReceiveAudio: true,
-      offerToReceiveVideo: true,
-    });
+    const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     await sendSignal(callId, 'offer', { sdp: pc.localDescription });
   };
@@ -137,6 +165,7 @@ export function createWebRTCManager(onConnectionStateChange?: (state: string) =>
   const handleOffer = async (callId: number, payload: { sdp: RTCSessionDescriptionInit }) => {
     if (!pc) throw new Error('No peer connection');
     await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+    await flushPendingCandidates();
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
     await sendSignal(callId, 'answer', { sdp: pc.localDescription });
@@ -145,14 +174,19 @@ export function createWebRTCManager(onConnectionStateChange?: (state: string) =>
   const handleAnswer = async (payload: { sdp: RTCSessionDescriptionInit }) => {
     if (!pc) return;
     await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+    await flushPendingCandidates();
   };
 
   const handleIce = async (payload: { candidate?: RTCIceCandidateInit }) => {
     if (!pc || !payload?.candidate) return;
+    if (!pc.remoteDescription) {
+      pendingCandidates.push(payload.candidate);
+      return;
+    }
     try {
       await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
     } catch {
-      /* stale */
+      /* stale candidate */
     }
   };
 

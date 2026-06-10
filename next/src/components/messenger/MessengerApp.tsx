@@ -1339,7 +1339,11 @@ function MessengerAppInner({ user }: { user: Profile }) {
         <IncomingCallModal
           caller={incoming?.caller ?? null}
           isVideo={incoming?.type === 'video'}
-          onAccept={() => acceptIncoming().catch(() => {})}
+          onAccept={() =>
+            acceptIncoming().catch((e) =>
+              showToast(e instanceof Error ? e.message : 'Не удалось принять звонок'),
+            )
+          }
           onReject={() => rejectIncoming()}
         />
       )}
@@ -1349,7 +1353,11 @@ function MessengerAppInner({ user }: { user: Profile }) {
           phase={phase}
           peer={activeCallPeer}
           isVideo={mode === 'video'}
-          onAccept={() => acceptIncoming().catch(() => {})}
+          onAccept={() =>
+            acceptIncoming().catch((e) =>
+              showToast(e instanceof Error ? e.message : 'Не удалось принять звонок'),
+            )
+          }
           onReject={() => rejectIncoming()}
           onHangup={() => endCall()}
         />

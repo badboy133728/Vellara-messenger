@@ -26,8 +26,11 @@ async function fetchServerRealtimeSession(): Promise<SessionPayload | null> {
   return (await res.json()) as SessionPayload;
 }
 
+/** Apply JWT to Realtime from browser storage or httpOnly cookies via /api/realtime/session. */
 async function applyRealtimeAuth(supabase: SupabaseClient): Promise<boolean> {
-  const { data: { session: local } } = await supabase.auth.getSession();
+  const {
+    data: { session: local },
+  } = await supabase.auth.getSession();
   if (local?.access_token) {
     await supabase.realtime.setAuth(local.access_token);
     return true;
@@ -37,16 +40,14 @@ async function applyRealtimeAuth(supabase: SupabaseClient): Promise<boolean> {
   if (!data?.access_token) return false;
 
   if (data.refresh_token) {
-    const { error } = await supabase.auth.setSession({
+    await supabase.auth.setSession({
       access_token: data.access_token,
       refresh_token: data.refresh_token,
     });
-    if (error) {
-      await supabase.realtime.setAuth(data.access_token);
-    }
-  } else {
-    await supabase.realtime.setAuth(data.access_token);
   }
+
+  // Always set Realtime auth explicitly — onAuthStateChange may fire after connect().
+  await supabase.realtime.setAuth(data.access_token);
   return true;
 }
 

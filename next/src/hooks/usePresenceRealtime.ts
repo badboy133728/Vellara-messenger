@@ -30,7 +30,12 @@ export function usePresenceRealtime(
       binding = true;
       try {
         const authOk = await prepareRealtime(supabase, false);
-        if (!authOk) return;
+        if (!authOk) {
+          window.setTimeout(() => {
+            if (!disposed) void bindAll();
+          }, 1500);
+          return;
+        }
         if (disposed) return;
         while (channels.length) {
           const ch = channels.pop();

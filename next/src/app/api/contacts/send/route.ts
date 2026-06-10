@@ -25,11 +25,15 @@ export async function POST(request: Request) {
     return Response.json({ message: 'Уже отправлена заявка или контакт добавлен' }, { status: 409 });
   }
 
-  await supabase.from('user_contacts').insert({
+  const { error: insertError } = await supabase.from('user_contacts').insert({
     user_id: user.id,
     contact_id,
     status: 'pending',
   });
+
+  if (insertError) {
+    return Response.json({ message: 'Не удалось отправить заявку' }, { status: 500 });
+  }
 
   const senderName = `${profile.name} ${profile.last_name}`.trim();
 

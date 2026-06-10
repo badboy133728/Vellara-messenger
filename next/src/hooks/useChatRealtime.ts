@@ -347,7 +347,13 @@ export function useUserRealtime(userId: string | undefined, handlers: UserRealti
             table: 'user_contacts',
             filter: `contact_id=eq.${userId}`,
           },
-          notifyContacts,
+          (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
+            const row = payload.new as { user_id?: string; status?: string };
+            if (row.status === 'pending' && row.user_id) {
+              handlersRef.current.onContactRequest?.({ sender_id: row.user_id });
+            }
+            notifyContacts();
+          },
         )
         .on(
           'postgres_changes',
@@ -392,7 +398,13 @@ export function useUserRealtime(userId: string | undefined, handlers: UserRealti
           },
           notifyContacts,
         )
-        .subscribe();
+        .subscribe((status: `${REALTIME_SUBSCRIBE_STATES}`) => {
+          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            window.setTimeout(() => {
+              if (!disposed) void bind();
+            }, 1500);
+          }
+        });
     };
 
     void bind();

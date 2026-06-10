@@ -1,5 +1,6 @@
 import { requireAuth } from '@/lib/auth';
 import { broadcastToUser } from '@/lib/realtime/broadcast';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export async function DELETE(
   _request: Request,
@@ -10,21 +11,23 @@ export async function DELETE(
   const { user, supabase } = auth;
   const { contactId } = await params;
 
-  await supabase
+  const { error: ownError } = await supabase
     .from('user_contacts')
     .delete()
     .eq('user_id', user.id)
     .eq('contact_id', contactId);
 
-  await supabase
-    .from('user_contacts')
-    .delete()
-    .eq('user_id', contactId)
-    .eq('contact_id', user.id);
+  if (ownError) {
+    return Response.json({ message: 'Не удалось удалить контакт' }, { status: 500 });
+  }
 
-  await broadcastToUser(supabase, contactId, 'ContactRemoved', {
-    contact_id: user.id,
-  });
+  const admin = createAdminClient();
+  await admin.from('user_contacts').delete().eq('user_id', contactId).eq('contact_id', user.id);
+
+  await Promise.all([
+    broadcastToUser(supabase, contactId, 'ContactRemoved', { contact_id: user.id }),
+    broadcastToUser(supabase, user.id, 'ContactRemoved', { contact_id: contactId }),
+  ]);
 
   return Response.json({ message: 'Контакт удалён' });
 }

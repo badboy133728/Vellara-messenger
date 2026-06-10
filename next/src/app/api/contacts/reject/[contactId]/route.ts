@@ -30,8 +30,10 @@ export async function POST(
     return Response.json({ message: 'Не удалось отклонить заявку' }, { status: 500 });
   }
 
-  void broadcastToUser(supabase, user.id, 'ContactRequestRejected', { sender_id: senderId });
-  void broadcastToUser(supabase, senderId, 'ContactRequestRejected', { contact_id: user.id });
+  await Promise.all([
+    broadcastToUser(supabase, user.id, 'ContactRequestRejected', { sender_id: senderId }),
+    broadcastToUser(supabase, senderId, 'ContactRequestRejected', { contact_id: user.id }),
+  ]);
 
   return Response.json({ message: 'Заявка отклонена' });
 }

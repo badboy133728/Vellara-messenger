@@ -1,23 +1,33 @@
+import { formatMessagePreviewText } from '@/lib/e2e/messageCrypto';
 import type { ConversationListItem, FormattedMessage } from '@/lib/types';
 import { displayFullName } from '@/utils/formatName';
 
 export function formatIncomingMessagePreview(
-  msg: Pick<FormattedMessage, 'content' | 'file_type' | 'file_original_name' | 'message_type'>,
+  msg: Pick<
+    FormattedMessage,
+    | 'content'
+    | 'file_type'
+    | 'file_original_name'
+    | 'message_type'
+    | 'is_deleted'
+    | 'e2e_plaintext'
+    | 'e2e_file_name'
+  >,
 ): string {
-  if (msg.message_type === 'system') return msg.content || 'Системное сообщение';
-  if (msg.file_type === 'voice') return 'Голосовое сообщение';
-  if (msg.file_type === 'image') return 'Фото';
-  if (msg.file_type === 'video') return 'Видео';
-  if (msg.file_type === 'document') return msg.file_original_name || 'Файл';
-  const text = (msg.content || '').trim();
-  if (!text) return 'Сообщение';
-  return text.length > 60 ? `${text.slice(0, 60)}…` : text;
+  return formatMessagePreviewText(msg, 60);
 }
 
 export function conversationPreviewFromMessage(
   msg: Pick<
     FormattedMessage,
-    'content' | 'file_type' | 'file_original_name' | 'message_type' | 'user_id'
+    | 'content'
+    | 'file_type'
+    | 'file_original_name'
+    | 'message_type'
+    | 'user_id'
+    | 'is_deleted'
+    | 'e2e_plaintext'
+    | 'e2e_file_name'
   >,
   viewerId: string,
 ): string {

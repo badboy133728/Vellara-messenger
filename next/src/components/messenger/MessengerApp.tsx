@@ -731,39 +731,39 @@ function MessengerAppInner({ user }: { user: Profile }) {
       const isSystem = (msg.message_type || 'user') === 'system';
       const viewing = isViewingConversation(convId);
 
-      setConversations((prev) => {
-        if (!prev.some((c) => c.id === convId)) {
-          loadConversations().catch(() => {});
-          return prev;
+      void (async () => {
+        let displayMsg = enrichMessageSender(msg, groupMembersRef.current, userRef.current);
+        if (!isSystem) {
+          const [decrypted] = await decryptConvMessages(convId, [displayMsg]);
+          displayMsg = decrypted ?? displayMsg;
         }
-        return patchConversationFromMessage(prev, convId, msg, {
-          incrementUnread: fromOther && !viewing && !isSystem,
-          currentUserId: user.id,
-        });
-      });
 
-      if (viewing && activeIdRef.current === convId) {
-        void (async () => {
-          let enriched = enrichMessageReply(
-            enrichMessageSender(msg, groupMembersRef.current, userRef.current),
-            [],
-          );
-          const [decrypted] = await decryptConvMessages(convId, [enriched]);
-          enriched = decrypted ?? enriched;
+        setConversations((prev) => {
+          if (!prev.some((c) => c.id === convId)) {
+            loadConversations().catch(() => {});
+            return prev;
+          }
+          return patchConversationFromMessage(prev, convId, displayMsg, {
+            incrementUnread: fromOther && !viewing && !isSystem,
+            currentUserId: user.id,
+          });
+        });
+
+        if (viewing && activeIdRef.current === convId) {
           setMessages((prev) => {
-            enriched = enrichMessageReply(enriched, prev);
+            const enriched = enrichMessageReply(displayMsg, prev);
             if (prev.some((m) => m.id === enriched.id)) return prev;
             return applyGroupRead([...prev, enriched], membersReadRef.current, convId);
           });
-        })();
-        api(`/api/chat/${convId}/messages/read`, { method: 'POST' }).catch(() => {});
-        setConversationReadLocal(convId);
-        return;
-      }
+          api(`/api/chat/${convId}/messages/read`, { method: 'POST' }).catch(() => {});
+          setConversationReadLocal(convId);
+          return;
+        }
 
-      if (fromOther && !isSystem && !viewing) {
-        notifyIncomingMessage(msg);
-      }
+        if (fromOther && !isSystem && !viewing) {
+          notifyIncomingMessage(displayMsg);
+        }
+      })();
     },
     [
       user.id,
@@ -997,12 +997,32 @@ function MessengerAppInner({ user }: { user: Profile }) {
         (m) => m.message_type === 'user' && !m.is_deleted,
       );
       if (!forwardable.length) return;
-      setForwardPayload({
-        messages: forwardable,
-        excludeConversationId: excludeConversationId ?? activeId,
-      });
+
+      void (async () => {
+        const byConv = new Map<number, FormattedMessage[]>();
+        for (const m of forwardable) {
+          const cid = m.conversation_id ?? excludeConversationId ?? activeId;
+          if (!cid) continue;
+          const batch = byConv.get(cid) ?? [];
+          batch.push(m);
+          byConv.set(cid, batch);
+        }
+
+        const decrypted: FormattedMessage[] = [];
+        for (const [cid, batch] of byConv) {
+          decrypted.push(...(await decryptConvMessages(cid, batch)));
+        }
+
+        const order = new Map(forwardable.map((m, i) => [m.id, i]));
+        decrypted.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+
+        setForwardPayload({
+          messages: decrypted.length ? decrypted : forwardable,
+          excludeConversationId: excludeConversationId ?? activeId,
+        });
+      })();
     },
-    [activeId],
+    [activeId, decryptConvMessages],
   );
 
   const forwardMessagesToChats = async (

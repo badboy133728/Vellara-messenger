@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { VellaraIcon } from '@/components/icons/VellaraIcon';
+import { formatMessagePreviewText } from '@/lib/e2e/messageCrypto';
 import { storageDisplayUrl } from '@/lib/storage';
 import type { ConversationListItem, FormattedMessage } from '@/lib/types';
 
@@ -22,16 +23,6 @@ function convAvatar(c: ConversationListItem): { type: 'image' | 'letter'; value:
   const letter =
     `${c.other_user?.name?.[0] || ''}${c.other_user?.last_name?.[0] || ''}`.toUpperCase() || '?';
   return { type: 'letter', value: letter };
-}
-
-function messagePreviewText(msg: FormattedMessage) {
-  if (msg.is_deleted) return 'Сообщение удалено';
-  if (msg.file_type === 'voice') return 'Голосовое сообщение';
-  if (msg.file_type === 'image') return 'Фото';
-  if (msg.file_type === 'video') return 'Видео';
-  if (msg.file_type === 'document') return msg.file_original_name || 'Файл';
-  const text = (msg.content || '').trim();
-  return text.length > 120 ? `${text.slice(0, 120)}…` : text || 'Сообщение';
 }
 
 export function ForwardDestinationModal({
@@ -126,7 +117,7 @@ export function ForwardDestinationModal({
             <div className="forward-preview__list">
               {previewItems.map((msg) => (
                 <p key={msg.id} className="forward-preview__text">
-                  {messagePreviewText(msg)}
+                  {formatMessagePreviewText(msg)}
                 </p>
               ))}
               {moreCount > 0 && (

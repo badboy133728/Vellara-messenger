@@ -120,6 +120,37 @@ export function displayFileName(m: E2EDecryptedMessage): string | null {
   return m.e2e_file_name ?? m.file_original_name;
 }
 
+type PreviewMessage = Pick<
+  FormattedMessage,
+  | 'content'
+  | 'file_type'
+  | 'file_original_name'
+  | 'message_type'
+  | 'is_deleted'
+  | 'e2e_plaintext'
+  | 'e2e_file_name'
+>;
+
+/** Человекочитаемый превью-текст (уведомления, пересылка, список чатов). */
+export function formatMessagePreviewText(msg: PreviewMessage, maxLen = 120): string {
+  if (msg.is_deleted) return 'Сообщение удалено';
+  if (msg.message_type === 'system') {
+    const text = displayMessageContent(msg as FormattedMessage).trim();
+    return text || 'Системное сообщение';
+  }
+  if (msg.file_type === 'voice') return 'Голосовое сообщение';
+  if (msg.file_type === 'image') return 'Фото';
+  if (msg.file_type === 'video') return 'Видео';
+  if (msg.file_type === 'document') {
+    const name = displayFileName(msg as FormattedMessage) || 'Файл';
+    return name.length > maxLen ? `${name.slice(0, maxLen)}…` : name;
+  }
+  const text = displayMessageContent(msg as FormattedMessage).trim();
+  if (!text) return 'Сообщение';
+  if (isE2EContent(msg.content) && !msg.e2e_plaintext) return '🔒 Сообщение';
+  return text.length > maxLen ? `${text.slice(0, maxLen)}…` : text;
+}
+
 export async function resolveDecryptedMediaUrl(
   userId: string,
   ctx: ConversationKeyContext,

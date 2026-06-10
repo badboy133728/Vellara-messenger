@@ -1,13 +1,15 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
 import { getPushSupport, isPushSubscribed } from '@/lib/push/client';
 
-const PING_MS = 25_000;
+const PING_MS = 45_000;
 
 /** Пока вкладка видима — помечаем push-подписку активной, чтобы сервер не слал уведомления. */
 export function usePushActivePing(enabled = true) {
+  const endpointRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (!enabled) return;
     const support = getPushSupport();
@@ -15,18 +17,21 @@ export function usePushActivePing(enabled = true) {
 
     let cancelled = false;
 
-    const getEndpoint = async () => {
+    const resolveEndpoint = async () => {
+      if (endpointRef.current) return endpointRef.current;
       const subscribed = await isPushSubscribed();
       if (!subscribed) return null;
       const registration = await navigator.serviceWorker.getRegistration('/');
       const subscription = await registration?.pushManager.getSubscription();
-      return subscription?.endpoint ?? null;
+      const endpoint = subscription?.endpoint ?? null;
+      if (endpoint) endpointRef.current = endpoint;
+      return endpoint;
     };
 
     const markActive = async () => {
       if (cancelled || document.visibilityState !== 'visible') return;
       try {
-        const endpoint = await getEndpoint();
+        const endpoint = await resolveEndpoint();
         if (!endpoint) return;
         await api('/api/push/active', {
           method: 'POST',
@@ -40,7 +45,7 @@ export function usePushActivePing(enabled = true) {
     const markInactive = async () => {
       if (cancelled) return;
       try {
-        const endpoint = await getEndpoint();
+        const endpoint = await resolveEndpoint();
         if (!endpoint) return;
         await api('/api/push/inactive', {
           method: 'POST',
@@ -69,6 +74,7 @@ export function usePushActivePing(enabled = true) {
 
     return () => {
       cancelled = true;
+      endpointRef.current = null;
       window.clearInterval(intervalId);
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('focus', markActive);

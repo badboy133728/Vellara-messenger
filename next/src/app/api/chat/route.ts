@@ -20,7 +20,7 @@ export async function GET() {
     (memberships ?? []).map((m) => [m.conversation_id as number, m]),
   );
   const convIds = memberships.map((m) => m.conversation_id);
-  const messagesLimit = Math.min(convIds.length * 50, 800);
+  const messagesLimit = Math.min(convIds.length * 15, 300);
 
   const [{ data: conversations }, { data: allMembers }, { data: recentMessages }] = await Promise.all([
     supabase
@@ -55,7 +55,7 @@ export async function GET() {
   for (const row of recentMessages ?? []) {
     const msg = row as MessageRow;
     const list = messagesByConv.get(msg.conversation_id) ?? [];
-    if (list.length < 50) {
+    if (list.length < 15) {
       list.push(msg);
       messagesByConv.set(msg.conversation_id, list);
     }

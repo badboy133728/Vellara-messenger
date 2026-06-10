@@ -1,4 +1,6 @@
 import { requireAuth } from '@/lib/auth';
+import { broadcastToUser } from '@/lib/realtime/broadcast';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export async function POST(
   _request: Request,
@@ -9,12 +11,27 @@ export async function POST(
   const { user, supabase } = auth;
   const { contactId: senderId } = await params;
 
-  await supabase
+  const { data: request } = await supabase
     .from('user_contacts')
-    .delete()
+    .select('id')
     .eq('user_id', senderId)
     .eq('contact_id', user.id)
-    .eq('status', 'pending');
+    .eq('status', 'pending')
+    .maybeSingle();
+
+  if (!request) {
+    return Response.json({ message: 'Заявка не найдена' }, { status: 404 });
+  }
+
+  const admin = createAdminClient();
+  const { error } = await admin.from('user_contacts').delete().eq('id', request.id);
+
+  if (error) {
+    return Response.json({ message: 'Не удалось отклонить заявку' }, { status: 500 });
+  }
+
+  void broadcastToUser(supabase, user.id, 'ContactRequestRejected', { sender_id: senderId });
+  void broadcastToUser(supabase, senderId, 'ContactRequestRejected', { contact_id: user.id });
 
   return Response.json({ message: 'Заявка отклонена' });
 }

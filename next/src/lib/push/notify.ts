@@ -50,3 +50,17 @@ export async function notifyConversationPush(
     ),
   );
 }
+
+export async function notifyContactRequestPush(
+  recipientId: string,
+  senderName: string,
+  senderId: string,
+): Promise<void> {
+  const name = senderName.trim() || 'Пользователь';
+  await sendPushToUser(recipientId, {
+    title: 'Заявка в контакты',
+    body: `${name} хочет добавить вас в контакты`,
+    url: '/main',
+    tag: `contact-request-${senderId}`,
+  });
+}

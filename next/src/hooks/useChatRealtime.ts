@@ -198,7 +198,7 @@ export function useActiveConversationRealtime(activeId: number | null, handlers:
 
     const onVisible = () => {
       if (document.visibilityState !== 'visible' || disposed) return;
-      void bind(true);
+      void syncSupabaseRealtimeAuth(supabase);
     };
     document.addEventListener('visibilitychange', onVisible);
 
@@ -249,7 +249,7 @@ export function useChatRealtime(conversationIdsKey: string, handlers: Pick<Handl
 
         conversationIds.forEach((convId) => {
           const channel = supabase
-            .channel(`conversation:${convId}`, {
+            .channel(`conversation-list:${convId}`, {
               config: { broadcast: { self: false } },
             })
             .on(
@@ -261,13 +261,11 @@ export function useChatRealtime(conversationIdsKey: string, handlers: Pick<Handl
                 );
               },
             )
-            .on('broadcast', { event: 'NewMessage' }, (message: { payload: FormattedMessage }) => {
-              const msg = message.payload;
-              if (msg?.conversation_id === convId) {
-                handlersRef.current.onMessage?.(msg);
+            .subscribe((status: `${REALTIME_SUBSCRIBE_STATES}`) => {
+              if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                window.setTimeout(() => void syncSupabaseRealtimeAuth(supabase), 1500);
               }
-            })
-            .subscribe();
+            });
           channels.push(channel);
         });
       } finally {
@@ -296,9 +294,16 @@ export function useChatRealtime(conversationIdsKey: string, handlers: Pick<Handl
   }, [conversationIdsKey]);
 }
 
+export type ContactRequestPayload = {
+  sender_id?: string;
+  name?: string;
+  last_name?: string;
+};
+
 export type UserRealtimeHandlers = {
   onCallSignaling?: (payload: unknown) => void;
   onContactsChanged?: () => void;
+  onContactRequest?: (payload: ContactRequestPayload) => void;
 };
 
 export function useUserRealtime(userId: string | undefined, handlers: UserRealtimeHandlers) {
@@ -323,8 +328,16 @@ export function useUserRealtime(userId: string | undefined, handlers: UserRealti
         .on('broadcast', { event: 'CallSignaling' }, (message: { payload: unknown }) =>
           handlersRef.current.onCallSignaling?.(message.payload),
         )
-        .on('broadcast', { event: 'ContactRequestSent' }, notifyContacts)
+        .on(
+          'broadcast',
+          { event: 'ContactRequestSent' },
+          (message: { payload: ContactRequestPayload }) => {
+            handlersRef.current.onContactRequest?.(message.payload ?? {});
+            notifyContacts();
+          },
+        )
         .on('broadcast', { event: 'ContactRequestAccepted' }, notifyContacts)
+        .on('broadcast', { event: 'ContactRequestRejected' }, notifyContacts)
         .on('broadcast', { event: 'ContactRemoved' }, notifyContacts)
         .on(
           'postgres_changes',
@@ -361,7 +374,22 @@ export function useUserRealtime(userId: string | undefined, handlers: UserRealti
         )
         .on(
           'postgres_changes',
-          { event: 'DELETE', schema: 'public', table: 'user_contacts' },
+          {
+            event: 'DELETE',
+            schema: 'public',
+            table: 'user_contacts',
+            filter: `contact_id=eq.${userId}`,
+          },
+          notifyContacts,
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'DELETE',
+            schema: 'public',
+            table: 'user_contacts',
+            filter: `user_id=eq.${userId}`,
+          },
           notifyContacts,
         )
         .subscribe();
@@ -370,13 +398,19 @@ export function useUserRealtime(userId: string | undefined, handlers: UserRealti
     void bind();
 
     const onVisible = () => {
-      if (document.visibilityState === 'visible' && !disposed) void bind();
+      if (document.visibilityState !== 'visible' || disposed) return;
+      void syncSupabaseRealtimeAuth(supabase);
     };
     document.addEventListener('visibilitychange', onVisible);
+
+    const refreshAuth = window.setInterval(() => {
+      void syncSupabaseRealtimeAuth(supabase);
+    }, 3 * 60 * 1000);
 
     return () => {
       disposed = true;
       document.removeEventListener('visibilitychange', onVisible);
+      window.clearInterval(refreshAuth);
       if (channel) void supabase.removeChannel(channel);
     };
   }, [userId]);

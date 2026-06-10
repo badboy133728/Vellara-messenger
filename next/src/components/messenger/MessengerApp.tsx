@@ -37,6 +37,7 @@ import {
   patchConversationFromMessage,
   sortConversations,
 } from '@/utils/conversationList';
+import { displayFullName } from '@/utils/formatName';
 import { ConversationActionsMenu } from './ConversationActionsMenu';
 import { useMessageNotifications } from '@/hooks/useMessageNotifications';
 import { useLastSeenHeartbeat } from '@/hooks/useLastSeenHeartbeat';
@@ -72,6 +73,8 @@ import {
 } from '@/lib/messengerNav';
 
 type Tab = MessengerTab;
+
+const REALTIME_LIST_CONV_LIMIT = 40;
 
 const MENU_ITEMS: { id: Tab; label: string; icon: VellaraIconName }[] = [
   { id: 'chats', label: 'Чаты', icon: 'chats' },
@@ -115,28 +118,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
   }, []);
 
   const [contactsRefreshKey, setContactsRefreshKey] = useState(0);
-  const refreshIncomingCount = useCallback(async () => {
-    try {
-      const inc = await api<unknown[]>('/api/contacts/incoming');
-      setIncomingContactCount(inc.length);
-    } catch {
-      setIncomingContactCount(0);
-    }
-  }, []);
-
-  const onContactsChanged = useCallback(() => {
-    setContactsRefreshKey((k) => k + 1);
-    refreshIncomingCount();
-  }, [refreshIncomingCount]);
-
-  useEffect(() => {
-    refreshIncomingCount();
-  }, [refreshIncomingCount]);
-
-  useUserRealtime(user.id, {
-    onCallSignaling,
-    onContactsChanged,
-  });
+  const incomingContactCountRef = useRef(0);
 
   const [tab, setTab] = useState<Tab>('chats');
   const [conversations, setConversations] = useState<ConversationListItem[]>([]);
@@ -324,6 +306,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
   const userRef = useRef(user);
   const membersReadRef = useRef(membersRead);
   const typingTimeoutRef = useRef<number | null>(null);
+  const recentMsgIdsRef = useRef(new Map<number, number>());
   const lastTypingSentRef = useRef(0);
   const loadMessagesRef = useRef<
     (convId: number, opts?: { silent?: boolean; fromCache?: boolean }) => Promise<void>
@@ -355,10 +338,46 @@ function MessengerAppInner({ user }: { user: Profile }) {
     setConversations((prev) => clearConversationUnread(prev, convId));
   }, []);
 
+  const refreshIncomingCount = useCallback(async () => {
+    try {
+      const inc = await api<{ name: string; last_name: string }[]>('/api/contacts/incoming');
+      incomingContactCountRef.current = inc.length;
+      setIncomingContactCount(inc.length);
+    } catch {
+      incomingContactCountRef.current = 0;
+      setIncomingContactCount(0);
+    }
+  }, []);
+
   const showToast = useCallback((msg: string) => {
     setToast(msg);
     window.setTimeout(() => setToast(''), 3500);
   }, []);
+
+  const onContactRequest = useCallback(
+    (payload: { name?: string; last_name?: string }) => {
+      const who = displayFullName(payload.name ?? '', payload.last_name ?? '', 'Пользователь');
+      showToast(`${who} отправил заявку в контакты`);
+      setContactsRefreshKey((k) => k + 1);
+      void refreshIncomingCount();
+    },
+    [refreshIncomingCount, showToast],
+  );
+
+  const onContactsChanged = useCallback(() => {
+    setContactsRefreshKey((k) => k + 1);
+    void refreshIncomingCount();
+  }, [refreshIncomingCount]);
+
+  useEffect(() => {
+    void refreshIncomingCount();
+  }, [refreshIncomingCount]);
+
+  useUserRealtime(user.id, {
+    onCallSignaling,
+    onContactsChanged,
+    onContactRequest,
+  });
 
   const chatOpen = isMobile && activeId != null;
   const hideMobileNav = tab === 'chats' && (chatOpen || profileUserId != null);
@@ -598,20 +617,22 @@ function MessengerAppInner({ user }: { user: Profile }) {
   const loadMessages = useCallback(
     async (convId: number, opts?: { silent?: boolean; fromCache?: boolean }) => {
       if (!opts?.silent && !opts?.fromCache) setMessagesLoading(true);
-      setConversationReadLocal(convId);
+      if (!opts?.silent) setConversationReadLocal(convId);
       const conv = conversationsRef.current.find((c) => c.id === convId);
-      if (conv?.type === 'group' || conv?.type === 'channel') {
-        await syncGroupMembers(convId);
-      } else {
+      const isGroupOrChannel = conv?.type === 'group' || conv?.type === 'channel';
+      if (!isGroupOrChannel) {
         groupMembersRef.current = new Map();
       }
       try {
         await ensureIdentityKeys(userRef.current.id).catch(() => {});
-        const data = await api<{
-          messages: FormattedMessage[];
-          members_read: MemberRead[];
-          has_more?: boolean;
-        }>(`/api/chat/${convId}/messages`);
+        const [, data] = await Promise.all([
+          isGroupOrChannel ? syncGroupMembers(convId) : Promise.resolve(null),
+          api<{
+            messages: FormattedMessage[];
+            members_read: MemberRead[];
+            has_more?: boolean;
+          }>(`/api/chat/${convId}/messages`),
+        ]);
         const readState =
           (conv?.type === 'group' || conv?.type === 'channel') && groupMembersRef.current.size
             ? [...groupMembersRef.current.keys()].map((userId) => {
@@ -632,7 +653,9 @@ function MessengerAppInner({ user }: { user: Profile }) {
           if (nextLast === prevLast && prev.length >= nextMessages.length) return prev;
           return nextMessages;
         });
-        api(`/api/chat/${convId}/messages/read`, { method: 'POST' }).catch(() => {});
+        if (!opts?.silent) {
+          api(`/api/chat/${convId}/messages/read`, { method: 'POST' }).catch(() => {});
+        }
       } finally {
         if (!opts?.silent && !opts?.fromCache) setMessagesLoading(false);
       }
@@ -746,9 +769,14 @@ function MessengerAppInner({ user }: { user: Profile }) {
   }, [conversations, syncConversations]);
 
   const realtimeConvIdsKey = useMemo(() => {
-    const ids = conversations.map((c) => c.id).filter((id) => id !== activeId);
+    const ids = [...conversations]
+      .filter((c) => c.id !== activeId)
+      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+      .slice(0, REALTIME_LIST_CONV_LIMIT)
+      .map((c) => c.id)
+      .sort((a, b) => a - b);
     if (ids.length === 0) return '';
-    return [...ids].sort((a, b) => a - b).join(',');
+    return ids.join(',');
   }, [conversations, activeId]);
 
   useEffect(() => {
@@ -763,9 +791,6 @@ function MessengerAppInner({ user }: { user: Profile }) {
         visibilityRefreshTimerRef.current = null;
         if (Date.now() < filePickerGraceUntilRef.current) return;
         loadConversations().catch(() => {});
-        if (activeIdRef.current) {
-          void loadMessagesRef.current(activeIdRef.current, { silent: true });
-        }
       }, 350);
     };
     document.addEventListener('visibilitychange', onVisible);
@@ -778,36 +803,11 @@ function MessengerAppInner({ user }: { user: Profile }) {
   }, [loadConversations]);
 
   useEffect(() => {
-    if (!activeId || tab !== 'chats') return;
-    const pollTyping = () => {
-      if (document.visibilityState !== 'visible') return;
-      api<{ typing_user_id: string | null }>(`/api/chat/${activeId}/typing`, {
-        allowUnauthorized: false,
-      })
-        .then((data) => {
-          if (data.typing_user_id && data.typing_user_id !== user.id) {
-            setTypingUserId(data.typing_user_id);
-            if (typingTimeoutRef.current != null) {
-              window.clearTimeout(typingTimeoutRef.current);
-            }
-            typingTimeoutRef.current = window.setTimeout(() => {
-              setTypingUserId(null);
-              typingTimeoutRef.current = null;
-            }, 3500);
-          }
-        })
-        .catch(() => {});
-    };
-    const typingTimer = window.setInterval(pollTyping, 15_000);
-    return () => window.clearInterval(typingTimer);
-  }, [activeId, tab, user.id]);
-
-  useEffect(() => {
     const pollConversations = () => {
       if (document.visibilityState !== 'visible') return;
       loadConversations().catch(() => {});
     };
-    const listTimer = window.setInterval(pollConversations, 60_000);
+    const listTimer = window.setInterval(pollConversations, 180_000);
     return () => window.clearInterval(listTimer);
   }, [loadConversations]);
 
@@ -816,12 +816,33 @@ function MessengerAppInner({ user }: { user: Profile }) {
       const convId = msg.conversation_id;
       if (!convId) return;
 
+      const now = Date.now();
+      const seenAt = recentMsgIdsRef.current.get(msg.id);
+      if (seenAt != null && now - seenAt < 5000) return;
+      recentMsgIdsRef.current.set(msg.id, now);
+      if (recentMsgIdsRef.current.size > 300) {
+        for (const [id, ts] of recentMsgIdsRef.current) {
+          if (now - ts > 10_000) recentMsgIdsRef.current.delete(id);
+        }
+      }
+
       const fromOther = msg.user_id !== user.id;
       const isSystem = (msg.message_type || 'user') === 'system';
       const viewing = isViewingConversation(convId);
+      const previewMsg = enrichMessageSender(msg, groupMembersRef.current, userRef.current);
+
+      if (viewing && activeIdRef.current === convId) {
+        setMessages((prev) => {
+          const enriched = enrichMessageReply(previewMsg, prev);
+          if (prev.some((m) => m.id === enriched.id)) return prev;
+          return applyGroupRead([...prev, enriched], membersReadRef.current, convId);
+        });
+        api(`/api/chat/${convId}/messages/read`, { method: 'POST' }).catch(() => {});
+        setConversationReadLocal(convId);
+      }
 
       void (async () => {
-        let displayMsg = enrichMessageSender(msg, groupMembersRef.current, userRef.current);
+        let displayMsg = previewMsg;
         if (!isSystem) {
           const [decrypted] = await decryptConvMessages(convId, [displayMsg]);
           displayMsg = decrypted ?? displayMsg;
@@ -842,22 +863,18 @@ function MessengerAppInner({ user }: { user: Profile }) {
           setMessages((prev) => {
             const enriched = enrichMessageReply(displayMsg, prev);
             const idx = prev.findIndex((m) => m.id === enriched.id);
-            if (idx >= 0) {
-              const next = [...prev];
-              next[idx] = {
-                ...next[idx],
-                ...enriched,
-                forwarded_from: enriched.forwarded_from ?? next[idx]?.forwarded_from,
-                forwarded_from_id: enriched.forwarded_from_id ?? next[idx]?.forwarded_from_id,
-                e2e_plaintext: enriched.e2e_plaintext ?? next[idx]?.e2e_plaintext,
-                e2e_file_name: enriched.e2e_file_name ?? next[idx]?.e2e_file_name,
-              };
-              return applyGroupRead(next, membersReadRef.current, convId);
-            }
-            return applyGroupRead([...prev, enriched], membersReadRef.current, convId);
+            if (idx < 0) return prev;
+            const next = [...prev];
+            next[idx] = {
+              ...next[idx],
+              ...enriched,
+              forwarded_from: enriched.forwarded_from ?? next[idx]?.forwarded_from,
+              forwarded_from_id: enriched.forwarded_from_id ?? next[idx]?.forwarded_from_id,
+              e2e_plaintext: enriched.e2e_plaintext ?? next[idx]?.e2e_plaintext,
+              e2e_file_name: enriched.e2e_file_name ?? next[idx]?.e2e_file_name,
+            };
+            return applyGroupRead(next, membersReadRef.current, convId);
           });
-          api(`/api/chat/${convId}/messages/read`, { method: 'POST' }).catch(() => {});
-          setConversationReadLocal(convId);
           return;
         }
 
@@ -996,7 +1013,12 @@ function MessengerAppInner({ user }: { user: Profile }) {
         return applyGroupRead([...prev, withReply], membersRead, convId);
       });
       options?.onCreated?.([enriched.id]);
-      await loadConversations();
+      setConversations((prev) =>
+        patchConversationFromMessage(prev, convId, enriched, {
+          incrementUnread: false,
+          currentUserId: user.id,
+        }),
+      );
       return [enriched.id];
     }
 
@@ -1031,7 +1053,15 @@ function MessengerAppInner({ user }: { user: Profile }) {
       return next;
     });
     options?.onCreated?.(created.map((m) => m.id));
-    await loadConversations();
+    if (created.length) {
+      const last = created[created.length - 1]!;
+      setConversations((prev) =>
+        patchConversationFromMessage(prev, convId, last, {
+          incrementUnread: false,
+          currentUserId: user.id,
+        }),
+      );
+    }
     return created.map((m) => m.id);
   };
 
@@ -1063,7 +1093,12 @@ function MessengerAppInner({ user }: { user: Profile }) {
       if (prev.some((m) => m.id === enriched.id)) return prev;
       return applyGroupRead([...prev, enriched], membersRead, activeId);
     });
-    await loadConversations();
+    setConversations((prev) =>
+      patchConversationFromMessage(prev, activeId, enriched, {
+        incrementUnread: false,
+        currentUserId: user.id,
+      }),
+    );
   };
 
   const editMessage = async (messageId: number, content: string) => {

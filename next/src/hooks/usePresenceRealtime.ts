@@ -3,7 +3,9 @@
 import { useEffect, useRef } from 'react';
 import type { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/client';
-import { reconnectSupabaseRealtime } from '@/lib/realtime/clientAuth';
+import { reconnectSupabaseRealtime, syncSupabaseRealtimeAuth } from '@/lib/realtime/clientAuth';
+
+const PRESENCE_CHANNEL_LIMIT = 30;
 
 export function usePresenceRealtime(
   userIds: string[],
@@ -12,7 +14,7 @@ export function usePresenceRealtime(
   const handlerRef = useRef(onUpdate);
   handlerRef.current = onUpdate;
 
-  const idsKey = [...new Set(userIds)].sort().join(',');
+  const idsKey = [...new Set(userIds)].sort().slice(0, PRESENCE_CHANNEL_LIMIT).join(',');
 
   useEffect(() => {
     const uniqueIds = idsKey ? idsKey.split(',') : [];
@@ -50,7 +52,8 @@ export function usePresenceRealtime(
     void bindAll();
 
     const onVisible = () => {
-      if (document.visibilityState === 'visible' && !disposed) void bindAll();
+      if (document.visibilityState !== 'visible' || disposed) return;
+      void syncSupabaseRealtimeAuth(supabase);
     };
     document.addEventListener('visibilitychange', onVisible);
 

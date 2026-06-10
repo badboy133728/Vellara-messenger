@@ -46,6 +46,7 @@ export function ContactsPanel({
   const { startCall, loadContactIds } = useCall();
   const [contactIds, setContactIds] = useState<Set<string>>(new Set());
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
   const incomingCountRef = useRef(0);
 
   const load = useCallback(async () => {
@@ -136,8 +137,18 @@ export function ContactsPanel({
   };
 
   const reject = async (senderId: string) => {
-    await api(`/api/contacts/reject/${senderId}`, { method: 'POST' });
-    await load();
+    if (rejectingId || acceptingId) return;
+    setRejectingId(senderId);
+    try {
+      await api(`/api/contacts/reject/${senderId}`, { method: 'POST' });
+      setIncoming((prev) => prev.filter((r) => r.sender_id !== senderId));
+      incomingCountRef.current = Math.max(0, incomingCountRef.current - 1);
+      showToast('Заявка отклонена');
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'Не удалось отклонить заявку');
+    } finally {
+      setRejectingId(null);
+    }
   };
 
   const removeContact = async (contactId: string) => {
@@ -271,7 +282,11 @@ export function ContactsPanel({
                     <button
                       type="button"
                       className="profile-btn profile-btn--outline profile-btn--icon contact-card__action"
-                      onClick={() => reject(req.sender_id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void reject(req.sender_id);
+                      }}
+                      disabled={rejectingId === req.sender_id || acceptingId === req.sender_id}
                       title="Отклонить"
                       aria-label="Отклонить заявку"
                     >

@@ -1,4 +1,5 @@
 import { requireAuth } from '@/lib/auth';
+import { notifyContactRequestPush } from '@/lib/push/notify';
 import { broadcastToUser } from '@/lib/realtime/broadcast';
 
 export async function POST(request: Request) {
@@ -30,6 +31,8 @@ export async function POST(request: Request) {
     status: 'pending',
   });
 
+  const senderName = `${profile.name} ${profile.last_name}`.trim();
+
   await broadcastToUser(supabase, contact_id, 'ContactRequestSent', {
     sender_id: user.id,
     name: profile.name,
@@ -37,6 +40,8 @@ export async function POST(request: Request) {
     email: profile.email,
     avatar: profile.avatar,
   });
+
+  void notifyContactRequestPush(contact_id, senderName, user.id);
 
   return Response.json({ message: 'Заявка отправлена' }, { status: 201 });
 }

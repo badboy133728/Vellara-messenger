@@ -334,13 +334,13 @@
   outline-offset: 2px;
 }
 
-.message-row--swiping .message-row-body {
+.message-row--swiping-rtl .message-row-body,
+.message-row--swiping-ltr .message-row-body {
   transition: none;
 }
 
 .message-row-actions {
   position: absolute;
-  left: 8px;
   top: 50%;
   transform: translateY(-50%);
   width: 36px;
@@ -356,7 +356,16 @@
   transition: opacity 0.15s ease;
 }
 
-.message-row--swiping .message-row-actions {
+.message-row-actions--rtl {
+  right: 8px;
+  left: auto;
+}
+
+.message-row--swiping-rtl {
+  overflow: hidden;
+}
+
+.message-row--swiping-rtl .message-row-actions--rtl {
   opacity: 1;
 }
 

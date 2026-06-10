@@ -631,19 +631,48 @@ export function ChatPanel({
     onForwardMessage(selected);
   };
 
+  const moveSurfaceCleanupRef = useRef<(() => void) | null>(null);
+
   const rowGesture = useMessageRowGesture({
     onSwipeOpenActions: (event, payload) => {
       if (forwardSelectMode) return;
       openMessageMenu(event, payload as FormattedMessage);
     },
+    onSwipeBack: isMobile && onBack ? () => onBack() : undefined,
     onForwardSelectStart: (payload) => {
       enterForwardSelectMode(payload as FormattedMessage);
     },
   });
 
+  const bindMessagesContainerRef = (node: HTMLDivElement | null) => {
+    messagesContainerRef.current = node;
+    if (moveSurfaceCleanupRef.current) {
+      moveSurfaceCleanupRef.current();
+      moveSurfaceCleanupRef.current = null;
+    }
+    if (node && isMobile) {
+      moveSurfaceCleanupRef.current = rowGesture.attachMoveSurface(node) ?? null;
+    }
+  };
+
+  useEffect(
+    () => () => {
+      moveSurfaceCleanupRef.current?.();
+    },
+    [],
+  );
+
   useEffect(() => {
     exitForwardSelectMode();
-  }, [conversation?.id]);
+    const node = messagesContainerRef.current;
+    if (moveSurfaceCleanupRef.current) {
+      moveSurfaceCleanupRef.current();
+      moveSurfaceCleanupRef.current = null;
+    }
+    if (node && isMobile) {
+      moveSurfaceCleanupRef.current = rowGesture.attachMoveSurface(node) ?? null;
+    }
+  }, [conversation?.id, isMobile, rowGesture.attachMoveSurface]);
 
   const startEditMessage = () => {
     const msg = msgMenu.message;
@@ -1070,6 +1099,7 @@ export function ChatPanel({
     const isSelected = selectedMessageIds.has(m.id);
     const isSwipeActive = rowGesture.swipeRowId === m.id;
     const swipeOffset = isSwipeActive ? rowGesture.swipeOffset : 0;
+    const swipeDir = isSwipeActive ? rowGesture.swipeDirection : null;
     const canSelect = canForwardMsg(m);
 
     if (isSystem) {
@@ -1089,7 +1119,7 @@ export function ChatPanel({
     return (
       <div
         key={item.key}
-        className={`message-row ${mine ? 'message-row--mine' : 'message-row--other'}${forwardSelectMode && canSelect ? ' message-row--selectable' : ''}${isSelected ? ' message-row--selected' : ''}${isSwipeActive ? ' message-row--swiping' : ''}`}
+        className={`message-row ${mine ? 'message-row--mine' : 'message-row--other'}${forwardSelectMode && canSelect ? ' message-row--selectable' : ''}${isSelected ? ' message-row--selected' : ''}${isSwipeActive && swipeDir === 'rtl' ? ' message-row--swiping message-row--swiping-rtl' : ''}${isSwipeActive && swipeDir === 'ltr' ? ' message-row--swiping-ltr' : ''}`}
         onClick={handleRowClick}
         onContextMenu={(e) => {
           if (forwardSelectMode) return;
@@ -1118,10 +1148,10 @@ export function ChatPanel({
         )}
         {!forwardSelectMode && isMobile && (
           <div
-            className={`message-row-actions ${mine ? 'message-row-actions--mine' : 'message-row-actions--other'}`}
-            aria-hidden={swipeOffset < 8}
+            className="message-row-actions message-row-actions--rtl"
+            aria-hidden={swipeOffset < 8 || swipeDir !== 'rtl'}
           >
-            <VellaraIcon name="reply" size={18} />
+            <VellaraIcon name="more" size={18} />
           </div>
         )}
         {forwardSelectMode && canSelect && (
@@ -1131,7 +1161,13 @@ export function ChatPanel({
         )}
         <div
           className={`message-row-body ${mine ? 'message-row-body--mine' : 'message-row-body--other'} ${isGroup ? 'message-row-body--group' : ''}`}
-          style={swipeOffset > 0 ? { transform: `translateX(${swipeOffset}px)` } : undefined}
+          style={
+            swipeOffset > 0 && swipeDir === 'rtl'
+              ? { transform: `translateX(-${swipeOffset}px)` }
+              : swipeOffset > 0 && swipeDir === 'ltr'
+                ? { transform: `translateX(${swipeOffset}px)` }
+                : undefined
+          }
         >
           {showGroupSenderAvatar(m) && (
             <button type="button" className="msg-avatar-btn" title="Профиль">
@@ -1225,7 +1261,7 @@ export function ChatPanel({
 
       <div
         className={`messages-container${showMessages && messages.length && !scrollReady && !isMobile ? ' messages-container--preparing' : ''}`}
-        ref={messagesContainerRef}
+        ref={bindMessagesContainerRef}
       >
         {!showMessages ? (
           <div className="chat-loading" aria-busy="true" aria-label="Загрузка сообщений">

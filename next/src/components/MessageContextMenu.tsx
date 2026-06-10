@@ -2,9 +2,17 @@
 
 import { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { VellaraIcon } from '@/components/icons/VellaraIcon';
+import { VellaraIcon, type VellaraIconName } from '@/components/icons/VellaraIcon';
 
 const MENU_VIEWPORT_EDGE = 12;
+
+type ToolAction = {
+  key: string;
+  icon: VellaraIconName;
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+};
 
 export function MessageContextMenu({
   show,
@@ -12,15 +20,17 @@ export function MessageContextMenu({
   y,
   isMobile,
   canReply,
+  canCopy,
   canEdit,
   canDelete,
   canSave,
   isSaved,
   canForward,
-  canSelectForForward,
+  canSelect,
   onReply,
+  onCopy,
   onForward,
-  onSelectForForward,
+  onSelect,
   onSave,
   onEdit,
   onDelete,
@@ -31,15 +41,17 @@ export function MessageContextMenu({
   y: number;
   isMobile: boolean;
   canReply?: boolean;
+  canCopy?: boolean;
   canEdit: boolean;
   canDelete: boolean;
   canSave: boolean;
   isSaved: boolean;
   canForward?: boolean;
-  canSelectForForward?: boolean;
+  canSelect?: boolean;
   onReply?: () => void;
+  onCopy?: () => void;
   onForward?: () => void;
-  onSelectForForward?: () => void;
+  onSelect?: () => void;
   onSave: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -73,14 +85,68 @@ export function MessageContextMenu({
     x,
     y,
     canReply,
+    canCopy,
     canEdit,
     canDelete,
     canSave,
     canForward,
-    canSelectForForward,
+    canSelect,
   ]);
 
   if (!show || typeof document === 'undefined') return null;
+
+  const toolbar: ToolAction[] = [];
+  if (canReply && onReply) {
+    toolbar.push({ key: 'reply', icon: 'reply', label: 'Ответить', onClick: onReply });
+  }
+  if (canCopy && onCopy) {
+    toolbar.push({ key: 'copy', icon: 'copy', label: 'Копировать', onClick: onCopy });
+  }
+  if (canForward && onForward) {
+    toolbar.push({ key: 'forward', icon: 'forward', label: 'Переслать', onClick: onForward });
+  }
+  if (canDelete) {
+    toolbar.push({
+      key: 'delete',
+      icon: 'trash',
+      label: 'Удалить',
+      onClick: onDelete,
+      danger: true,
+    });
+  }
+  if (canSelect && onSelect) {
+    toolbar.push({ key: 'select', icon: 'select', label: 'Выбрать', onClick: onSelect });
+  }
+
+  const listItems: Array<{
+    key: string;
+    label: string;
+    icon?: VellaraIconName;
+    onClick: () => void;
+    danger?: boolean;
+  }> = [];
+
+  if (canSave) {
+    listItems.push({
+      key: 'save',
+      icon: isSaved ? 'star' : 'star-outline',
+      label: isSaved ? 'Убрать из избранного' : 'Сохранить в избранное',
+      onClick: onSave,
+    });
+  }
+  if (canEdit) {
+    listItems.push({
+      key: 'edit',
+      icon: 'edit',
+      label: 'Редактировать',
+      onClick: onEdit,
+    });
+  }
+
+  const run = (fn: () => void) => {
+    fn();
+    onClose();
+  };
 
   return createPortal(
     <div
@@ -89,47 +155,49 @@ export function MessageContextMenu({
     >
       <div
         ref={menuRef}
-        className={`msg-context-menu ${isMobile ? 'msg-context-menu--sheet' : ''}`}
+        className={`msg-context-menu ${isMobile ? 'msg-context-menu--sheet' : 'msg-context-menu--popup'}`}
         style={isMobile ? undefined : { top: desktopPos.top, left: desktopPos.left }}
         onClick={(e) => e.stopPropagation()}
       >
-        {canReply && onReply && (
-          <button type="button" className="msg-context-menu__item--with-icon" onClick={onReply}>
-            <VellaraIcon name="reply" size={16} />
-            Ответить
+        {toolbar.length > 0 && (
+          <div className="msg-context-menu__toolbar" role="toolbar" aria-label="Действия с сообщением">
+            {toolbar.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                className={`msg-context-menu__tool${item.danger ? ' msg-context-menu__tool--danger' : ''}`}
+                onClick={() => run(item.onClick)}
+              >
+                <span className="msg-context-menu__tool-icon">
+                  <VellaraIcon name={item.icon} size={22} />
+                </span>
+                <span className="msg-context-menu__tool-label">{item.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {listItems.length > 0 && (
+          <div className="msg-context-menu__list">
+            {listItems.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                className={`msg-context-menu__list-item${item.danger ? ' danger' : ''}`}
+                onClick={() => run(item.onClick)}
+              >
+                {item.icon && <VellaraIcon name={item.icon} size={18} />}
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {isMobile && (
+          <button type="button" className="msg-context-menu__cancel" onClick={onClose}>
+            Отмена
           </button>
         )}
-        {canForward && onForward && (
-          <button type="button" className="msg-context-menu__item--with-icon" onClick={onForward}>
-            <VellaraIcon name="forward" size={16} />
-            Переслать
-          </button>
-        )}
-        {canSelectForForward && onSelectForForward && (
-          <button type="button" className="msg-context-menu__item--with-icon" onClick={onSelectForForward}>
-            <VellaraIcon name="check" size={16} />
-            Выбрать для пересылки
-          </button>
-        )}
-        {canSave && (
-          <button type="button" className="msg-context-menu__item--with-icon" onClick={onSave}>
-            <VellaraIcon name={isSaved ? 'star' : 'star-outline'} size={16} />
-            {isSaved ? 'Убрать из избранного' : 'Сохранить в избранное'}
-          </button>
-        )}
-        {canEdit && (
-          <button type="button" onClick={onEdit}>
-            Редактировать
-          </button>
-        )}
-        {canDelete && (
-          <button type="button" className="danger" onClick={onDelete}>
-            Удалить
-          </button>
-        )}
-        <button type="button" className="msg-context-menu__cancel" onClick={onClose}>
-          Отмена
-        </button>
       </div>
     </div>,
     document.body,

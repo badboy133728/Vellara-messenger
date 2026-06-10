@@ -24,7 +24,7 @@ type Options = {
 };
 
 export function useMessageRowGesture({
-  selectDelay = 5000,
+  selectDelay = 500,
   swipeThreshold = 52,
   rtlSwipeThreshold = RTL_OPEN_THRESHOLD,
   maxVerticalDrift = 36,

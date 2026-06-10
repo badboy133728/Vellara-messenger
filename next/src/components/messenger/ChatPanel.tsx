@@ -144,6 +144,7 @@ export function ChatPanel({
   onSendVoice,
   onEditMessage,
   onDeleteMessage,
+  onDeleteMessages,
   onToggleSave,
   onForwardMessage,
   onTyping,
@@ -171,6 +172,7 @@ export function ChatPanel({
   onSendVoice?: (blob: Blob, duration: number, mimeType: string) => Promise<void>;
   onEditMessage?: (messageId: number, content: string) => Promise<void>;
   onDeleteMessage?: (messageId: number) => Promise<void>;
+  onDeleteMessages?: (messageIds: number[]) => Promise<void>;
   onToggleSave?: (messageId: number) => Promise<void>;
   onForwardMessage?: (messages: FormattedMessage | FormattedMessage[]) => void;
   onTyping: () => void;
@@ -192,7 +194,7 @@ export function ChatPanel({
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const [pendingSends, setPendingSends] = useState<PendingSend[]>([]);
   const [replyTo, setReplyTo] = useState<FormattedMessage | null>(null);
-  const [forwardSelectMode, setForwardSelectMode] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
   const [selectedMessageIds, setSelectedMessageIds] = useState<Set<number>>(new Set());
   const menuCloseLockRef = useRef(0);
   const attachmentUrlsRef = useRef<Set<string>>(new Set());
@@ -516,7 +518,7 @@ export function ChatPanel({
 
   const showMessages = !messagesLoading;
   const chatReady = showMessages && (messages.length === 0 || scrollReady);
-  const showComposerArea = showMessages;
+  const showComposerArea = showMessages && !selectionMode;
 
   const swipeBack = useSwipeBack({
     enabled: Boolean(isMobile && onBack && chatReady),
@@ -580,21 +582,42 @@ export function ChatPanel({
     return !!isGroup && isGroupAdmin;
   };
 
-  const canForwardMsg = (msg: FormattedMessage) =>
+  const canSelectMsg = (msg: FormattedMessage) =>
     msg.message_type === 'user' && !msg.is_deleted;
 
-  const messageIdsForSelection = (msg: FormattedMessage) => {
+  const canForwardMsg = (msg: FormattedMessage) => canSelectMsg(msg);
+
+  const messageIdsForToggle = (msg: FormattedMessage) => {
     if (msg.album_group_id && effectiveMessageFileType(msg) === 'image') {
       return messages
         .filter(
           (m) =>
             m.album_group_id === msg.album_group_id &&
             effectiveMessageFileType(m) === 'image' &&
-            canForwardMsg(m),
+            canSelectMsg(m),
         )
         .map((m) => m.id);
     }
-    return canForwardMsg(msg) ? [msg.id] : [];
+    return canSelectMsg(msg) ? [msg.id] : [];
+  };
+
+  const getMessageCopyText = (msg: FormattedMessage): string | null => {
+    if (!canSelectMsg(msg)) return null;
+    if (msg.file_type && !displayMessageContent(msg).trim()) return null;
+    const text = displayMessageContent(msg).trim();
+    if (!text || text.startsWith('🔒')) return null;
+    return text;
+  };
+
+  const selectedMessages = useMemo(
+    () => messages.filter((m) => selectedMessageIds.has(m.id)),
+    [messages, selectedMessageIds],
+  );
+
+  const selectionCountLabel = (n: number) => {
+    if (n === 1) return '1 сообщение';
+    if (n >= 2 && n <= 4) return `${n} сообщения`;
+    return `${n} сообщений`;
   };
 
   const openMessageMenu = (
@@ -634,21 +657,21 @@ export function ChatPanel({
     setMsgMenu(emptyMenu);
   };
 
-  const enterForwardSelectMode = (msg: FormattedMessage) => {
-    const ids = messageIdsForSelection(msg);
+  const enterSelectionMode = (msg: FormattedMessage) => {
+    const ids = messageIdsForToggle(msg);
     if (!ids.length) return;
     closeMessageMenu();
-    setForwardSelectMode(true);
+    setSelectionMode(true);
     setSelectedMessageIds(new Set(ids));
   };
 
-  const exitForwardSelectMode = () => {
-    setForwardSelectMode(false);
+  const exitSelectionMode = () => {
+    setSelectionMode(false);
     setSelectedMessageIds(new Set());
   };
 
-  const toggleForwardSelection = (msg: FormattedMessage) => {
-    const ids = messageIdsForSelection(msg);
+  const toggleMessageSelection = (msg: FormattedMessage) => {
+    const ids = messageIdsForToggle(msg);
     if (!ids.length) return;
     setSelectedMessageIds((prev) => {
       const next = new Set(prev);
@@ -661,16 +684,47 @@ export function ChatPanel({
 
   const submitForwardSelection = () => {
     if (!onForwardMessage || selectedMessageIds.size === 0) return;
-    const selected = messages.filter((m) => selectedMessageIds.has(m.id));
-    exitForwardSelectMode();
+    const selected = selectedMessages.filter(canForwardMsg);
+    if (!selected.length) return;
+    exitSelectionMode();
     onForwardMessage(selected);
+  };
+
+  const submitDeleteSelection = async () => {
+    const deletable = selectedMessages.filter(canDeleteMsg);
+    if (!deletable.length) return;
+    const n = deletable.length;
+    const word = n === 1 ? 'сообщение' : n < 5 ? 'сообщения' : 'сообщений';
+    if (!window.confirm(`Удалить ${n} ${word}?`)) return;
+    exitSelectionMode();
+    try {
+      if (onDeleteMessages) {
+        await onDeleteMessages(deletable.map((m) => m.id));
+      } else if (onDeleteMessage) {
+        for (const m of deletable) {
+          await onDeleteMessage(m.id);
+        }
+      }
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : 'Не удалось удалить');
+    }
+  };
+
+  const copySelectedMessages = async () => {
+    const parts = selectedMessages.map(getMessageCopyText).filter((t): t is string => !!t);
+    if (!parts.length) return;
+    try {
+      await navigator.clipboard.writeText(parts.join('\n\n'));
+    } catch {
+      window.alert('Не удалось скопировать');
+    }
   };
 
   const moveSurfaceCleanupRef = useRef<(() => void) | null>(null);
 
   const rowGesture = useMessageRowGesture({
     onSwipeOpenActions: (event, payload) => {
-      if (forwardSelectMode) return;
+      if (selectionMode) return;
       openMessageMenu(event, payload as FormattedMessage);
     },
     onSwipeBackDrag:
@@ -682,7 +736,7 @@ export function ChatPanel({
         : undefined,
     onSwipeBack: isMobile && onBack ? (offset) => swipeBack.animateBack(offset) : undefined,
     onForwardSelectStart: (payload) => {
-      enterForwardSelectMode(payload as FormattedMessage);
+      enterSelectionMode(payload as FormattedMessage);
     },
   });
 
@@ -705,7 +759,7 @@ export function ChatPanel({
   );
 
   useEffect(() => {
-    exitForwardSelectMode();
+    exitSelectionMode();
     const node = messagesContainerRef.current;
     if (moveSurfaceCleanupRef.current) {
       moveSurfaceCleanupRef.current();
@@ -721,7 +775,7 @@ export function ChatPanel({
     if (!msg) return;
     setReplyTo(null);
     setEditingMessage(msg);
-    setText(msg.content || '');
+    setText(displayMessageContent(msg));
     closeMessageMenu();
     window.setTimeout(() => textareaRef.current?.focus(), 0);
   };
@@ -733,11 +787,24 @@ export function ChatPanel({
     onForwardMessage(msg);
   };
 
-  const startSelectForForward = () => {
+  const startSelectMessages = () => {
     const msg = msgMenu.message;
     if (!msg) return;
     closeMessageMenu();
-    enterForwardSelectMode(msg);
+    enterSelectionMode(msg);
+  };
+
+  const copyMessageFromMenu = async () => {
+    const msg = msgMenu.message;
+    closeMessageMenu();
+    if (!msg) return;
+    const text = getMessageCopyText(msg);
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      window.alert('Не удалось скопировать');
+    }
   };
 
   const startReplyMessage = () => {
@@ -1187,7 +1254,7 @@ export function ChatPanel({
     const isSwipeActive = rowGesture.swipeRowId === m.id;
     const swipeOffset = isSwipeActive ? rowGesture.swipeOffset : 0;
     const swipeDir = isSwipeActive ? rowGesture.swipeDirection : null;
-    const canSelect = canForwardMsg(m);
+    const canSelect = canSelectMsg(m);
 
     if (isSystem) {
       return (
@@ -1198,15 +1265,15 @@ export function ChatPanel({
     }
 
     const handleRowClick = (e: React.MouseEvent) => {
-      if (!forwardSelectMode || !canSelect) return;
+      if (!selectionMode || !canSelect) return;
       if (e.target instanceof Element && e.target.closest('button, a, .msg-image-btn, audio, video')) return;
-      toggleForwardSelection(m);
+      toggleMessageSelection(m);
     };
 
     return (
       <div
         key={item.key}
-        className={`message-row ${mine ? 'message-row--mine' : 'message-row--other'}${forwardSelectMode && canSelect ? ' message-row--selectable' : ''}${isSelected ? ' message-row--selected' : ''}${isSwipeActive && swipeDir === 'rtl' ? ' message-row--swiping-rtl' : ''}`}
+        className={`message-row ${mine ? 'message-row--mine' : 'message-row--other'}${selectionMode && canSelect ? ' message-row--selectable' : ''}${isSelected ? ' message-row--selected' : ''}${isSwipeActive && swipeDir === 'rtl' ? ' message-row--swiping-rtl' : ''}`}
         style={
           isSwipeActive && swipeDir === 'rtl'
             ? ({ '--rtl-swipe': String(swipeOffset / RTL_REVEAL_MAX) } as React.CSSProperties)
@@ -1214,18 +1281,18 @@ export function ChatPanel({
         }
         onClick={handleRowClick}
         onContextMenu={(e) => {
-          if (forwardSelectMode) return;
+          if (selectionMode) return;
           rowGesture.onContextMenu(e, m);
         }}
         onTouchStart={(e) => {
-          if (forwardSelectMode) return;
+          if (selectionMode) return;
           rowGesture.onTouchStart(e, m, m.id, mine);
         }}
         onTouchMove={rowGesture.onTouchMove}
         onTouchEnd={rowGesture.onTouchEnd}
         onTouchCancel={rowGesture.onTouchCancel}
       >
-        {!forwardSelectMode && !isMobile && (
+        {!selectionMode && !isMobile && (
           <button
             type="button"
             className="message-row-action-btn"
@@ -1238,7 +1305,7 @@ export function ChatPanel({
             <VellaraIcon name="more" size={16} />
           </button>
         )}
-        {!forwardSelectMode && isMobile && (
+        {!selectionMode && isMobile && (
           <div
             className={`message-row-actions ${mine ? 'message-row-actions--mine' : 'message-row-actions--other'}`}
             aria-hidden={swipeOffset < 8 || swipeDir !== 'rtl'}
@@ -1246,7 +1313,7 @@ export function ChatPanel({
             <VellaraIcon name="more" size={18} />
           </div>
         )}
-        {forwardSelectMode && canSelect && (
+        {selectionMode && canSelect && (
           <span className={`message-row-check ${isSelected ? 'message-row-check--on' : ''}`} aria-hidden="true">
             {isSelected && <VellaraIcon name="check" size={14} />}
           </span>
@@ -1278,11 +1345,17 @@ export function ChatPanel({
   };
 
   const hasAttachments = pendingAttachments.length > 0;
+  const selectedCount = selectedMessageIds.size;
+  const canCopySelection = selectedMessages.some((m) => !!getMessageCopyText(m));
+  const canForwardSelection =
+    !!onForwardMessage && selectedMessages.some(canForwardMsg);
+  const canDeleteSelection =
+    !!(onDeleteMessages || onDeleteMessage) && selectedMessages.some(canDeleteMsg);
 
   return (
     <section
       ref={bindChatAreaRef}
-      className={`chat-area${isMobile ? ' chat-area--mobile' : ''}${!chatReady ? ' chat-area--loading' : ''}${enterAnim && !swipeBack.isDragging && !swipeBack.isClosing ? ' chat-area--enter' : ''}${swipeBack.isDragging ? ' chat-area--dragging' : ''}${swipeBack.isClosing ? ' chat-area--closing' : ''}`}
+      className={`chat-area${isMobile ? ' chat-area--mobile' : ''}${selectionMode ? ' chat-area--selection' : ''}${!chatReady ? ' chat-area--loading' : ''}${enterAnim && !swipeBack.isDragging && !swipeBack.isClosing ? ' chat-area--enter' : ''}${swipeBack.isDragging ? ' chat-area--dragging' : ''}${swipeBack.isClosing ? ' chat-area--closing' : ''}`}
       style={swipeBack.panelStyle}
       onTransitionEnd={swipeBack.onPanelTransitionEnd}
       onTouchStart={swipeBack.handlers.onTouchStart}
@@ -1290,66 +1363,116 @@ export function ChatPanel({
       onTouchEnd={swipeBack.handlers.onTouchEnd}
       onTouchCancel={swipeBack.handlers.onTouchCancel}
     >
-      <header className="chat-header" ref={headerRef}>
-        {onBack && (
+      {selectionMode ? (
+        <header className="chat-header chat-header--selection" ref={headerRef}>
           <button
             type="button"
-            className="btn-back-chat"
-            aria-label="Назад к списку"
-            onClick={() => swipeBack.animateBack()}
+            className="chat-header--selection__close"
+            aria-label="Отменить выбор"
+            onClick={exitSelectionMode}
           >
-            <VellaraIcon name="back" size={20} />
+            <VellaraIcon name="close" size={22} />
           </button>
-        )}
-
-        <button
-          type="button"
-          className="header-profile-link"
-          onClick={isGroup ? onOpenGroupInfo : onOpenPartnerProfile}
-        >
-          <div className={`header-avatar ${isGroup ? 'header-avatar--group' : ''}`}>
-            {headerAvatar ? (
-              <img src={headerAvatar} alt="" className="header-avatar-img" />
-            ) : (
-              <span className="header-avatar-letter">{headerLetter}</span>
+          <span className="chat-header--selection__count">
+            {selectionCountLabel(selectedCount)}
+          </span>
+          <div className="chat-header__actions chat-header--selection__actions">
+            {canCopySelection && (
+              <button
+                type="button"
+                className="chat-header--selection__action"
+                title="Копировать"
+                onClick={() => void copySelectedMessages()}
+              >
+                <VellaraIcon name="copy" size={20} />
+              </button>
+            )}
+            {canForwardSelection && (
+              <button
+                type="button"
+                className="chat-header--selection__action"
+                title="Переслать"
+                disabled={selectedCount === 0}
+                onClick={submitForwardSelection}
+              >
+                <VellaraIcon name="forward" size={20} />
+              </button>
+            )}
+            {canDeleteSelection && (
+              <button
+                type="button"
+                className="chat-header--selection__action chat-header--selection__action--danger"
+                title="Удалить"
+                disabled={selectedCount === 0}
+                onClick={() => void submitDeleteSelection()}
+              >
+                <VellaraIcon name="trash" size={20} />
+              </button>
             )}
           </div>
-          <div className="header-content">
-            <h3>{title}</h3>
-            {isGroup ? (
-              <span className="header-group-meta">
-                {conversation.members_count ?? 0} участников
-                {isGroupAdmin ? ' · вы админ' : ''}
-              </span>
-            ) : partner ? (
-              <StatusDot lastSeenAt={partner.last_seen_at} showLabel />
-            ) : null}
-          </div>
-        </button>
+        </header>
+      ) : (
+        <header className="chat-header" ref={headerRef}>
+          {onBack && (
+            <button
+              type="button"
+              className="btn-back-chat"
+              aria-label="Назад к списку"
+              onClick={() => swipeBack.animateBack()}
+            >
+              <VellaraIcon name="back" size={20} />
+            </button>
+          )}
 
-        <div className="chat-header__actions">
-          {isGroup && isGroupAdmin && onOpenGroupSettings && (
-            <button
-              type="button"
-              className="btn-group-settings"
-              title="Настройки группы"
-              onClick={onOpenGroupSettings}
-            >
-              <VellaraIcon name="settings" size={18} />
-            </button>
-          )}
-          {onOpenChatActions && (
-            <button
-              type="button"
-              className="btn-group-settings btn-chat-more"
-              title="Действия с чатом"
-              onClick={onOpenChatActions}
-            >
-              <VellaraIcon name="more" size={18} />
-            </button>
-          )}
-        </div>
-      </header>
+          <button
+            type="button"
+            className="header-profile-link"
+            onClick={isGroup ? onOpenGroupInfo : onOpenPartnerProfile}
+          >
+            <div className={`header-avatar ${isGroup ? 'header-avatar--group' : ''}`}>
+              {headerAvatar ? (
+                <img src={headerAvatar} alt="" className="header-avatar-img" />
+              ) : (
+                <span className="header-avatar-letter">{headerLetter}</span>
+              )}
+            </div>
+            <div className="header-content">
+              <h3>{title}</h3>
+              {isGroup ? (
+                <span className="header-group-meta">
+                  {conversation.members_count ?? 0} участников
+                  {isGroupAdmin ? ' · вы админ' : ''}
+                </span>
+              ) : partner ? (
+                <StatusDot lastSeenAt={partner.last_seen_at} showLabel />
+              ) : null}
+            </div>
+          </button>
+
+          <div className="chat-header__actions">
+            {isGroup && isGroupAdmin && onOpenGroupSettings && (
+              <button
+                type="button"
+                className="btn-group-settings"
+                title="Настройки группы"
+                onClick={onOpenGroupSettings}
+              >
+                <VellaraIcon name="settings" size={18} />
+              </button>
+            )}
+            {onOpenChatActions && (
+              <button
+                type="button"
+                className="btn-group-settings btn-chat-more"
+                title="Действия с чатом"
+                onClick={onOpenChatActions}
+              >
+                <VellaraIcon name="more" size={18} />
+              </button>
+            )}
+          </div>
+        </header>
+      )}
 
       <div
         className={`messages-container${showMessages && messages.length && !scrollReady && !isMobile ? ' messages-container--preparing' : ''}`}
@@ -1590,26 +1713,6 @@ export function ChatPanel({
         </div>
       )}
 
-      {forwardSelectMode && (
-        <div className="forward-select-bar">
-          <button type="button" className="forward-select-bar__btn" onClick={exitForwardSelectMode}>
-            Отмена
-          </button>
-          <span className="forward-select-bar__count">
-            Выбрано: {selectedMessageIds.size}
-          </span>
-          <button
-            type="button"
-            className="forward-select-bar__btn forward-select-bar__btn--primary"
-            disabled={selectedMessageIds.size === 0}
-            onClick={submitForwardSelection}
-          >
-            <VellaraIcon name="forward" size={16} />
-            Переслать
-          </button>
-        </div>
-      )}
-
       {lightbox && (
         <ImageLightbox urls={lightbox.urls} index={lightbox.index} onClose={() => setLightbox(null)} />
       )}
@@ -1620,15 +1723,17 @@ export function ChatPanel({
         y={msgMenu.y}
         isMobile={isMobile}
         canReply={!!msgMenu.message && !msgMenu.message.is_deleted}
+        canCopy={!!msgMenu.message && !!getMessageCopyText(msgMenu.message)}
         canEdit={msgMenu.canEdit}
         canDelete={msgMenu.canDelete}
         canSave={msgMenu.canSave}
         isSaved={msgMenu.isSaved}
         canForward={!!msgMenu.message && !msgMenu.message.is_deleted && !!onForwardMessage}
-        canSelectForForward={!!msgMenu.message && !msgMenu.message.is_deleted && !!onForwardMessage}
+        canSelect={!!msgMenu.message && canSelectMsg(msgMenu.message)}
         onReply={startReplyMessage}
+        onCopy={() => void copyMessageFromMenu()}
         onForward={startForwardMessage}
-        onSelectForForward={startSelectForForward}
+        onSelect={startSelectMessages}
         onSave={() => void handleToggleSave()}
         onEdit={startEditMessage}
         onDelete={() => void handleDeleteMessage()}

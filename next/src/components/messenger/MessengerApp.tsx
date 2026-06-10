@@ -1049,6 +1049,30 @@ function MessengerAppInner({ user }: { user: Profile }) {
     });
   };
 
+  const deleteMessages = async (messageIds: number[]) => {
+    const unique = [...new Set(messageIds.filter((id) => Number.isFinite(id) && id > 0))];
+    if (!unique.length) return;
+    const convId = activeId;
+    const results = await Promise.all(
+      unique.map((id) =>
+        api<FormattedMessage>(`/api/chat/messages/${id}`, { method: 'DELETE' }),
+      ),
+    );
+    const byId = new Map(
+      results.map((row) => [
+        row.id,
+        enrichMessageSender(row, groupMembersRef.current, user),
+      ]),
+    );
+    setMessages((prev) => {
+      const next = prev.map((m) => {
+        const updated = byId.get(m.id);
+        return updated ? { ...m, ...updated } : m;
+      });
+      return convId ? applyGroupRead(next, membersRead, convId) : next;
+    });
+  };
+
   const toggleSaveMessage = async (messageId: number) => {
     const data = await api<{ saved: boolean }>(`/api/chat/messages/${messageId}/save`, {
       method: 'POST',
@@ -1434,6 +1458,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
                   onSendVoice={sendVoiceMessage}
                   onEditMessage={editMessage}
                   onDeleteMessage={deleteMessage}
+                  onDeleteMessages={deleteMessages}
                   onToggleSave={toggleSaveMessage}
                   onForwardMessage={(msg) => requestForwardMessages(msg, activeId)}
                   onTyping={sendTyping}

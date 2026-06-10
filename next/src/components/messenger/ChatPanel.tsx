@@ -119,7 +119,9 @@ function pendingStillVisible(
 
   if (pending.content) {
     const text = pending.content.trim();
-    return !newFromMe.some((m) => !m.file_path && (m.content || '').trim() === text);
+    return !newFromMe.some(
+      (m) => !m.file_path && displayMessageContent(m).trim() === text,
+    );
   }
 
   return newFromMe.length === 0;
@@ -936,14 +938,18 @@ export function ChatPanel({
     stickToBottomRef.current = true;
     setSending(true);
 
-    try {
-      const ids = await onSend(content, {
-        files: files.length ? files : undefined,
-        replyToId,
-      });
+    const bindCreatedIds = (ids: number[]) => {
       setPendingSends((prev) =>
         prev.map((p) => (p.clientId === clientId ? { ...p, expectedIds: ids } : p)),
       );
+    };
+
+    try {
+      await onSend(content, {
+        files: files.length ? files : undefined,
+        replyToId,
+        onCreated: bindCreatedIds,
+      });
     } catch (err) {
       setPendingSends((prev) => {
         const item = prev.find((p) => p.clientId === clientId);

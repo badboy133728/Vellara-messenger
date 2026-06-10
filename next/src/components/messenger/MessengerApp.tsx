@@ -945,6 +945,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
         if (prev.some((m) => m.id === withReply.id)) return prev;
         return applyGroupRead([...prev, withReply], membersRead, convId);
       });
+      options?.onCreated?.([enriched.id]);
       await loadConversations();
       return [enriched.id];
     }
@@ -979,6 +980,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
       }
       return next;
     });
+    options?.onCreated?.(created.map((m) => m.id));
     await loadConversations();
     return created.map((m) => m.id);
   };

@@ -1102,15 +1102,21 @@ export function ChatPanel({
         onTouchMove={rowGesture.onTouchMove}
         onTouchEnd={rowGesture.onTouchEnd}
         onTouchCancel={rowGesture.onTouchCancel}
-        onPointerDown={(e) => {
-          if (forwardSelectMode) return;
-          rowGesture.onPointerDown(e, m, m.id);
-        }}
-        onPointerMove={rowGesture.onPointerMove}
-        onPointerUp={rowGesture.onPointerUp}
-        onPointerCancel={rowGesture.onPointerCancel}
       >
-        {!forwardSelectMode && (
+        {!forwardSelectMode && !isMobile && (
+          <button
+            type="button"
+            className="message-row-action-btn"
+            aria-label="Действия с сообщением"
+            onClick={(e) => {
+              e.stopPropagation();
+              openMessageMenu(e, m);
+            }}
+          >
+            <VellaraIcon name="more" size={16} />
+          </button>
+        )}
+        {!forwardSelectMode && isMobile && (
           <div
             className={`message-row-actions ${mine ? 'message-row-actions--mine' : 'message-row-actions--other'}`}
             aria-hidden={swipeOffset < 8}

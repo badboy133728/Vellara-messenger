@@ -194,6 +194,7 @@ export function ChatPanel({
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const [pendingSends, setPendingSends] = useState<PendingSend[]>([]);
   const [replyTo, setReplyTo] = useState<FormattedMessage | null>(null);
+  const [channelCommentsPost, setChannelCommentsPost] = useState<FormattedMessage | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedMessageIds, setSelectedMessageIds] = useState<Set<number>>(new Set());
   const menuCloseLockRef = useRef(0);
@@ -240,6 +241,8 @@ export function ChatPanel({
     [pendingSends, messages, currentUserId],
   );
 
+  const inChannelCommentsView = isChannel && !!channelCommentsPost;
+
   const commentCounts = useMemo(() => {
     const map = new Map<number, number>();
     if (!isChannel) return map;
@@ -251,10 +254,18 @@ export function ChatPanel({
     return map;
   }, [messages, isChannel]);
 
+  const visibleMessages = useMemo(() => {
+    if (!isChannel) return messages;
+    if (channelCommentsPost) {
+      return messages.filter((m) => m.reply_to_id === channelCommentsPost.id);
+    }
+    return messages.filter((m) => !m.reply_to_id);
+  }, [messages, isChannel, channelCommentsPost]);
+
   const feed = useMemo(
     () =>
       buildMessageFeed(
-        messages,
+        visibleMessages,
         visiblePendingSends.map((p) => ({
           key: `pending-${p.clientId}`,
           clientId: p.clientId,
@@ -264,7 +275,7 @@ export function ChatPanel({
           videoPreviewUrls: p.videoPreviewUrls,
         })),
       ),
-    [messages, visiblePendingSends],
+    [visibleMessages, visiblePendingSends],
   );
   const isOtherTyping = typingUserId && typingUserId !== currentUserId;
 
@@ -304,8 +315,32 @@ export function ChatPanel({
       setScrollReady(false);
       stickToBottomRef.current = true;
       setReplyTo(null);
+      setChannelCommentsPost(null);
     }
   }, [conversation?.id]);
+
+  useEffect(() => {
+    if (!channelCommentsPost) return;
+    setReplyTo(channelCommentsPost);
+    stickToBottomRef.current = true;
+    scrollReadyRef.current = false;
+    setScrollReady(false);
+  }, [channelCommentsPost]);
+
+  const closeChannelComments = () => {
+    setChannelCommentsPost(null);
+    setReplyTo(null);
+    setText('');
+    setEditingMessage(null);
+    stickToBottomRef.current = true;
+  };
+
+  const openChannelComments = (post: FormattedMessage) => {
+    setEditingMessage(null);
+    setChannelCommentsPost(post);
+    setReplyTo(post);
+    window.setTimeout(() => textareaRef.current?.focus(), 0);
+  };
 
   useLayoutEffect(() => {
     if (messagesLoading) return;
@@ -541,7 +576,8 @@ export function ChatPanel({
   const showMessages = !messagesLoading;
   const chatReady = showMessages && (messages.length === 0 || scrollReady);
   const canComposeInChannel =
-    isChannelAdmin || (isChannel && allowChannelComments && !!replyTo);
+    (isChannelAdmin && !inChannelCommentsView) ||
+    (inChannelCommentsView && allowChannelComments && !isChannelAdmin);
   const showComposerArea =
     showMessages && !selectionMode && (!isChannel || canComposeInChannel);
 
@@ -828,6 +864,11 @@ export function ChatPanel({
   const startReplyMessage = () => {
     const msg = msgMenu.message;
     if (!msg || msg.is_deleted) return;
+    if (isChannel && !msg.reply_to_id && allowChannelComments && !isChannelAdmin) {
+      closeMessageMenu();
+      openChannelComments(msg);
+      return;
+    }
     setEditingMessage(null);
     setReplyTo(msg);
     closeMessageMenu();
@@ -993,8 +1034,12 @@ export function ChatPanel({
     if (!content && !pendingAttachments.length) return;
 
     if (isChannel && !isChannelAdmin) {
+      if (!inChannelCommentsView) {
+        window.alert('Подписчики могут только комментировать посты канала');
+        return;
+      }
       if (!allowChannelComments) {
-        window.alert('В канале могут публиковать только администраторы');
+        window.alert('Комментарии отключены');
         return;
       }
       if (!replyTo || replyTo.reply_to_id) {
@@ -1019,7 +1064,11 @@ export function ChatPanel({
     }
 
     setText('');
-    setReplyTo(null);
+    if (inChannelCommentsView && channelCommentsPost) {
+      setReplyTo(channelCommentsPost);
+    } else {
+      setReplyTo(null);
+    }
     setPendingAttachments([]);
     if (fileRef.current) fileRef.current.value = '';
 
@@ -1378,22 +1427,23 @@ export function ChatPanel({
               </p>
             )}
             {renderBubble(m, mine, albumMessages)}
-            {isChannelPost && allowChannelComments && !isChannelAdmin && (
+            {isChannelPost &&
+              (allowChannelComments || (commentCounts.get(m.id) ?? 0) > 0) && (
               <div className="channel-post-actions">
                 <button
                   type="button"
                   className="channel-post-actions__btn"
                   onClick={(e) => {
                     e.stopPropagation();
-                    setEditingMessage(null);
-                    setReplyTo(m);
-                    window.setTimeout(() => textareaRef.current?.focus(), 0);
+                    openChannelComments(m);
                   }}
                 >
                   <VellaraIcon name="reply" size={14} />
-                  {commentCounts.get(m.id)
+                  {(commentCounts.get(m.id) ?? 0) > 0
                     ? `${commentCounts.get(m.id)} коммент.`
-                    : 'Комментировать'}
+                    : allowChannelComments
+                      ? 'Комментировать'
+                      : 'Комментарии'}
                 </button>
               </div>
             )}
@@ -1414,7 +1464,7 @@ export function ChatPanel({
   return (
     <section
       ref={bindChatAreaRef}
-      className={`chat-area${isMobile ? ' chat-area--mobile' : ''}${selectionMode ? ' chat-area--selection' : ''}${!chatReady ? ' chat-area--loading' : ''}${enterAnim && !swipeBack.isDragging && !swipeBack.isClosing ? ' chat-area--enter' : ''}${swipeBack.isDragging ? ' chat-area--dragging' : ''}${swipeBack.isClosing ? ' chat-area--closing' : ''}`}
+      className={`chat-area${isMobile ? ' chat-area--mobile' : ''}${inChannelCommentsView ? ' chat-area--channel-comments' : ''}${selectionMode ? ' chat-area--selection' : ''}${!chatReady ? ' chat-area--loading' : ''}${enterAnim && !swipeBack.isDragging && !swipeBack.isClosing ? ' chat-area--enter' : ''}${swipeBack.isDragging ? ' chat-area--dragging' : ''}${swipeBack.isClosing ? ' chat-area--closing' : ''}`}
       style={swipeBack.panelStyle}
       onTransitionEnd={swipeBack.onPanelTransitionEnd}
       onTouchStart={swipeBack.handlers.onTouchStart}
@@ -1468,6 +1518,25 @@ export function ChatPanel({
                 <VellaraIcon name="trash" size={20} />
               </button>
             )}
+          </div>
+        </header>
+      ) : inChannelCommentsView && channelCommentsPost ? (
+        <header className="chat-header chat-header--channel-comments" ref={headerRef}>
+          <button
+            type="button"
+            className="btn-back-chat"
+            aria-label="Назад к каналу"
+            onClick={closeChannelComments}
+          >
+            <VellaraIcon name="back" size={20} />
+          </button>
+          <div className="header-content header-content--comments">
+            <h3>Комментарии</h3>
+            <span className="header-group-meta">
+              {(commentCounts.get(channelCommentsPost.id) ?? 0) > 0
+                ? `${commentCounts.get(channelCommentsPost.id)} комментариев`
+                : 'Пока нет комментариев'}
+            </span>
           </div>
         </header>
       ) : (
@@ -1554,6 +1623,17 @@ export function ChatPanel({
               <div className="messages-load-older" aria-hidden="true">
                 Загрузка…
               </div>
+            )}
+            {inChannelCommentsView && channelCommentsPost && (
+              <div className="channel-comments-post">
+                <p className="channel-comments-post__label">Пост канала</p>
+                <div className="channel-comments-post__bubble">
+                  {renderBubble(channelCommentsPost, channelCommentsPost.user_id === currentUserId)}
+                </div>
+              </div>
+            )}
+            {inChannelCommentsView && !feed.length && (
+              <p className="channel-comments-empty">Пока нет комментариев</p>
             )}
             {feed.map(renderFeedItem)}
             <div ref={bottomRef} />
@@ -1693,7 +1773,7 @@ export function ChatPanel({
               <VellaraIcon name="attach" size={22} />
             </label>
             <div className="composer-field">
-              {replyTo && !editingMessage && (
+              {replyTo && !editingMessage && !inChannelCommentsView && (
                 <div className="composer-reply">
                   <div className="composer-reply__accent" aria-hidden="true" />
                   <div className="composer-reply__body">
@@ -1798,8 +1878,10 @@ export function ChatPanel({
           !!msgMenu.message &&
           !msgMenu.message.is_deleted &&
           (!isChannel ||
-            isChannelAdmin ||
-            (allowChannelComments && !msgMenu.message.reply_to_id))
+            (!inChannelCommentsView &&
+              allowChannelComments &&
+              !isChannelAdmin &&
+              !msgMenu.message.reply_to_id))
         }
         canCopy={!!msgMenu.message && !!getMessageCopyText(msgMenu.message)}
         canEdit={msgMenu.canEdit}

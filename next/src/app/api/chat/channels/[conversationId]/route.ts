@@ -121,3 +121,32 @@ export async function PATCH(
     description: patch.description ?? detail.description,
   });
 }
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ conversationId: string }> },
+) {
+  const auth = await requireAuth();
+  if ('error' in auth && auth.error) return auth.error;
+  const { user, supabase } = auth;
+  const convId = Number((await params).conversationId);
+
+  const detail = await loadChannel(supabase, convId, user.id);
+  if (!detail) return Response.json({ message: 'Нет доступа' }, { status: 403 });
+  if (!canManageChannel(detail.my_role)) {
+    return Response.json({ message: 'Только администратор канала' }, { status: 403 });
+  }
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from('conversations')
+    .delete()
+    .eq('id', convId)
+    .eq('type', 'channel');
+
+  if (error) {
+    return Response.json({ message: 'Не удалось удалить канал' }, { status: 500 });
+  }
+
+  return Response.json({ message: 'Канал удалён' });
+}

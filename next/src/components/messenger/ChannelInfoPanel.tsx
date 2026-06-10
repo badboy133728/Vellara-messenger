@@ -30,12 +30,14 @@ export function ChannelInfoPanel({
   onClose,
   onUpdated,
   onLeft,
+  onDeleted,
 }: {
   conversationId: number;
   currentUserId: string;
   onClose: () => void;
   onUpdated?: (payload?: { title?: string }) => void;
   onLeft?: () => void;
+  onDeleted?: () => void;
 }) {
   const [channel, setChannel] = useState<ChannelDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -176,6 +178,24 @@ export function ChannelInfoPanel({
         method: 'DELETE',
       });
       onLeft?.();
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Ошибка');
+    }
+  };
+
+  const deleteChannel = async () => {
+    if (
+      !window.confirm(
+        'Удалить канал безвозвратно? Все посты и комментарии будут удалены.',
+      )
+    ) {
+      return;
+    }
+    setError('');
+    try {
+      await api(`/api/chat/channels/${conversationId}`, { method: 'DELETE' });
+      onDeleted?.();
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка');
@@ -330,13 +350,30 @@ export function ChannelInfoPanel({
               )}
 
               {!isAdmin && (
-                <button
-                  type="button"
-                  className="profile-btn profile-btn--outline profile-btn--full"
-                  onClick={leaveChannel}
-                >
-                  Отписаться
-                </button>
+                <div className="group-panel__section group-panel__leave">
+                  <button
+                    type="button"
+                    className="profile-btn profile-btn--outline profile-btn--full"
+                    onClick={leaveChannel}
+                  >
+                    Отписаться
+                  </button>
+                </div>
+              )}
+
+              {isAdmin && (
+                <div className="group-panel__section group-panel__leave">
+                  <button
+                    type="button"
+                    className="profile-btn profile-btn--danger profile-btn--full"
+                    onClick={deleteChannel}
+                  >
+                    Удалить канал
+                  </button>
+                  <p className="group-panel__hint-sm">
+                    Все посты и комментарии будут удалены безвозвратно.
+                  </p>
+                </div>
               )}
 
               {error && <p className="auth-error modal-error">{error}</p>}

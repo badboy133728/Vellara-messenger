@@ -1687,6 +1687,11 @@ function MessengerAppInner({ user }: { user: Profile }) {
             navigate({ showGroupPanel: false, activeId: null }, 'replace');
             loadConversations();
           }}
+          onDeleted={() => {
+            navigate({ showGroupPanel: false, activeId: null }, 'replace');
+            setMessages([]);
+            loadConversations();
+          }}
         />
       )}
       {showGroupSettings && activeId && activeConv?.type === 'group' && (

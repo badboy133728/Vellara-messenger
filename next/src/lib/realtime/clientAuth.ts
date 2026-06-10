@@ -5,6 +5,8 @@ type SessionPayload = {
   refresh_token?: string | null;
 };
 
+let connectChain: Promise<boolean> | null = null;
+
 function realtimeSocket(supabase: SupabaseClient): WebSocket | null {
   const conn = (supabase.realtime as unknown as { conn?: WebSocket | null }).conn;
   return conn ?? null;
@@ -24,43 +26,34 @@ async function fetchServerRealtimeSession(): Promise<SessionPayload | null> {
   return (await res.json()) as SessionPayload;
 }
 
-/** Sync Realtime JWT from browser session or httpOnly cookies. */
-export async function syncSupabaseRealtimeAuth(supabase: SupabaseClient): Promise<boolean> {
-  try {
-    const { data: { session: local } } = await supabase.auth.getSession();
-    if (local?.access_token) {
-      await supabase.realtime.setAuth(local.access_token);
-      if (!supabase.realtime.isConnected() && !isRealtimeConnecting(supabase)) {
-        supabase.realtime.connect();
-      }
-      return true;
-    }
+async function applyRealtimeAuth(supabase: SupabaseClient): Promise<boolean> {
+  const { data: { session: local } } = await supabase.auth.getSession();
+  if (local?.access_token) {
+    await supabase.realtime.setAuth(local.access_token);
+    return true;
+  }
 
-    const data = await fetchServerRealtimeSession();
-    if (!data?.access_token) return false;
+  const data = await fetchServerRealtimeSession();
+  if (!data?.access_token) return false;
 
-    if (data.refresh_token) {
-      const { error } = await supabase.auth.setSession({
-        access_token: data.access_token,
-        refresh_token: data.refresh_token,
-      });
-      if (error) {
-        await supabase.realtime.setAuth(data.access_token);
-      }
-    } else {
+  if (data.refresh_token) {
+    const { error } = await supabase.auth.setSession({
+      access_token: data.access_token,
+      refresh_token: data.refresh_token,
+    });
+    if (error) {
       await supabase.realtime.setAuth(data.access_token);
     }
-
-    if (!supabase.realtime.isConnected() && !isRealtimeConnecting(supabase)) {
-      supabase.realtime.connect();
-    }
-    return true;
-  } catch {
-    return false;
+  } else {
+    await supabase.realtime.setAuth(data.access_token);
   }
+  return true;
 }
 
-async function waitForRealtimeConnection(supabase: SupabaseClient, attempts = 50): Promise<boolean> {
+async function waitForRealtimeConnection(
+  supabase: SupabaseClient,
+  attempts = 60,
+): Promise<boolean> {
   const rt = supabase.realtime;
   for (let i = 0; i < attempts; i++) {
     if (rt.isConnected()) return true;
@@ -73,12 +66,14 @@ async function waitForRealtimeConnection(supabase: SupabaseClient, attempts = 50
   return rt.isConnected();
 }
 
-/** Hard reconnect Realtime socket (mobile WebView often drops auth silently). */
-export async function reconnectSupabaseRealtime(supabase: SupabaseClient): Promise<boolean> {
-  const ok = await syncSupabaseRealtimeAuth(supabase);
-  if (!ok) return false;
-
+async function runConnect(
+  supabase: SupabaseClient,
+  forceReconnect: boolean,
+): Promise<boolean> {
   try {
+    const authed = await applyRealtimeAuth(supabase);
+    if (!authed) return false;
+
     const rt = supabase.realtime;
 
     if (isRealtimeConnecting(supabase)) {
@@ -86,11 +81,16 @@ export async function reconnectSupabaseRealtime(supabase: SupabaseClient): Promi
     }
 
     if (rt.isConnected()) {
+      if (!forceReconnect) return true;
       rt.disconnect();
-      await new Promise((resolve) => window.setTimeout(resolve, 64));
+      await new Promise((resolve) => window.setTimeout(resolve, 120));
     }
 
-    if (!rt.isConnected() && !isRealtimeConnecting(supabase)) {
+    if (isRealtimeConnecting(supabase)) {
+      return waitForRealtimeConnection(supabase);
+    }
+
+    if (!rt.isConnected()) {
       rt.connect();
     }
 
@@ -98,4 +98,31 @@ export async function reconnectSupabaseRealtime(supabase: SupabaseClient): Promi
   } catch {
     return false;
   }
+}
+
+function enqueueConnect(
+  supabase: SupabaseClient,
+  forceReconnect: boolean,
+): Promise<boolean> {
+  const task = () => runConnect(supabase, forceReconnect);
+  const next = connectChain ? connectChain.then(task, task) : task();
+  connectChain = next;
+  return next.finally(() => {
+    if (connectChain === next) connectChain = null;
+  });
+}
+
+/** Sync JWT and ensure socket is up — never tears down an active/connecting socket. */
+export async function syncSupabaseRealtimeAuth(supabase: SupabaseClient): Promise<boolean> {
+  return enqueueConnect(supabase, false);
+}
+
+/** Ensure Realtime is connected (soft boot). */
+export async function ensureRealtimeConnected(supabase: SupabaseClient): Promise<boolean> {
+  return enqueueConnect(supabase, false);
+}
+
+/** Hard reconnect — only after offline / repeated channel errors. */
+export async function reconnectSupabaseRealtime(supabase: SupabaseClient): Promise<boolean> {
+  return enqueueConnect(supabase, true);
 }

@@ -1,12 +1,16 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { reconnectSupabaseRealtime, syncSupabaseRealtimeAuth } from '@/lib/realtime/clientAuth';
+import {
+  ensureRealtimeConnected,
+  reconnectSupabaseRealtime,
+  syncSupabaseRealtimeAuth,
+} from '@/lib/realtime/clientAuth';
 
 let bootPromise: Promise<boolean> | null = null;
 
-/** Один hard-reconnect при старте приложения; остальные хуки ждут его. */
+/** Один soft-connect при старте; не рвёт WebSocket. */
 export function ensureRealtimeBoot(supabase: SupabaseClient): Promise<boolean> {
   if (!bootPromise) {
-    bootPromise = reconnectSupabaseRealtime(supabase);
+    bootPromise = ensureRealtimeConnected(supabase);
   }
   return bootPromise;
 }

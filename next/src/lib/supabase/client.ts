@@ -1,25 +1,17 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createBrowserClient } from '@supabase/ssr';
 import { getSupabaseEnv, supabaseEnvErrorMessage } from '@/lib/supabase/env';
-import { syncSupabaseRealtimeAuth } from '@/lib/realtime/clientAuth';
 
 let browserClient: SupabaseClient | undefined;
-let realtimeBootstrapped = false;
+let authListenerAttached = false;
 
 function attachRealtimeAuthListener(client: SupabaseClient) {
-  if (realtimeBootstrapped || typeof window === 'undefined') return;
-  realtimeBootstrapped = true;
+  if (authListenerAttached || typeof window === 'undefined') return;
+  authListenerAttached = true;
 
-  void syncSupabaseRealtimeAuth(client);
-
-  client.auth.onAuthStateChange(async (event, session) => {
+  client.auth.onAuthStateChange(async (_event, session) => {
     if (!session?.access_token) return;
     await client.realtime.setAuth(session.access_token);
-    if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-      if (!client.realtime.isConnected()) {
-        client.realtime.connect();
-      }
-    }
   });
 }
 

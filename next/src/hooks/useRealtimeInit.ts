@@ -2,10 +2,10 @@
 
 import { useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { ensureRealtimeBoot, resetRealtimeBoot } from '@/lib/realtime/ready';
 import { reconnectSupabaseRealtime } from '@/lib/realtime/clientAuth';
+import { ensureRealtimeBoot, resetRealtimeBoot } from '@/lib/realtime/ready';
 
-/** Один hard-reconnect при входе; остальные realtime-хуки ждут ensureRealtimeBoot(). */
+/** Один soft-connect при входе; hard-reconnect только после offline. */
 export function useRealtimeInit(userId: string | undefined) {
   useEffect(() => {
     if (!userId) return;
@@ -18,8 +18,8 @@ export function useRealtimeInit(userId: string | undefined) {
     const onOnline = () => {
       if (disposed) return;
       resetRealtimeBoot();
-      void reconnectSupabaseRealtime(supabase).then(() => {
-        if (!disposed) void ensureRealtimeBoot(supabase);
+      void reconnectSupabaseRealtime(supabase).then((ok) => {
+        if (!disposed && ok) void ensureRealtimeBoot(supabase);
       });
     };
     window.addEventListener('online', onOnline);

@@ -1330,6 +1330,36 @@ function MessengerAppInner({ user }: { user: Profile }) {
   };
 
   const deleteConversation = async (conv: ConversationListItem) => {
+    const isGroup = conv.type === 'group';
+    const isChannel = conv.type === 'channel';
+    const isAdmin = conv.my_role === 'admin';
+
+    if ((isGroup || isChannel) && isAdmin) {
+      const label = isGroup ? 'группу' : 'канал';
+      if (
+        !window.confirm(
+          `Удалить ${label} безвозвратно? Все участники потеряют доступ, сообщения будут удалены.`,
+        )
+      ) {
+        return;
+      }
+      try {
+        const path = isGroup
+          ? `/api/chat/groups/${conv.id}`
+          : `/api/chat/channels/${conv.id}`;
+        await api(path, { method: 'DELETE' });
+        setConversations((prev) => prev.filter((c) => c.id !== conv.id));
+        if (activeId === conv.id) {
+          setMessages([]);
+          closeChat();
+        }
+        showToast(isGroup ? 'Группа удалена' : 'Канал удалён');
+      } catch (e) {
+        showToast(e instanceof Error ? e.message : 'Не удалось удалить');
+      }
+      return;
+    }
+
     if (!window.confirm('Удалить чат из списка? История сохранится и чат появится снова при новом сообщении.')) {
       return;
     }
@@ -1657,6 +1687,11 @@ function MessengerAppInner({ user }: { user: Profile }) {
           }}
           onLeft={() => {
             navigate({ showGroupPanel: false, activeId: null }, 'replace');
+            loadConversations();
+          }}
+          onDeleted={() => {
+            navigate({ showGroupPanel: false, activeId: null }, 'replace');
+            setMessages([]);
             loadConversations();
           }}
         />

@@ -95,3 +95,32 @@ export async function PATCH(
 
   return Response.json({ message: 'Название обновлено', title });
 }
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ conversationId: string }> },
+) {
+  const auth = await requireAuth();
+  if ('error' in auth && auth.error) return auth.error;
+  const { user, supabase } = auth;
+  const convId = Number((await params).conversationId);
+
+  const detail = await loadGroup(supabase, convId, user.id);
+  if (!detail) return Response.json({ message: 'Нет доступа' }, { status: 403 });
+  if (!canManageGroup(detail.my_role)) {
+    return Response.json({ message: 'Только администратор группы' }, { status: 403 });
+  }
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from('conversations')
+    .delete()
+    .eq('id', convId)
+    .eq('type', 'group');
+
+  if (error) {
+    return Response.json({ message: 'Не удалось удалить группу' }, { status: 500 });
+  }
+
+  return Response.json({ message: 'Группа удалена' });
+}

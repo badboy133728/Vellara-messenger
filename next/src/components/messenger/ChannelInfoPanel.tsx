@@ -187,7 +187,7 @@ export function ChannelInfoPanel({
   const deleteChannel = async () => {
     if (
       !window.confirm(
-        'Удалить канал безвозвратно? Все посты и комментарии будут удалены.',
+        'Удалить канал безвозвратно? Все подписчики потеряют доступ, посты и комментарии будут удалены.',
       )
     ) {
       return;
@@ -371,7 +371,7 @@ export function ChannelInfoPanel({
                     Удалить канал
                   </button>
                   <p className="group-panel__hint-sm">
-                    Все посты и комментарии будут удалены безвозвратно.
+                    Канал и все сообщения будут удалены у всех подписчиков.
                   </p>
                 </div>
               )}

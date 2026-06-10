@@ -29,6 +29,13 @@ export function ConversationActionsMenu({
   const canPin = !conversation.is_archived && (!conversation.is_pinned ? pinnedCount < 3 : true);
   const pinLabel = conversation.is_pinned ? 'Открепить' : 'Закрепить';
   const archiveLabel = conversation.is_archived ? 'Вернуть из архива' : 'В архив';
+  const isGroupAdmin = conversation.type === 'group' && conversation.my_role === 'admin';
+  const isChannelAdmin = conversation.type === 'channel' && conversation.my_role === 'admin';
+  const deleteLabel = isGroupAdmin
+    ? 'Удалить группу'
+    : isChannelAdmin
+      ? 'Удалить канал'
+      : 'Удалить чат';
 
   if (typeof document === 'undefined') return null;
 
@@ -70,7 +77,7 @@ export function ConversationActionsMenu({
             onClick={onDelete}
           >
             <VellaraIcon name="trash" size={18} />
-            <span>Удалить чат</span>
+            <span>{deleteLabel}</span>
           </button>
         </div>
         {isMobile && (

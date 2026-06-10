@@ -28,12 +28,14 @@ export function GroupInfoPanel({
   onClose,
   onUpdated,
   onLeft,
+  onDeleted,
 }: {
   conversationId: number;
   currentUserId: string;
   onClose: () => void;
   onUpdated?: (payload?: { title?: string; members?: GroupMember[] }) => void;
   onLeft?: () => void;
+  onDeleted?: () => void;
 }) {
   const [group, setGroup] = useState<GroupDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -190,6 +192,24 @@ export function GroupInfoPanel({
     try {
       await api(`/api/chat/groups/${conversationId}/members/${currentUserId}`, { method: 'DELETE' });
       onLeft?.();
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Ошибка');
+    }
+  };
+
+  const deleteGroup = async () => {
+    if (
+      !window.confirm(
+        'Удалить группу безвозвратно? Все участники потеряют доступ, сообщения будут удалены.',
+      )
+    ) {
+      return;
+    }
+    setError('');
+    try {
+      await api(`/api/chat/groups/${conversationId}`, { method: 'DELETE' });
+      onDeleted?.();
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка');
@@ -357,15 +377,32 @@ export function GroupInfoPanel({
               </div>
             )}
 
-            <div className="group-panel__section group-panel__leave">
-              <button
-                type="button"
-                className="profile-btn profile-btn--outline profile-btn--full"
-                onClick={leaveGroup}
-              >
-                Выйти из группы
-              </button>
-            </div>
+            {!isAdmin && (
+              <div className="group-panel__section group-panel__leave">
+                <button
+                  type="button"
+                  className="profile-btn profile-btn--outline profile-btn--full"
+                  onClick={leaveGroup}
+                >
+                  Выйти из группы
+                </button>
+              </div>
+            )}
+
+            {isAdmin && (
+              <div className="group-panel__section group-panel__leave">
+                <button
+                  type="button"
+                  className="profile-btn profile-btn--danger profile-btn--full"
+                  onClick={deleteGroup}
+                >
+                  Удалить группу
+                </button>
+                <p className="group-panel__hint-sm">
+                  Группа и все сообщения будут удалены у всех участников.
+                </p>
+              </div>
+            )}
           </>
         ) : null}
 

@@ -387,7 +387,7 @@
 }
 
 .contact-card__action.profile-btn--icon,
-.contact-card > .profile-btn.contact-card__action {
+.contact-card > .profile-btn.contact-card__action:not(.contact-card__action--accept):not(.contact-card__action--add) {
   width: 36px;
   height: 36px;
   min-width: 36px;
@@ -395,10 +395,12 @@
   font-size: 15px;
 }
 
-.contact-card__action--accept {
-  min-width: 88px;
+.contact-card__action--accept,
+.contact-card__action--add {
+  width: auto;
+  min-width: 96px;
   height: 36px;
-  padding: 0 14px;
+  padding: 0 16px;
   font-size: 13px;
   font-weight: 700;
   white-space: nowrap;

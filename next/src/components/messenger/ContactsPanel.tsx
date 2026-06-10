@@ -216,11 +216,11 @@ export function ContactsPanel({
                     </button>
                     <button
                       type="button"
-                      className="profile-btn profile-btn--gold contact-card__action"
-                      onClick={() => sendRequest(u.id)}
-                      title="Отправить заявку"
+                      className="profile-btn profile-btn--gold contact-card__action contact-card__action--add"
+                      onClick={() => void sendRequest(u.id)}
+                      title="Добавить в контакты"
                     >
-                      + Заявка
+                      Добавить
                     </button>
                   </li>
                 ))}

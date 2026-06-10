@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react';
 import type { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/client';
-import { reconnectSupabaseRealtime, syncSupabaseRealtimeAuth } from '@/lib/realtime/clientAuth';
+import { ensureRealtimeAuth, prepareRealtime } from '@/lib/realtime/ready';
 
 const PRESENCE_CHANNEL_LIMIT = 30;
 
@@ -29,7 +29,8 @@ export function usePresenceRealtime(
       if (disposed || binding) return;
       binding = true;
       try {
-        await reconnectSupabaseRealtime(supabase);
+        const authOk = await prepareRealtime(supabase, false);
+        if (!authOk) return;
         if (disposed) return;
         while (channels.length) {
           const ch = channels.pop();
@@ -60,18 +61,13 @@ export function usePresenceRealtime(
 
     const onVisible = () => {
       if (document.visibilityState !== 'visible' || disposed) return;
-      void bindAll();
+      void ensureRealtimeAuth(supabase);
     };
     document.addEventListener('visibilitychange', onVisible);
-
-    const refreshAuth = window.setInterval(() => {
-      void syncSupabaseRealtimeAuth(supabase);
-    }, 3 * 60 * 1000);
 
     return () => {
       disposed = true;
       document.removeEventListener('visibilitychange', onVisible);
-      window.clearInterval(refreshAuth);
       channels.forEach((ch) => supabase.removeChannel(ch));
     };
   }, [idsKey]);

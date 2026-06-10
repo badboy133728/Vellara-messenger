@@ -65,7 +65,7 @@ export async function POST(
     user_id: user.id,
   };
 
-  await broadcastToConversation(supabase, convId, 'UserTyping', payload);
+  broadcastToConversation(supabase, convId, 'UserTyping', payload);
 
   return Response.json({ ok: true });
 }

@@ -78,16 +78,14 @@ export async function POST(request: Request) {
   const profileMap = new Map<string, Profile>([[profile.id, profile]]);
   const formatted = await formatMessagesWithReplies(updatedRows, profileMap, admin);
 
-  await Promise.all(
-    formatted.map((msg) => {
-      const row = updatedRows.find((r) => r.id === msg.id);
-      if (!row) return Promise.resolve();
-      return broadcastToConversation(supabase, row.conversation_id, 'NewMessage', {
-        ...msg,
-        conversation_id: row.conversation_id,
-      });
-    }),
-  );
+  for (const msg of formatted) {
+    const row = updatedRows.find((r) => r.id === msg.id);
+    if (!row) continue;
+    broadcastToConversation(supabase, row.conversation_id, 'NewMessage', {
+      ...msg,
+      conversation_id: row.conversation_id,
+    });
+  }
 
   return Response.json({
     messages: formatted.map((msg) => {

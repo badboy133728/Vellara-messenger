@@ -7,7 +7,7 @@ import type {
   REALTIME_SUBSCRIBE_STATES,
 } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/client';
-import { reconnectSupabaseRealtime, syncSupabaseRealtimeAuth } from '@/lib/realtime/clientAuth';
+import { ensureRealtimeAuth, prepareRealtime } from '@/lib/realtime/ready';
 import { forwardPreviewFromStoredName } from '@/lib/chat/formatters';
 import type { FormattedMessage } from '@/lib/types';
 
@@ -177,13 +177,11 @@ export function useActiveConversationRealtime(activeId: number | null, handlers:
       if (disposed || binding) return;
       binding = true;
       try {
-        const authOk = hardReconnect
-          ? await reconnectSupabaseRealtime(supabase)
-          : await syncSupabaseRealtimeAuth(supabase);
+        const authOk = await prepareRealtime(supabase, hardReconnect);
         if (!authOk) {
           window.setTimeout(() => {
             if (!disposed) void bind(true);
-          }, 2000);
+          }, 1500);
           return;
         }
         if (disposed) return;
@@ -192,7 +190,7 @@ export function useActiveConversationRealtime(activeId: number | null, handlers:
           channel = null;
         }
         channel = subscribeConversation(supabase, activeId, handlersRef, () => {
-          if (!disposed) void bind(true);
+          if (!disposed) void bind(false);
         });
       } finally {
         binding = false;
@@ -203,12 +201,12 @@ export function useActiveConversationRealtime(activeId: number | null, handlers:
 
     const onVisible = () => {
       if (document.visibilityState !== 'visible' || disposed) return;
-      void bind(true);
+      void ensureRealtimeAuth(supabase);
     };
     document.addEventListener('visibilitychange', onVisible);
 
     const refreshAuth = window.setInterval(() => {
-      void syncSupabaseRealtimeAuth(supabase);
+      void ensureRealtimeAuth(supabase);
     }, 3 * 60 * 1000);
 
     return () => {
@@ -240,13 +238,11 @@ export function useChatRealtime(conversationIdsKey: string, handlers: Pick<Handl
       if (disposed || binding) return;
       binding = true;
       try {
-        const authOk = hardReconnect
-          ? await reconnectSupabaseRealtime(supabase)
-          : await syncSupabaseRealtimeAuth(supabase);
+        const authOk = await prepareRealtime(supabase, hardReconnect);
         if (!authOk) {
           window.setTimeout(() => {
             if (!disposed) void bindAll(true);
-          }, 2000);
+          }, 1500);
           return;
         }
         if (disposed) return;
@@ -279,7 +275,7 @@ export function useChatRealtime(conversationIdsKey: string, handlers: Pick<Handl
             .subscribe((status: `${REALTIME_SUBSCRIBE_STATES}`) => {
               if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
                 window.setTimeout(() => {
-                  if (!disposed) void bindAll(true);
+                  if (!disposed) void bindAll(false);
                 }, 1500);
               }
             });
@@ -294,12 +290,12 @@ export function useChatRealtime(conversationIdsKey: string, handlers: Pick<Handl
 
     const onVisible = () => {
       if (document.visibilityState !== 'visible' || disposed) return;
-      void bindAll(true);
+      void ensureRealtimeAuth(supabase);
     };
     document.addEventListener('visibilitychange', onVisible);
 
     const refreshAuth = window.setInterval(() => {
-      void syncSupabaseRealtimeAuth(supabase);
+      void ensureRealtimeAuth(supabase);
     }, 3 * 60 * 1000);
 
     return () => {
@@ -338,11 +334,11 @@ export function useUserRealtime(userId: string | undefined, handlers: UserRealti
       if (disposed || binding) return;
       binding = true;
       try {
-        const authOk = await reconnectSupabaseRealtime(supabase);
+        const authOk = await prepareRealtime(supabase, false);
         if (!authOk) {
           window.setTimeout(() => {
             if (!disposed) void bind();
-          }, 2000);
+          }, 1500);
           return;
         }
         if (disposed) return;
@@ -441,12 +437,12 @@ export function useUserRealtime(userId: string | undefined, handlers: UserRealti
 
     const onVisible = () => {
       if (document.visibilityState !== 'visible' || disposed) return;
-      void bind();
+      void ensureRealtimeAuth(supabase);
     };
     document.addEventListener('visibilitychange', onVisible);
 
     const refreshAuth = window.setInterval(() => {
-      void syncSupabaseRealtimeAuth(supabase);
+      void ensureRealtimeAuth(supabase);
     }, 3 * 60 * 1000);
 
     return () => {

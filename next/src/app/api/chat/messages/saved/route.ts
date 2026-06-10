@@ -223,7 +223,7 @@ export async function POST(request: Request) {
   const formatted = await formatMessagesWithReplies(created, profileMap, admin);
 
   if (formatted[0]) {
-    await broadcastToConversation(supabase, convId, 'NewMessage', {
+    broadcastToConversation(supabase, convId, 'NewMessage', {
       ...formatted[0],
       conversation_id: convId,
     });

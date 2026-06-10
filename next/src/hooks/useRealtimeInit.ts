@@ -2,30 +2,25 @@
 
 import { useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { ensureRealtimeBoot, resetRealtimeBoot } from '@/lib/realtime/ready';
 import { reconnectSupabaseRealtime } from '@/lib/realtime/clientAuth';
 
-/** Гарантирует JWT и WebSocket до подписок в остальных realtime-хуках. */
+/** Один hard-reconnect при входе; остальные realtime-хуки ждут ensureRealtimeBoot(). */
 export function useRealtimeInit(userId: string | undefined) {
   useEffect(() => {
     if (!userId) return;
 
     const supabase = createClient();
     let disposed = false;
-    let attempts = 0;
 
-    const boot = async () => {
-      if (disposed) return;
-      const ok = await reconnectSupabaseRealtime(supabase);
-      if (!ok && attempts < 8) {
-        attempts += 1;
-        window.setTimeout(() => void boot(), 1500);
-      }
-    };
-
-    void boot();
+    void ensureRealtimeBoot(supabase);
 
     const onOnline = () => {
-      if (!disposed) void reconnectSupabaseRealtime(supabase);
+      if (disposed) return;
+      resetRealtimeBoot();
+      void reconnectSupabaseRealtime(supabase).then(() => {
+        if (!disposed) void ensureRealtimeBoot(supabase);
+      });
     };
     window.addEventListener('online', onOnline);
 

@@ -1,44 +1,57 @@
 import { createAdminClient } from '@/lib/supabase/admin';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
-async function sendBroadcast(
-  topic: string,
-  event: string,
-  payload: Record<string, unknown>,
-): Promise<void> {
-  const supabase = createAdminClient();
-  const channel = supabase.channel(topic, {
-    config: { broadcast: { ack: true, self: false } },
-  });
+type PoolEntry = { channel: RealtimeChannel; ready: Promise<boolean> };
 
-  await new Promise<void>((resolve) => {
-    const finish = () => {
-      void supabase.removeChannel(channel);
-      resolve();
-    };
-    const timer = setTimeout(() => void finish(), 5000);
-    channel.subscribe((status) => {
-      if (status === 'SUBSCRIBED') {
-        void channel.send({ type: 'broadcast', event, payload }).finally(() => {
-          clearTimeout(timer);
-          void finish();
-        });
-      }
-      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-        clearTimeout(timer);
-        void finish();
-      }
+const channelPool = new Map<string, PoolEntry>();
+
+function getPooledChannel(topic: string): PoolEntry {
+  let entry = channelPool.get(topic);
+  if (!entry) {
+    const supabase = createAdminClient();
+    const channel = supabase.channel(topic, {
+      config: { broadcast: { ack: false, self: false } },
     });
-  });
+    const ready = new Promise<boolean>((resolve) => {
+      const timer = setTimeout(() => resolve(false), 3000);
+      channel.subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          clearTimeout(timer);
+          resolve(true);
+        }
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          clearTimeout(timer);
+          channelPool.delete(topic);
+          resolve(false);
+        }
+      });
+    });
+    entry = { channel, ready };
+    channelPool.set(topic, entry);
+  }
+  return entry;
 }
 
-/** Ephemeral events: typing, new message fan-out (client-to-client via broadcast channel). */
+function sendPooled(topic: string, event: string, payload: Record<string, unknown>) {
+  void (async () => {
+    const { channel, ready } = getPooledChannel(topic);
+    if (!(await ready)) return;
+    try {
+      await channel.send({ type: 'broadcast', event, payload });
+    } catch {
+      channelPool.delete(topic);
+    }
+  })();
+}
+
+/** Быстрый fan-out: не блокирует ответ API, канал переиспользуется на warm-инстансе. */
 export function broadcastToConversation(
   _supabase: unknown,
   conversationId: number,
   event: string,
   payload: Record<string, unknown>,
-): Promise<void> {
-  return sendBroadcast(`conversation:${conversationId}`, event, payload);
+) {
+  sendPooled(`conversation:${conversationId}`, event, payload);
 }
 
 export function broadcastToUser(
@@ -46,6 +59,6 @@ export function broadcastToUser(
   userId: string,
   event: string,
   payload: Record<string, unknown>,
-): Promise<void> {
-  return sendBroadcast(`user:${userId}`, event, payload);
+) {
+  sendPooled(`user:${userId}`, event, payload);
 }

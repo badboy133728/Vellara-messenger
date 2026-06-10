@@ -33,7 +33,7 @@ export async function POST(
       .eq('conversation_id', convId)
       .eq('user_id', user.id);
 
-    await broadcastToConversation(supabase, convId, 'MemberRead', {
+    broadcastToConversation(supabase, convId, 'MemberRead', {
       conversation_id: convId,
       user_id: user.id,
       last_read_at: now,
@@ -79,7 +79,7 @@ export async function POST(
     messageIds.length > 0 ? messageIds : (readPartnerMessages ?? []).map((m) => m.id as number);
 
   if (notifyIds.length > 0) {
-    await broadcastToConversation(supabase, convId, 'MessagesRead', {
+    broadcastToConversation(supabase, convId, 'MessagesRead', {
       conversation_id: convId,
       reader_id: user.id,
       read_at: now,

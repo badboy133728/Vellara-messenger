@@ -375,15 +375,6 @@ function MessengerAppInner({ user }: { user: Profile }) {
     void refreshIncomingCount();
   }, [refreshIncomingCount]);
 
-  useEffect(() => {
-    const pollContacts = () => {
-      if (document.visibilityState !== 'visible') return;
-      setContactsRefreshKey((k) => k + 1);
-    };
-    const contactsTimer = window.setInterval(pollContacts, 30_000);
-    return () => window.clearInterval(contactsTimer);
-  }, []);
-
   useUserRealtime(user.id, {
     onCallSignaling,
     onContactsChanged,
@@ -818,7 +809,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
       if (document.visibilityState !== 'visible') return;
       loadConversations().catch(() => {});
     };
-    const listTimer = window.setInterval(pollConversations, 45_000);
+    const listTimer = window.setInterval(pollConversations, 300_000);
     return () => window.clearInterval(listTimer);
   }, [loadConversations]);
 
@@ -852,7 +843,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
         .catch(() => {});
     };
 
-    const readTimer = window.setInterval(syncReadState, 12_000);
+    const readTimer = window.setInterval(syncReadState, 25_000);
     return () => window.clearInterval(readTimer);
   }, [activeId, applyGroupRead]);
 
@@ -876,6 +867,21 @@ function MessengerAppInner({ user }: { user: Profile }) {
       const viewing = isViewingConversation(convId);
       const previewMsg = enrichMessageSender(msg, groupMembersRef.current, userRef.current);
 
+      setConversations((prev) => {
+        if (!prev.some((c) => c.id === convId)) {
+          loadConversations().catch(() => {});
+          return prev;
+        }
+        return patchConversationFromMessage(prev, convId, previewMsg, {
+          incrementUnread: fromOther && !viewing && !isSystem,
+          currentUserId: user.id,
+        });
+      });
+
+      if (fromOther && !isSystem && !viewing) {
+        notifyIncomingMessage(previewMsg);
+      }
+
       if (viewing && activeIdRef.current === convId) {
         setMessages((prev) => {
           const enriched = enrichMessageReply(previewMsg, prev);
@@ -894,12 +900,9 @@ function MessengerAppInner({ user }: { user: Profile }) {
         }
 
         setConversations((prev) => {
-          if (!prev.some((c) => c.id === convId)) {
-            loadConversations().catch(() => {});
-            return prev;
-          }
+          if (!prev.some((c) => c.id === convId)) return prev;
           return patchConversationFromMessage(prev, convId, displayMsg, {
-            incrementUnread: fromOther && !viewing && !isSystem,
+            incrementUnread: false,
             currentUserId: user.id,
           });
         });
@@ -921,10 +924,6 @@ function MessengerAppInner({ user }: { user: Profile }) {
             return applyGroupRead(next, membersReadRef.current, convId);
           });
           return;
-        }
-
-        if (fromOther && !isSystem && !viewing) {
-          notifyIncomingMessage(displayMsg);
         }
       })();
     },

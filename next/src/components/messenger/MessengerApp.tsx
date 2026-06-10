@@ -851,9 +851,18 @@ function MessengerAppInner({ user }: { user: Profile }) {
         .catch(() => {});
     };
 
-    const readTimer = window.setInterval(syncReadState, 25_000);
+    const readTimer = window.setInterval(syncReadState, 5_000);
     return () => window.clearInterval(readTimer);
   }, [activeId, applyGroupRead]);
+
+  useEffect(() => {
+    if (!activeId) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      void loadMessagesRef.current(activeId, { silent: true, fromCache: true });
+    }, 4_000);
+    return () => window.clearInterval(timer);
+  }, [activeId]);
 
   const handleListRealtimeMessage = useRealtimeMessageReducer({
     userId: user.id,
@@ -999,6 +1008,8 @@ function MessengerAppInner({ user }: { user: Profile }) {
           currentUserId: user.id,
         }),
       );
+      void loadMessagesRef.current(convId, { silent: true, fromCache: true });
+      void loadConversations().catch(() => {});
       return [enriched.id];
     }
 
@@ -1042,6 +1053,8 @@ function MessengerAppInner({ user }: { user: Profile }) {
         }),
       );
     }
+    void loadMessagesRef.current(convId, { silent: true, fromCache: true });
+    void loadConversations().catch(() => {});
     return created.map((m) => m.id);
   };
 
@@ -1079,6 +1092,8 @@ function MessengerAppInner({ user }: { user: Profile }) {
         currentUserId: user.id,
       }),
     );
+    void loadMessagesRef.current(activeId, { silent: true, fromCache: true });
+    void loadConversations().catch(() => {});
   };
 
   const editMessage = async (messageId: number, content: string) => {

@@ -14,8 +14,10 @@ export function MessageContextMenu({
   canSave,
   isSaved,
   canForward,
+  canSelectForForward,
   onReply,
   onForward,
+  onSelectForForward,
   onSave,
   onEdit,
   onDelete,
@@ -31,8 +33,10 @@ export function MessageContextMenu({
   canSave: boolean;
   isSaved: boolean;
   canForward?: boolean;
+  canSelectForForward?: boolean;
   onReply?: () => void;
   onForward?: () => void;
+  onSelectForForward?: () => void;
   onSave: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -57,6 +61,12 @@ export function MessageContextMenu({
           <button type="button" className="msg-context-menu__item--with-icon" onClick={onForward}>
             <VellaraIcon name="forward" size={16} />
             Переслать
+          </button>
+        )}
+        {canSelectForForward && onSelectForForward && (
+          <button type="button" className="msg-context-menu__item--with-icon" onClick={onSelectForForward}>
+            <VellaraIcon name="check" size={16} />
+            Выбрать для пересылки
           </button>
         )}
         {canSave && (

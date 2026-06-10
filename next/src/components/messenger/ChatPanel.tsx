@@ -7,7 +7,7 @@ import { ImageLightbox } from '@/components/ImageLightbox';
 import { MessageContextMenu } from '@/components/MessageContextMenu';
 import { StatusDot } from '@/components/StatusDot';
 import { VoiceMessagePlayer } from '@/components/VoiceMessagePlayer';
-import { useLongPress } from '@/hooks/useLongPress';
+import { useMessageRowGesture } from '@/hooks/useMessageRowGesture';
 import { useSwipeBack } from '@/hooks/useSwipeGesture';
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
 import { storageDisplayUrl } from '@/lib/storage';
@@ -150,7 +150,7 @@ export function ChatPanel({
   onEditMessage?: (messageId: number, content: string) => Promise<void>;
   onDeleteMessage?: (messageId: number) => Promise<void>;
   onToggleSave?: (messageId: number) => Promise<void>;
-  onForwardMessage?: (message: FormattedMessage) => void;
+  onForwardMessage?: (messages: FormattedMessage | FormattedMessage[]) => void;
   onTyping: () => void;
   onOpenGroupSettings?: () => void;
   onOpenGroupInfo?: () => void;
@@ -170,6 +170,8 @@ export function ChatPanel({
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const [pendingSends, setPendingSends] = useState<PendingSend[]>([]);
   const [replyTo, setReplyTo] = useState<FormattedMessage | null>(null);
+  const [forwardSelectMode, setForwardSelectMode] = useState(false);
+  const [selectedMessageIds, setSelectedMessageIds] = useState<Set<number>>(new Set());
   const menuCloseLockRef = useRef(0);
   const attachmentUrlsRef = useRef<Set<string>>(new Set());
 
@@ -543,6 +545,23 @@ export function ChatPanel({
     return !!isGroup && isGroupAdmin;
   };
 
+  const canForwardMsg = (msg: FormattedMessage) =>
+    msg.message_type === 'user' && !msg.is_deleted;
+
+  const messageIdsForSelection = (msg: FormattedMessage) => {
+    if (msg.album_group_id && msg.file_type === 'image') {
+      return messages
+        .filter(
+          (m) =>
+            m.album_group_id === msg.album_group_id &&
+            m.file_type === 'image' &&
+            canForwardMsg(m),
+        )
+        .map((m) => m.id);
+    }
+    return canForwardMsg(msg) ? [msg.id] : [];
+  };
+
   const openMessageMenu = (
     event: { clientX?: number; clientY?: number; preventDefault?: () => void },
     msg: FormattedMessage,
@@ -580,10 +599,51 @@ export function ChatPanel({
     setMsgMenu(emptyMenu);
   };
 
-  const longPress = useLongPress((touchEvent) => {
-    const msg = touchEvent.payload as FormattedMessage;
-    openMessageMenu(touchEvent, msg);
+  const enterForwardSelectMode = (msg: FormattedMessage) => {
+    const ids = messageIdsForSelection(msg);
+    if (!ids.length) return;
+    closeMessageMenu();
+    setForwardSelectMode(true);
+    setSelectedMessageIds(new Set(ids));
+  };
+
+  const exitForwardSelectMode = () => {
+    setForwardSelectMode(false);
+    setSelectedMessageIds(new Set());
+  };
+
+  const toggleForwardSelection = (msg: FormattedMessage) => {
+    const ids = messageIdsForSelection(msg);
+    if (!ids.length) return;
+    setSelectedMessageIds((prev) => {
+      const next = new Set(prev);
+      const allSelected = ids.every((id) => next.has(id));
+      if (allSelected) ids.forEach((id) => next.delete(id));
+      else ids.forEach((id) => next.add(id));
+      return next;
+    });
+  };
+
+  const submitForwardSelection = () => {
+    if (!onForwardMessage || selectedMessageIds.size === 0) return;
+    const selected = messages.filter((m) => selectedMessageIds.has(m.id));
+    exitForwardSelectMode();
+    onForwardMessage(selected);
+  };
+
+  const rowGesture = useMessageRowGesture({
+    onSwipeOpenActions: (event, payload) => {
+      if (forwardSelectMode) return;
+      openMessageMenu(event, payload as FormattedMessage);
+    },
+    onForwardSelectStart: (payload) => {
+      enterForwardSelectMode(payload as FormattedMessage);
+    },
   });
+
+  useEffect(() => {
+    exitForwardSelectMode();
+  }, [conversation?.id]);
 
   const startEditMessage = () => {
     const msg = msgMenu.message;
@@ -600,6 +660,13 @@ export function ChatPanel({
     if (!msg || msg.is_deleted || !onForwardMessage) return;
     closeMessageMenu();
     onForwardMessage(msg);
+  };
+
+  const startSelectForForward = () => {
+    const msg = msgMenu.message;
+    if (!msg) return;
+    closeMessageMenu();
+    enterForwardSelectMode(msg);
   };
 
   const startReplyMessage = () => {
@@ -1000,6 +1067,10 @@ export function ChatPanel({
     const albumMessages = item.albumMessages;
     const mine = m.user_id === currentUserId;
     const isSystem = m.message_type === 'system';
+    const isSelected = selectedMessageIds.has(m.id);
+    const isSwipeActive = rowGesture.swipeRowId === m.id;
+    const swipeOffset = isSwipeActive ? rowGesture.swipeOffset : 0;
+    const canSelect = canForwardMsg(m);
 
     if (isSystem) {
       return (
@@ -1009,18 +1080,52 @@ export function ChatPanel({
       );
     }
 
+    const handleRowClick = (e: React.MouseEvent) => {
+      if (!forwardSelectMode || !canSelect) return;
+      if (e.target instanceof Element && e.target.closest('button, a, .msg-image-btn, audio, video')) return;
+      toggleForwardSelection(m);
+    };
+
     return (
       <div
         key={item.key}
-        className={`message-row ${mine ? 'message-row--mine' : 'message-row--other'}`}
-        onContextMenu={(e) => openMessageMenu(e, m)}
-        onTouchStart={(e) => longPress.onTouchStart(e, m)}
-        onTouchMove={longPress.onTouchMove}
-        onTouchEnd={longPress.onTouchEnd}
-        onTouchCancel={longPress.onTouchCancel}
+        className={`message-row ${mine ? 'message-row--mine' : 'message-row--other'}${forwardSelectMode && canSelect ? ' message-row--selectable' : ''}${isSelected ? ' message-row--selected' : ''}${isSwipeActive ? ' message-row--swiping' : ''}`}
+        onClick={handleRowClick}
+        onContextMenu={(e) => {
+          if (forwardSelectMode) return;
+          rowGesture.onContextMenu(e, m);
+        }}
+        onTouchStart={(e) => {
+          if (forwardSelectMode) return;
+          rowGesture.onTouchStart(e, m, m.id);
+        }}
+        onTouchMove={rowGesture.onTouchMove}
+        onTouchEnd={rowGesture.onTouchEnd}
+        onTouchCancel={rowGesture.onTouchCancel}
+        onPointerDown={(e) => {
+          if (forwardSelectMode) return;
+          rowGesture.onPointerDown(e, m, m.id);
+        }}
+        onPointerMove={rowGesture.onPointerMove}
+        onPointerUp={rowGesture.onPointerUp}
+        onPointerCancel={rowGesture.onPointerCancel}
       >
+        {!forwardSelectMode && (
+          <div
+            className={`message-row-actions ${mine ? 'message-row-actions--mine' : 'message-row-actions--other'}`}
+            aria-hidden={swipeOffset < 8}
+          >
+            <VellaraIcon name="reply" size={18} />
+          </div>
+        )}
+        {forwardSelectMode && canSelect && (
+          <span className={`message-row-check ${isSelected ? 'message-row-check--on' : ''}`} aria-hidden="true">
+            {isSelected && <VellaraIcon name="check" size={14} />}
+          </span>
+        )}
         <div
           className={`message-row-body ${mine ? 'message-row-body--mine' : 'message-row-body--other'} ${isGroup ? 'message-row-body--group' : ''}`}
+          style={swipeOffset > 0 ? { transform: `translateX(${swipeOffset}px)` } : undefined}
         >
           {showGroupSenderAvatar(m) && (
             <button type="button" className="msg-avatar-btn" title="Профиль">
@@ -1336,6 +1441,26 @@ export function ChatPanel({
         </div>
       )}
 
+      {forwardSelectMode && (
+        <div className="forward-select-bar">
+          <button type="button" className="forward-select-bar__btn" onClick={exitForwardSelectMode}>
+            Отмена
+          </button>
+          <span className="forward-select-bar__count">
+            Выбрано: {selectedMessageIds.size}
+          </span>
+          <button
+            type="button"
+            className="forward-select-bar__btn forward-select-bar__btn--primary"
+            disabled={selectedMessageIds.size === 0}
+            onClick={submitForwardSelection}
+          >
+            <VellaraIcon name="forward" size={16} />
+            Переслать
+          </button>
+        </div>
+      )}
+
       {lightbox && (
         <ImageLightbox urls={lightbox.urls} index={lightbox.index} onClose={() => setLightbox(null)} />
       )}
@@ -1351,8 +1476,10 @@ export function ChatPanel({
         canSave={msgMenu.canSave}
         isSaved={msgMenu.isSaved}
         canForward={!!msgMenu.message && !msgMenu.message.is_deleted && !!onForwardMessage}
+        canSelectForForward={!!msgMenu.message && !msgMenu.message.is_deleted && !!onForwardMessage}
         onReply={startReplyMessage}
         onForward={startForwardMessage}
+        onSelectForForward={startSelectForForward}
         onSave={() => void handleToggleSave()}
         onEdit={startEditMessage}
         onDelete={() => void handleDeleteMessage()}

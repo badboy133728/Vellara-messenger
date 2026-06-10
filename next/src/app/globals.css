@@ -593,6 +593,22 @@ a {
   line-height: 1.4;
 }
 
+.forward-preview__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.forward-preview__list .forward-preview__text + .forward-preview__text {
+  opacity: 0.85;
+}
+
+.forward-preview__more {
+  margin: 0;
+  font-size: 13px;
+  color: var(--vellara-text-muted, #94a3b8);
+}
+
 .modal-card__foot {
   display: flex;
   justify-content: flex-end;

@@ -34,13 +34,13 @@ function messagePreviewText(msg: FormattedMessage) {
 }
 
 export function ForwardDestinationModal({
-  message,
+  messages,
   conversations,
   excludeConversationId,
   onClose,
   onForward,
 }: {
-  message: FormattedMessage;
+  messages: FormattedMessage[];
   conversations: ConversationListItem[];
   excludeConversationId?: number | null;
   onClose: () => void;
@@ -51,6 +51,8 @@ export function ForwardDestinationModal({
   const [caption, setCaption] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const count = messages.length;
 
   useEffect(() => {
     document.body.classList.add('modal-open');
@@ -94,6 +96,9 @@ export function ForwardDestinationModal({
     }
   };
 
+  const previewItems = messages.slice(0, 4);
+  const moreCount = Math.max(0, messages.length - previewItems.length);
+
   return (
     <div className="modal-backdrop" onClick={onClose} role="presentation">
       <div
@@ -105,7 +110,7 @@ export function ForwardDestinationModal({
         <header className="modal-card__head">
           <h2 id="forward-title">
             <VellaraIcon name="forward" size={20} className="modal-card__head-icon" />
-            Переслать сообщение
+            {count === 1 ? 'Переслать сообщение' : `Переслать ${count} сообщений`}
           </h2>
           <button type="button" className="modal-close" aria-label="Закрыть" onClick={onClose}>
             <VellaraIcon name="close" size={18} />
@@ -114,8 +119,19 @@ export function ForwardDestinationModal({
 
         <form onSubmit={(e) => void submit(e)} className="modal-form modal-form--create-group">
           <div className="forward-preview">
-            <span className="forward-preview__label">Сообщение</span>
-            <p className="forward-preview__text">{messagePreviewText(message)}</p>
+            <span className="forward-preview__label">
+              {count === 1 ? 'Сообщение' : `Сообщения (${count})`}
+            </span>
+            <div className="forward-preview__list">
+              {previewItems.map((msg) => (
+                <p key={msg.id} className="forward-preview__text">
+                  {messagePreviewText(msg)}
+                </p>
+              ))}
+              {moreCount > 0 && (
+                <p className="forward-preview__more">и ещё {moreCount}…</p>
+              )}
+            </div>
           </div>
 
           <label className="modal-field modal-field--compact">

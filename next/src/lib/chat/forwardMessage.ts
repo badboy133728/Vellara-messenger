@@ -217,3 +217,37 @@ export async function forwardMessageToConversations(
     return { ...msg, conversation_id: convId };
   });
 }
+
+export async function forwardMessagesToConversations(
+  supabase: SupabaseClient,
+  user: { id: string },
+  profile: Profile,
+  sourceMessageIds: number[],
+  conversationIds: number[],
+  caption?: string,
+): Promise<FormattedMessage[]> {
+  const uniqueOrdered: number[] = [];
+  const seen = new Set<number>();
+  for (const id of sourceMessageIds) {
+    if (!Number.isFinite(id) || id <= 0 || seen.has(id)) continue;
+    seen.add(id);
+    uniqueOrdered.push(id);
+  }
+  if (!uniqueOrdered.length) {
+    throw new Error('NO_SOURCES');
+  }
+
+  const all: FormattedMessage[] = [];
+  for (let i = 0; i < uniqueOrdered.length; i++) {
+    const batch = await forwardMessageToConversations(
+      supabase,
+      user,
+      profile,
+      uniqueOrdered[i]!,
+      conversationIds,
+      i === 0 ? caption : undefined,
+    );
+    all.push(...batch);
+  }
+  return all;
+}

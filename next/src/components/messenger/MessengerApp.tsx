@@ -131,7 +131,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
   const [loading, setLoading] = useState(true);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [forwardPayload, setForwardPayload] = useState<{
-    message: FormattedMessage;
+    messages: FormattedMessage[];
     excludeConversationId: number | null;
   } | null>(null);
   const [convActionsMenu, setConvActionsMenu] = useState<{
@@ -903,26 +903,35 @@ function MessengerAppInner({ user }: { user: Profile }) {
     });
   };
 
-  const requestForwardMessage = useCallback(
-    (message: FormattedMessage, excludeConversationId?: number | null) => {
+  const requestForwardMessages = useCallback(
+    (items: FormattedMessage | FormattedMessage[], excludeConversationId?: number | null) => {
+      const list = Array.isArray(items) ? items : [items];
+      const forwardable = list.filter(
+        (m) => m.message_type === 'user' && !m.is_deleted,
+      );
+      if (!forwardable.length) return;
       setForwardPayload({
-        message,
+        messages: forwardable,
         excludeConversationId: excludeConversationId ?? activeId,
       });
     },
     [activeId],
   );
 
-  const forwardMessageToChats = async (
-    messageId: number,
+  const forwardMessagesToChats = async (
+    messageIds: number[],
     conversationIds: number[],
     caption: string,
   ) => {
     const result = await api<{ messages: FormattedMessage[] }>(
-      `/api/chat/messages/${messageId}/forward`,
+      '/api/chat/messages/forward',
       {
         method: 'POST',
-        body: JSON.stringify({ conversation_ids: conversationIds, caption }),
+        body: JSON.stringify({
+          message_ids: messageIds,
+          conversation_ids: conversationIds,
+          caption,
+        }),
       },
     );
 
@@ -963,9 +972,12 @@ function MessengerAppInner({ user }: { user: Profile }) {
       }
     }
 
-    const count = conversationIds.length;
-    const chatWord = count === 1 ? 'чат' : count < 5 ? 'чата' : 'чатов';
-    showToast(`Переслано в ${count} ${chatWord}`);
+    const msgCount = messageIds.length;
+    const chatCount = conversationIds.length;
+    const msgWord =
+      msgCount === 1 ? 'сообщение' : msgCount < 5 ? 'сообщения' : 'сообщений';
+    const chatWord = chatCount === 1 ? 'чат' : chatCount < 5 ? 'чата' : 'чатов';
+    showToast(`Переслано ${msgCount} ${msgWord} в ${chatCount} ${chatWord}`);
   };
 
   const pinnedCount = useMemo(
@@ -1190,7 +1202,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
                   onEditMessage={editMessage}
                   onDeleteMessage={deleteMessage}
                   onToggleSave={toggleSaveMessage}
-                  onForwardMessage={(msg) => requestForwardMessage(msg, activeId)}
+                  onForwardMessage={(msg) => requestForwardMessages(msg, activeId)}
                   onTyping={sendTyping}
                   onOpenGroupInfo={
                     activeConv?.type === 'group'
@@ -1241,7 +1253,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
           ) : tab === 'favorites' ? (
             <FavoritesPanel
               isMobile={isMobile}
-              onForwardMessage={(msg) => requestForwardMessage(msg, null)}
+              onForwardMessage={(msg) => requestForwardMessages(msg, null)}
             />
           ) : tab === 'settings' ? (
             <SettingsPanel
@@ -1284,12 +1296,16 @@ function MessengerAppInner({ user }: { user: Profile }) {
       )}
       {forwardPayload && (
         <ForwardDestinationModal
-          message={forwardPayload.message}
+          messages={forwardPayload.messages}
           conversations={conversations}
           excludeConversationId={forwardPayload.excludeConversationId}
           onClose={() => setForwardPayload(null)}
           onForward={(ids, caption) =>
-            forwardMessageToChats(forwardPayload.message.id, ids, caption)
+            forwardMessagesToChats(
+              forwardPayload.messages.map((m) => m.id),
+              ids,
+              caption,
+            )
           }
         />
       )}

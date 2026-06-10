@@ -176,7 +176,7 @@ export function useSwipeBack({
         if (
           target instanceof Element &&
           target.closest(
-            'button, a, input, textarea, select, label, .emoji-picker, .input-area, .msg-image-btn',
+            'button, a, input, textarea, select, label, .emoji-picker, .input-area, .msg-image-btn, .message-row',
           )
         ) {
           return;

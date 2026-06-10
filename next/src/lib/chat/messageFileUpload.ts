@@ -8,7 +8,7 @@ import { uploadBlobInChunks } from '@/lib/chat/chunkedUploadClient';
 import { CHAT_UPLOAD_MAX_BYTES, prepareChatImageForUpload } from '@/lib/chatImageUpload';
 
 export type PreparedMessageFile =
-  | { mode: 'inline'; file: File; encryptedOriginalName?: string }
+  | { mode: 'inline'; file: File; fileType: string; encryptedOriginalName?: string }
   | { mode: 'uploaded'; path: string; fileType: string; originalName: string };
 
 export type E2EFileTransform = {
@@ -80,6 +80,7 @@ export async function prepareMessageFileForSend(
     return { mode: 'uploaded', ...uploaded };
   }
 
+  const fileType = resolveFileType(file.type, file.name);
   const { body: rawBody, sourceName } = await prepareBody(file);
   const { body, storedName } = await applyE2E(rawBody, sourceName, e2e);
   const uploadFile = new File([body], e2e ? 'encrypted.e2e' : sourceName, {
@@ -89,6 +90,7 @@ export async function prepareMessageFileForSend(
   return {
     mode: 'inline',
     file: uploadFile,
+    fileType,
     encryptedOriginalName: e2e ? storedName : undefined,
   };
 }
@@ -96,6 +98,7 @@ export async function prepareMessageFileForSend(
 export function appendPreparedFileToForm(form: FormData, prepared: PreparedMessageFile) {
   if (prepared.mode === 'inline') {
     form.append('file', prepared.file);
+    form.append('file_type', prepared.fileType);
     if (prepared.encryptedOriginalName) {
       form.append('file_original_name', prepared.encryptedOriginalName);
     }

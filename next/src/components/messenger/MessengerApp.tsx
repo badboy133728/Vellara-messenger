@@ -927,6 +927,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
     }
     const form = new FormData();
     form.append('file', body, e2eFiles ? 'encrypted.e2e' : voiceName);
+    form.append('file_type', 'voice');
     if (e2eFiles) {
       form.append('file_original_name', await e2eFiles.encryptName(voiceName));
     }

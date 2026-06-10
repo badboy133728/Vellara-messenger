@@ -2,6 +2,7 @@
 
 import { useDecryptedFileUrl } from '@/hooks/useDecryptedFileUrl';
 import type { ConversationKeyContext } from '@/lib/crypto/conversationKey';
+import { mimeHintForMessageFile } from '@/lib/chat/attachmentTypes';
 import { displayFileName } from '@/lib/e2e/messageCrypto';
 import type { FormattedMessage } from '@/lib/types';
 import { VellaraIcon } from '@/components/icons/VellaraIcon';
@@ -21,7 +22,7 @@ export function E2EImageAttachment({ message, userId, e2eContext, onMediaLoad }:
     e2eContext,
     message.file_path,
     message.file_original_name,
-    'image/jpeg',
+    mimeHintForMessageFile(message) ?? 'image/jpeg',
   );
   if (!src) return null;
   return <img src={src} alt="Фото" decoding="async" onLoad={onMediaLoad} />;
@@ -33,7 +34,7 @@ export function E2EVideoAttachment({ message, userId, e2eContext, onMediaLoad }:
     e2eContext,
     message.file_path,
     message.file_original_name,
-    'video/mp4',
+    mimeHintForMessageFile(message) ?? 'video/mp4',
   );
   if (!src) return null;
   return (
@@ -54,7 +55,7 @@ export function E2EVoiceAttachment({ message, userId, e2eContext, isMine }: Prop
     e2eContext,
     message.file_path,
     message.file_original_name,
-    'audio/ogg',
+    mimeHintForMessageFile(message) ?? 'audio/ogg',
   );
   if (!src) return null;
   return <VoiceMessagePlayer src={src} duration={message.voice_duration || 0} isMine={isMine} />;

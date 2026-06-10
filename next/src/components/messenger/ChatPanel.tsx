@@ -24,6 +24,7 @@ import {
   E2EVoiceAttachment,
 } from '@/components/messenger/E2EMessageAttachment';
 import {
+  effectiveMessageFileType,
   isImageAttachment,
   isVideoAttachment,
   maxBytesForFile,
@@ -102,12 +103,12 @@ function pendingStillVisible(
   if (!newFromMe.length) return true;
 
   if (pending.previewUrls.length > 0) {
-    const newImages = newFromMe.filter((m) => m.file_type === 'image');
+    const newImages = newFromMe.filter((m) => effectiveMessageFileType(m) === 'image');
     return newImages.length < pending.previewUrls.length;
   }
 
   if (pending.videoPreviewUrls.length > 0) {
-    const newVideos = newFromMe.filter((m) => m.file_type === 'video');
+    const newVideos = newFromMe.filter((m) => effectiveMessageFileType(m) === 'video');
     return newVideos.length < pending.videoPreviewUrls.length;
   }
 
@@ -581,12 +582,12 @@ export function ChatPanel({
     msg.message_type === 'user' && !msg.is_deleted;
 
   const messageIdsForSelection = (msg: FormattedMessage) => {
-    if (msg.album_group_id && msg.file_type === 'image') {
+    if (msg.album_group_id && effectiveMessageFileType(msg) === 'image') {
       return messages
         .filter(
           (m) =>
             m.album_group_id === msg.album_group_id &&
-            m.file_type === 'image' &&
+            effectiveMessageFileType(m) === 'image' &&
             canForwardMsg(m),
         )
         .map((m) => m.id);
@@ -769,7 +770,7 @@ export function ChatPanel({
     let index = 0;
     if (m.album_group_id) {
       const albumMsgs = messages.filter(
-        (x) => x.album_group_id === m.album_group_id && x.file_type === 'image',
+        (x) => x.album_group_id === m.album_group_id && effectiveMessageFileType(x) === 'image',
       );
       urls = (
         await Promise.all(
@@ -1053,13 +1054,14 @@ export function ChatPanel({
     mine: boolean,
     albumMessages?: FormattedMessage[],
   ) => {
+    const fileType = effectiveMessageFileType(m);
     const isSystem = m.message_type === 'system';
-    const voiceOnly = m.file_type === 'voice' && !m.content;
+    const voiceOnly = fileType === 'voice' && !m.content;
     const hasMedia =
       Boolean(albumMessages?.length) ||
       Boolean(
         m.file_path &&
-          (m.file_type === 'image' || m.file_type === 'video') &&
+          (fileType === 'image' || fileType === 'video') &&
           !albumMessages?.length,
       );
 
@@ -1096,7 +1098,7 @@ export function ChatPanel({
             )}
             {albumMessages && albumMessages.length > 1
               ? renderAlbumGrid(albumMessages)
-              : m.file_path && m.file_type === 'image' && (
+              : m.file_path && fileType === 'image' && (
                   <button
                     type="button"
                     className="msg-image-btn"
@@ -1111,7 +1113,7 @@ export function ChatPanel({
                     />
                   </button>
                 )}
-            {m.file_path && m.file_type === 'video' && (
+            {m.file_path && fileType === 'video' && (
               <div className="msg-video-wrap">
                 <E2EVideoAttachment
                   message={m}
@@ -1122,7 +1124,7 @@ export function ChatPanel({
                 />
               </div>
             )}
-            {m.file_path && m.file_type === 'voice' && (
+            {m.file_path && fileType === 'voice' && (
               <E2EVoiceAttachment
                 message={m}
                 userId={currentUserId}
@@ -1130,7 +1132,7 @@ export function ChatPanel({
                 isMine={mine}
               />
             )}
-            {m.file_path && m.file_type === 'document' && (
+            {m.file_path && fileType === 'document' && (
               <E2EDocumentAttachment
                 message={m}
                 userId={currentUserId}

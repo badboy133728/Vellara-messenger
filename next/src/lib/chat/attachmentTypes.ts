@@ -49,6 +49,43 @@ export function resolveFileType(mime: string, fileName: string): string {
   return 'document';
 }
 
+/** Тип вложения с учётом E2E-имени (если в БД ошибочно document для encrypted.e2e). */
+export function effectiveMessageFileType(msg: {
+  file_path?: string | null;
+  file_type?: string | null;
+  file_original_name?: string | null;
+  e2e_file_name?: string | null;
+  voice_duration?: number | null;
+}): string | null {
+  if (!msg.file_path) return msg.file_type ?? null;
+  if ((msg.voice_duration ?? 0) > 0) return 'voice';
+
+  const plainName = (msg.e2e_file_name ?? msg.file_original_name ?? '').trim();
+  if (plainName && !plainName.startsWith('e2e:v1:')) {
+    const fromName = resolveFileType('', plainName);
+    if (msg.file_type === 'document' || !msg.file_type) return fromName;
+  }
+
+  return msg.file_type ?? null;
+}
+
+export function mimeHintForMessageFile(msg: {
+  file_type?: string | null;
+  file_original_name?: string | null;
+  e2e_file_name?: string | null;
+}): string | undefined {
+  const type = effectiveMessageFileType({ ...msg, file_path: 'x' });
+  if (type === 'image') {
+    const name = msg.e2e_file_name ?? msg.file_original_name ?? '';
+    const ext = name.split('.').pop()?.toLowerCase();
+    if (ext && ext !== 'e2e') return contentTypeForExtension(ext);
+    return 'image/jpeg';
+  }
+  if (type === 'video') return 'video/mp4';
+  if (type === 'voice') return 'audio/ogg';
+  return undefined;
+}
+
 export function contentTypeForExtension(ext: string): string {
   switch (ext) {
     case 'png':

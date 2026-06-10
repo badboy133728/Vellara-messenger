@@ -1,5 +1,7 @@
 /** Метки дней в ленте чата: Сегодня, Вчера, день недели, дата. */
 
+import { effectiveMessageFileType } from '@/lib/chat/attachmentTypes';
+
 export function getMessageTimestamp(item: { created_at?: string; message?: { created_at?: string } }) {
   if (!item) return null;
   if (item.created_at) return item.created_at;
@@ -105,11 +107,11 @@ export function buildMessageFeed(
   const seenAlbums = new Set<string>();
 
   for (const m of messages) {
-    if (m.album_group_id && m.file_type === 'image') {
+    if (m.album_group_id && effectiveMessageFileType(m) === 'image') {
       if (seenAlbums.has(m.album_group_id)) continue;
       seenAlbums.add(m.album_group_id);
       const albumMessages = messages.filter(
-        (x) => x.album_group_id === m.album_group_id && x.file_type === 'image',
+        (x) => x.album_group_id === m.album_group_id && effectiveMessageFileType(x) === 'image',
       );
       feed.push({
         kind: 'message',

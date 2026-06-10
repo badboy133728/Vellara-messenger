@@ -7,7 +7,6 @@ import type {
   REALTIME_SUBSCRIBE_STATES,
 } from '@supabase/supabase-js';
 import { getRealtimeManager } from '@/lib/realtime/manager';
-import { realtimeV2Enabled } from '@/lib/realtime/flags';
 
 const PRESENCE_CHANNEL_LIMIT = 30;
 
@@ -21,7 +20,6 @@ export function usePresenceRealtime(
   const idsKey = [...new Set(userIds)].sort().slice(0, PRESENCE_CHANNEL_LIMIT).join(',');
 
   useEffect(() => {
-    if (!realtimeV2Enabled) return;
     const uniqueIds = idsKey ? idsKey.split(',') : [];
     if (uniqueIds.length === 0) return;
 

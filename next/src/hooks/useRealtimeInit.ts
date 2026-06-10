@@ -2,12 +2,11 @@
 
 import { useEffect } from 'react';
 import { getRealtimeManager } from '@/lib/realtime/manager';
-import { realtimeV2Enabled } from '@/lib/realtime/flags';
 
 /** Один soft-connect при входе; hard-reconnect только после offline. */
 export function useRealtimeInit(userId: string | undefined) {
   useEffect(() => {
-    if (!userId || !realtimeV2Enabled) return;
+    if (!userId) return;
     const manager = getRealtimeManager();
     let disposed = false;
 

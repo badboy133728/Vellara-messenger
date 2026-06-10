@@ -826,8 +826,16 @@ function MessengerAppInner({ user }: { user: Profile }) {
       }>(`/api/chat/${activeId}/messages?limit=40`)
         .then((data) => {
           if (activeIdRef.current !== activeId) return;
+          const freshMessages = data.messages ?? [];
+          const hasNewMessages = freshMessages.some(
+            (m) => !messagesRef.current.some((local) => local.id === m.id),
+          );
+          // Fallback when realtime transport drops: reload latest messages batch.
+          if (hasNewMessages) {
+            void loadMessagesRef.current(activeId, { silent: true, fromCache: true });
+          }
           setMembersRead(data.members_read ?? []);
-          const freshById = new Map((data.messages ?? []).map((m) => [m.id, m]));
+          const freshById = new Map(freshMessages.map((m) => [m.id, m]));
           setMessages((prev) => {
             const next = prev.map((m) => {
               const fresh = freshById.get(m.id);

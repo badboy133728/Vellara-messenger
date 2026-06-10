@@ -15,7 +15,6 @@ import {
 } from '@/lib/realtime/events';
 import { RealtimeDeduper } from '@/lib/realtime/dedup';
 import { getRealtimeManager } from '@/lib/realtime/manager';
-import { realtimeV2Enabled } from '@/lib/realtime/flags';
 
 export type RealtimeMeta = {
   event: RealtimeEventName;
@@ -259,7 +258,7 @@ export function useActiveConversationRealtime(activeId: number | null, handlers:
   handlersRef.current = handlers;
 
   useEffect(() => {
-    if (!activeId || !realtimeV2Enabled) return;
+    if (!activeId) return;
 
     const manager = getRealtimeManager();
     const supabase = manager.client;
@@ -309,7 +308,6 @@ export function useChatRealtime(conversationIdsKey: string, handlers: Pick<Handl
   handlersRef.current = handlers;
 
   useEffect(() => {
-    if (!realtimeV2Enabled) return;
     const conversationIds = conversationIdsKey
       ? conversationIdsKey.split(',').map((id) => Number(id))
       : [];
@@ -418,7 +416,7 @@ export function useUserRealtime(userId: string | undefined, handlers: UserRealti
   handlersRef.current = handlers;
 
   useEffect(() => {
-    if (!userId || !realtimeV2Enabled) return;
+    if (!userId) return;
     const manager = getRealtimeManager();
     const supabase = manager.client;
     manager.retainAuthLifecycle();

@@ -4,8 +4,10 @@ import { formatMessagesWithReplies } from '@/lib/chat/messageList';
 import { canManageGroup } from '@/lib/chat/permissions';
 import { broadcastToConversation } from '@/lib/realtime/broadcast';
 import { notifyConversationPush } from '@/lib/push/notify';
-import { maxBytesForFile } from '@/lib/chat/attachmentTypes';
-import { uploadMessageFile } from '@/lib/storage-server';
+import {
+  applyMessageAttachment,
+  getMessageAttachmentFromForm,
+} from '@/lib/chat/messageAttachment';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { MessageRow, Profile } from '@/lib/types';
 import { unhideConversationForRecipients } from '@/lib/chat/unhideMembers';
@@ -102,7 +104,7 @@ export async function POST(
 
   const formData = await request.formData();
   const content = (formData.get('content') as string | null) ?? '';
-  const file = formData.get('file') as File | null;
+  const attachment = getMessageAttachmentFromForm(formData);
   const voiceDuration = formData.get('voice_duration');
   const albumGroupId = formData.get('album_group_id') as string | null;
   const replyToRaw = formData.get('reply_to_id');
@@ -128,24 +130,28 @@ export async function POST(
     }
   }
 
-  if (file && file.size > 0) {
-    if (file.size > maxBytesForFile(file)) {
-      return Response.json({ message: 'Файл слишком большой' }, { status: 422 });
+  if (attachment) {
+    let fileType: string;
+    try {
+      ({ fileType } = await applyMessageAttachment(insert, attachment, user.id));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Не удалось загрузить файл';
+      return Response.json(
+        {
+          message:
+            msg.includes('Payload') || msg.includes('413')
+              ? 'Файл слишком большой для отправки'
+              : msg,
+        },
+        { status: 422 },
+      );
     }
 
-    const uploaded = await uploadMessageFile(user.id, file).catch((err: unknown) => {
-      const msg = err instanceof Error ? err.message : 'Не удалось загрузить файл';
-      throw new Error(msg.includes('Payload') || msg.includes('413') ? 'Файл слишком большой для отправки' : msg);
-    });
-    insert.file_path = uploaded.path;
-    insert.file_type = uploaded.fileType;
-    insert.file_original_name = uploaded.originalName;
-
-    if (albumGroupId && uploaded.fileType === 'image') {
+    if (albumGroupId && fileType === 'image') {
       insert.album_group_id = albumGroupId;
     }
 
-    if (uploaded.fileType === 'voice') {
+    if (fileType === 'voice') {
       const { data: conv } = await supabase
         .from('conversations')
         .select('type, allow_voice_messages')

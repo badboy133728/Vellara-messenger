@@ -3,8 +3,13 @@ import { formatMessage } from '@/lib/chat/formatters';
 import { formatMessagesWithReplies } from '@/lib/chat/messageList';
 import { getOrCreateSavedConversation } from '@/lib/chat/savedConversation';
 import { broadcastToConversation } from '@/lib/realtime/broadcast';
-import { maxBytesForFile } from '@/lib/chat/attachmentTypes';
-import { uploadMessageFile } from '@/lib/storage-server';
+import { applyMessageAttachment } from '@/lib/chat/messageAttachment';
+type UploadedPreparedFile = {
+  mode: 'uploaded';
+  path: string;
+  fileType: string;
+  originalName: string;
+};
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { MessageRow, Profile } from '@/lib/types';
 
@@ -116,41 +121,58 @@ export async function POST(request: Request) {
   const convId = await getOrCreateSavedConversation(supabase, user.id);
   const formData = await request.formData();
   const content = ((formData.get('content') as string | null) ?? '').trim();
-  const files = formData
+  const inlineFiles = formData
     .getAll('file')
     .filter((f): f is File => f instanceof File && f.size > 0);
+  const uploadedMetaRaw = formData.get('uploaded_files') as string | null;
+  let uploadedMeta: UploadedPreparedFile[] = [];
+  if (uploadedMetaRaw) {
+    try {
+      const parsed = JSON.parse(uploadedMetaRaw) as UploadedPreparedFile[];
+      uploadedMeta = parsed.filter(
+        (item) =>
+          item?.mode === 'uploaded' &&
+          typeof item.path === 'string' &&
+          typeof item.fileType === 'string',
+      );
+    } catch {
+      return Response.json({ message: 'Некорректные данные вложений' }, { status: 422 });
+    }
+  }
 
-  if (!content && !files.length) {
+  const attachmentCount = inlineFiles.length + uploadedMeta.length;
+  if (!content && !attachmentCount) {
     return Response.json({ message: 'Введите текст или прикрепите файл' }, { status: 422 });
   }
 
   const albumGroupId =
-    files.length > 1 &&
-    files.every(
+    attachmentCount > 1 &&
+    inlineFiles.every(
       (f) =>
         f.type.startsWith('image/') || /\.(jpe?g|png|gif|webp|heic|heif)$/i.test(f.name),
-    )
+    ) &&
+    uploadedMeta.every((item) => item.fileType === 'image')
       ? crypto.randomUUID()
       : null;
 
   const created: MessageRow[] = [];
 
-  const postOne = async (file: File | null, index: number) => {
+  const postOne = async (
+    attachment:
+      | { kind: 'file'; file: File }
+      | { kind: 'uploaded'; path: string; fileType: string; originalName: string }
+      | null,
+    index: number,
+  ) => {
     const insert: Record<string, unknown> = {
       conversation_id: convId,
       user_id: user.id,
       content: index === 0 ? content : '',
     };
 
-    if (file) {
-      if (file.size > maxBytesForFile(file)) {
-        throw new Error('Файл слишком большой');
-      }
-      const uploaded = await uploadMessageFile(user.id, file);
-      insert.file_path = uploaded.path;
-      insert.file_type = uploaded.fileType;
-      insert.file_original_name = uploaded.originalName;
-      if (albumGroupId && uploaded.fileType === 'image') {
+    if (attachment) {
+      const { fileType } = await applyMessageAttachment(insert, attachment, user.id);
+      if (albumGroupId && fileType === 'image') {
         insert.album_group_id = albumGroupId;
       }
     }
@@ -168,11 +190,20 @@ export async function POST(request: Request) {
   };
 
   try {
-    if (!files.length) {
+    if (!attachmentCount) {
       await postOne(null, 0);
     } else {
-      for (let i = 0; i < files.length; i++) {
-        await postOne(files[i]!, i);
+      const attachments = [
+        ...inlineFiles.map((file) => ({ kind: 'file' as const, file })),
+        ...uploadedMeta.map((item) => ({
+          kind: 'uploaded' as const,
+          path: item.path,
+          fileType: item.fileType,
+          originalName: item.originalName,
+        })),
+      ];
+      for (let i = 0; i < attachments.length; i++) {
+        await postOne(attachments[i]!, i);
       }
     }
   } catch (err) {

@@ -6,7 +6,10 @@ import { useAuth } from '@/hooks/useAuth';
 import { useChatRealtime, useActiveConversationRealtime, useUserRealtime } from '@/hooks/useChatRealtime';
 import { CallProvider, useCall } from '@/hooks/useCallManager';
 import { ContactAvatar } from '@/components/ContactAvatar';
-import { prepareChatImageForUpload } from '@/lib/chatImageUpload';
+import {
+  appendPreparedFileToForm,
+  prepareMessageFileForSend,
+} from '@/lib/chat/messageFileUpload';
 import type { SendMessageOptions } from '@/lib/chat/sendMessage';
 import { readCachedMessages, writeCachedMessages } from '@/lib/chat/messageCache';
 import type { ConversationListItem, FormattedMessage, Profile } from '@/lib/types';
@@ -820,10 +823,10 @@ function MessengerAppInner({ user }: { user: Profile }) {
 
     const created: FormattedMessage[] = [];
     for (let i = 0; i < files.length; i++) {
-      const uploadFile = await prepareChatImageForUpload(files[i]!);
+      const prepared = await prepareMessageFileForSend(user.id, files[i]!);
       const form = new FormData();
       if (i === 0 && text) form.append('content', text);
-      form.append('file', uploadFile);
+      appendPreparedFileToForm(form, prepared);
       if (albumGroupId) form.append('album_group_id', albumGroupId);
       if (replyToId && i === 0) form.append('reply_to_id', String(replyToId));
       const enriched = await postOne(form);

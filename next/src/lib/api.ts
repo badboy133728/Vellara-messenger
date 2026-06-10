@@ -42,7 +42,12 @@ export async function api<T = unknown>(
   }
 
   if (!res.ok) {
-    throw new Error((data as { message?: string }).message ?? `HTTP ${res.status}`);
+    const payload = data as { message?: string; error?: { message?: string; code?: string } };
+    const message =
+      payload.message ??
+      payload.error?.message ??
+      (res.status === 413 ? 'Файл слишком большой для отправки' : `HTTP ${res.status}`);
+    throw new Error(message);
   }
   return data as T;
 }

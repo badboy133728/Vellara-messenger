@@ -5,12 +5,13 @@ import { EmojiPicker } from '@/components/EmojiPicker';
 import { ImageLightbox } from '@/components/ImageLightbox';
 import { VellaraIcon } from '@/components/icons/VellaraIcon';
 import { api } from '@/lib/api';
+import { useAuth } from '@/hooks/useAuth';
 import {
   isImageAttachment,
   isVideoAttachment,
   maxBytesForFile,
 } from '@/lib/chat/attachmentTypes';
-import { prepareChatImageForUpload } from '@/lib/chatImageUpload';
+import { prepareMessageFileForSend, type PreparedMessageFile } from '@/lib/chat/messageFileUpload';
 import { publicStorageUrl } from '@/lib/storage';
 import type { FormattedMessage } from '@/lib/types';
 
@@ -41,6 +42,7 @@ export function FavoritesPanel({
   onForwardMessage?: (message: FormattedMessage) => void;
   isMobile?: boolean;
 }) {
+  const { user } = useAuth();
   const [items, setItems] = useState<SavedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -203,6 +205,7 @@ export function FavoritesPanel({
     e?.preventDefault();
     const content = text.trim();
     if (!content && !pendingAttachments.length) return;
+    if (!user) return;
 
     const files = pendingAttachments.map((a) => a.file);
     setSending(true);
@@ -211,11 +214,21 @@ export function FavoritesPanel({
     setShowEmojiPicker(false);
 
     try {
+      const preparedFiles = await Promise.all(
+        files.map((file) => prepareMessageFileForSend(user.id, file)),
+      );
+      const inlineFiles = preparedFiles.filter((item) => item.mode === 'inline');
+      const uploadedFiles = preparedFiles.filter(
+        (item): item is Extract<PreparedMessageFile, { mode: 'uploaded' }> => item.mode === 'uploaded',
+      );
+
       const form = new FormData();
       if (content) form.append('content', content);
-      for (const file of files) {
-        const uploadFile = await prepareChatImageForUpload(file);
-        form.append('file', uploadFile);
+      for (const item of inlineFiles) {
+        form.append('file', item.file);
+      }
+      if (uploadedFiles.length) {
+        form.append('uploaded_files', JSON.stringify(uploadedFiles));
       }
 
       const res = await api<{ messages: FormattedMessage[] }>('/api/chat/messages/saved', {

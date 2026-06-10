@@ -105,7 +105,6 @@ export async function copyMessageFile(
   sourcePath: string,
   userId: string,
   originalName: string,
-  _fileType: string,
 ): Promise<string> {
   const slash = sourcePath.indexOf('/');
   if (slash === -1) {

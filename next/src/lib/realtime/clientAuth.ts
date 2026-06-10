@@ -5,6 +5,16 @@ type SessionPayload = {
   refresh_token?: string | null;
 };
 
+function realtimeSocket(supabase: SupabaseClient): WebSocket | null {
+  const conn = (supabase.realtime as unknown as { conn?: WebSocket | null }).conn;
+  return conn ?? null;
+}
+
+function isRealtimeConnecting(supabase: SupabaseClient): boolean {
+  const socket = realtimeSocket(supabase);
+  return socket?.readyState === WebSocket.CONNECTING;
+}
+
 /** Sync Realtime JWT from server session (httpOnly Supabase cookies). */
 export async function syncSupabaseRealtimeAuth(supabase: SupabaseClient): Promise<boolean> {
   try {
@@ -34,11 +44,25 @@ export async function syncSupabaseRealtimeAuth(supabase: SupabaseClient): Promis
 export async function reconnectSupabaseRealtime(supabase: SupabaseClient): Promise<boolean> {
   const ok = await syncSupabaseRealtimeAuth(supabase);
   if (!ok) return false;
+
   try {
-    supabase.realtime.disconnect();
-    supabase.realtime.connect();
+    const rt = supabase.realtime;
+
+    if (isRealtimeConnecting(supabase)) {
+      return true;
+    }
+
+    if (rt.isConnected()) {
+      rt.disconnect();
+      await new Promise((resolve) => window.setTimeout(resolve, 32));
+    }
+
+    if (!rt.isConnected() && !isRealtimeConnecting(supabase)) {
+      rt.connect();
+    }
   } catch {
     /* ignore */
   }
+
   return true;
 }

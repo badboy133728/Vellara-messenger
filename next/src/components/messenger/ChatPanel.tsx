@@ -925,7 +925,7 @@ export function ChatPanel({
     );
   };
 
-  const renderAlbumGrid = (images: FormattedMessage[], anchor: FormattedMessage) => {
+  const renderAlbumGrid = (images: FormattedMessage[]) => {
     const count = images.length;
     const gridClass =
       count <= 1
@@ -1040,7 +1040,7 @@ export function ChatPanel({
               </div>
             )}
             {albumMessages && albumMessages.length > 1
-              ? renderAlbumGrid(albumMessages, m)
+              ? renderAlbumGrid(albumMessages)
               : m.file_path && m.file_type === 'image' && storageDisplayUrl(m.file_path) && (
                   <button
                     type="button"

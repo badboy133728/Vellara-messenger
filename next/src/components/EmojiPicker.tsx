@@ -63,6 +63,7 @@ export function EmojiPicker({
             type="button"
             className="emoji-item"
             role="option"
+            aria-selected={false}
             aria-label={emoji}
             onMouseDown={(e) => e.preventDefault()}
             onTouchStart={(e) => e.preventDefault()}

@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "clean": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\"",
+    "generate-icons": "node scripts/generate-icons.mjs",
+    "prebuild": "node scripts/generate-icons.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",

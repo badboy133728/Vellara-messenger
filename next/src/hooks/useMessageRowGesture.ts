@@ -1,3 +1,4 @@
+import { preventTouchDefault } from '@/lib/touch';
 import { useCallback, useRef, useState } from 'react';
 import type { MouseEvent, TouchEvent } from 'react';
 
@@ -157,7 +158,7 @@ export function useMessageRowGesture({
       if (!active.direction) return;
 
       event?.stopPropagation();
-      event?.preventDefault();
+      if (event) preventTouchDefault(event);
 
       if (active.direction === 'ltr') {
         const magnitude = Math.max(0, dx);

@@ -182,7 +182,7 @@ export function useActiveConversationRealtime(activeId: number | null, handlers:
       }
     };
 
-    void bind(true);
+    void bind(false);
 
     const onVisible = () => {
       if (document.visibilityState !== 'visible' || disposed) return;
@@ -198,7 +198,7 @@ export function useActiveConversationRealtime(activeId: number | null, handlers:
       disposed = true;
       document.removeEventListener('visibilitychange', onVisible);
       window.clearInterval(refreshAuth);
-      if (channel) supabase.removeChannel(channel);
+      if (channel) void supabase.removeChannel(channel);
     };
   }, [activeId]);
 }
@@ -263,7 +263,7 @@ export function useChatRealtime(conversationIdsKey: string, handlers: Pick<Handl
       }
     };
 
-    void bindAll(true);
+    void bindAll(false);
 
     const onVisible = () => {
       if (document.visibilityState !== 'visible' || disposed) return;
@@ -279,7 +279,7 @@ export function useChatRealtime(conversationIdsKey: string, handlers: Pick<Handl
       disposed = true;
       document.removeEventListener('visibilitychange', onVisible);
       window.clearInterval(refreshAuth);
-      channels.forEach((ch) => supabase.removeChannel(ch));
+      channels.forEach((ch) => void supabase.removeChannel(ch));
     };
   }, [conversationIdsKey]);
 }
@@ -365,7 +365,7 @@ export function useUserRealtime(userId: string | undefined, handlers: UserRealti
     return () => {
       disposed = true;
       document.removeEventListener('visibilitychange', onVisible);
-      if (channel) supabase.removeChannel(channel);
+      if (channel) void supabase.removeChannel(channel);
     };
   }, [userId]);
 }

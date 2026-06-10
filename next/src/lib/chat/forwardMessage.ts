@@ -142,7 +142,6 @@ export async function forwardMessageToConversations(
           src.file_path,
           user.id,
           src.file_original_name ?? 'file',
-          src.file_type ?? 'document',
         );
         insert.file_type = src.file_type;
         insert.file_original_name = src.file_original_name;

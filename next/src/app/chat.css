@@ -285,6 +285,7 @@
 .chat-area--dragging,
 .chat-area--closing {
   will-change: transform, opacity;
+  touch-action: none;
   box-shadow: calc(-8px - 10px * var(--chat-swipe-progress, 0)) 0
     calc(28px + 20px * var(--chat-swipe-progress, 0))
     rgba(0, 0, 0, calc(0.28 + 0.22 * var(--chat-swipe-progress, 0)));
@@ -1766,6 +1767,7 @@
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
+    touch-action: pan-y;
   }
 
   .chat-layout.chat-open .chat-composer-dock,

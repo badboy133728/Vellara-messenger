@@ -1,5 +1,6 @@
 'use client';
 
+import { preventTouchDefault } from '@/lib/touch';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, TransitionEvent, TouchEvent } from 'react';
 
@@ -305,7 +306,7 @@ export function useSwipeBack({
           setIsDragging(true);
         }
 
-        event.preventDefault();
+        preventTouchDefault(event);
         setDragOffset(dx);
       },
       onTouchEnd: () => {

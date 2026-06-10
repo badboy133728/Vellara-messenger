@@ -1,4 +1,8 @@
-import { getConversationKey, type ConversationKeyContext } from '@/lib/crypto/conversationKey';
+import {
+  clearConversationKeyCacheForUser,
+  getConversationKey,
+  type ConversationKeyContext,
+} from '@/lib/crypto/conversationKey';
 import {
   decryptBlob,
   decryptFileName,
@@ -61,26 +65,10 @@ export async function encryptOutgoingBlob(
   return encryptBlob(key, blob);
 }
 
-export async function decryptMessagesForConversation(
-  userId: string,
-  ctx: ConversationKeyContext,
+async function decryptMessagesWithKey(
+  key: CryptoKey,
   messages: FormattedMessage[],
 ): Promise<E2EDecryptedMessage[]> {
-  if (!messages.length) return [];
-
-  let key: CryptoKey | null = null;
-  let keyError = '';
-  try {
-    key = await getConversationKey(userId, ctx);
-  } catch (err) {
-    keyError = err instanceof Error ? err.message : 'Не удалось получить ключ';
-    return messages.map((m) => ({
-      ...m,
-      e2e_failed: isE2EContent(m.content) || isE2EFileName(m.file_original_name),
-      e2e_plaintext: isE2EContent(m.content) ? `🔒 ${keyError}` : m.content,
-    }));
-  }
-
   const out: E2EDecryptedMessage[] = [];
   for (const m of messages) {
     const copy: E2EDecryptedMessage = { ...m };
@@ -107,6 +95,40 @@ export async function decryptMessagesForConversation(
       copy.e2e_file_name = m.file_original_name ?? undefined;
     }
     out.push(copy);
+  }
+  return out;
+}
+
+export async function decryptMessagesForConversation(
+  userId: string,
+  ctx: ConversationKeyContext,
+  messages: FormattedMessage[],
+): Promise<E2EDecryptedMessage[]> {
+  if (!messages.length) return [];
+
+  let key: CryptoKey | null = null;
+  let keyError = '';
+  try {
+    key = await getConversationKey(userId, ctx);
+  } catch (err) {
+    keyError = err instanceof Error ? err.message : 'Не удалось получить ключ';
+    return messages.map((m) => ({
+      ...m,
+      e2e_failed: isE2EContent(m.content) || isE2EFileName(m.file_original_name),
+      e2e_plaintext: isE2EContent(m.content) ? `🔒 ${keyError}` : m.content,
+    }));
+  }
+
+  let out = await decryptMessagesWithKey(key, messages);
+  const failed = out.some((m) => m.e2e_failed);
+  if (failed) {
+    clearConversationKeyCacheForUser(userId);
+    try {
+      const retryKey = await getConversationKey(userId, ctx);
+      out = await decryptMessagesWithKey(retryKey, messages);
+    } catch {
+      /* keep first pass result */
+    }
   }
   return out;
 }

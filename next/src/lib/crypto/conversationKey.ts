@@ -10,8 +10,20 @@ import {
 
 const keyCache = new Map<string, CryptoKey>();
 
-function cacheKey(conversationId: number, userId: string) {
-  return `${userId}:${conversationId}`;
+function cacheKey(conversationId: number, userId: string, partnerPublicB64?: string | null) {
+  const partnerPart = partnerPublicB64 ? `:${partnerPublicB64}` : '';
+  return `${userId}:${conversationId}${partnerPart}`;
+}
+
+export function clearConversationKeyCache() {
+  keyCache.clear();
+}
+
+export function clearConversationKeyCacheForUser(userId: string) {
+  const prefix = `${userId}:`;
+  for (const key of keyCache.keys()) {
+    if (key.startsWith(prefix)) keyCache.delete(key);
+  }
 }
 
 export type ConversationKeyContext = {
@@ -107,32 +119,41 @@ export async function getConversationKey(
   userId: string,
   ctx: ConversationKeyContext,
 ): Promise<CryptoKey> {
-  const ck = cacheKey(ctx.conversationId, userId);
-  const cached = keyCache.get(ck);
-  if (cached) return cached;
-
   const { privateKey } = await ensureIdentityKeys(userId);
 
   let key: CryptoKey;
   if (ctx.conversationType === 'saved') {
+    const ck = cacheKey(ctx.conversationId, userId, 'saved');
+    const cached = keyCache.get(ck);
+    if (cached) return cached;
     key = await deriveSavedChatKey(userId, ctx.conversationId, privateKey);
-  } else if (ctx.conversationType === 'group') {
+    keyCache.set(ck, key);
+    return key;
+  }
+
+  if (ctx.conversationType === 'group') {
+    const ck = cacheKey(ctx.conversationId, userId, 'group');
+    const cached = keyCache.get(ck);
+    if (cached) return cached;
     key = await ensureGroupConversationKey(
       ctx.conversationId,
       userId,
       ctx.memberUserIds,
       privateKey,
     );
-  } else {
-    const partnerId = resolvePartnerId(ctx, userId);
-    const partnerPub = await fetchUserPublicKey(partnerId);
-    key = await derivePrivateChatKey(ctx.conversationId, privateKey, partnerPub);
+    keyCache.set(ck, key);
+    return key;
   }
 
-  keyCache.set(ck, key);
-  return key;
-}
+  {
+    const partnerId = resolvePartnerId(ctx, userId);
+    const partnerPub = await fetchUserPublicKey(partnerId);
+    const ck = cacheKey(ctx.conversationId, userId, partnerPub);
+    const cached = keyCache.get(ck);
+    if (cached) return cached;
 
-export function clearConversationKeyCache() {
-  keyCache.clear();
+    key = await derivePrivateChatKey(ctx.conversationId, privateKey, partnerPub);
+    keyCache.set(ck, key);
+    return key;
+  }
 }

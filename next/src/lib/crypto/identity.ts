@@ -1,4 +1,5 @@
 import { api } from '@/lib/api';
+import { clearConversationKeyCacheForUser } from '@/lib/crypto/conversationKey';
 import { createKeyBackup, restoreKeyBackup } from '@/lib/crypto/keyBackup';
 import {
   exportPrivateKeyB64,
@@ -15,6 +16,8 @@ type IdentityRecord = {
   userId: string;
   privateKeyB64: string;
   publicKeyB64: string;
+  /** Локальный ключ ранее совпадал с сервером — можно восстановить сервер при рассинхроне. */
+  verifiedOnServer?: boolean;
 };
 
 type ServerE2EState = {
@@ -109,6 +112,10 @@ function cacheKeys(userId: string, publicKeyB64: string, privateKey: CryptoKey) 
   cachedPrivateKey = privateKey;
 }
 
+function markIdentitySynced(record: IdentityRecord): IdentityRecord {
+  return { ...record, verifiedOnServer: true };
+}
+
 export async function ensureIdentityKeys(
   userId: string,
   options?: { recoveryPassphrase?: string },
@@ -122,16 +129,28 @@ export async function ensureIdentityKeys(
 
   if (record) {
     if (server.public_key && server.public_key !== record.publicKeyB64) {
+      clearConversationKeyCacheForUser(userId);
       if (server.has_backup && server.key_backup) {
         await deleteIdentity(userId);
         record = null;
-      } else {
+      } else if (record.verifiedOnServer) {
         await uploadPublicKey(record.publicKeyB64, true);
+        record = markIdentitySynced(record);
+        await writeIdentity(record);
+      } else {
+        await deleteIdentity(userId);
+        clearIdentityCache();
+        throw new E2ENoBackupError();
       }
     } else if (!server.public_key) {
       await uploadPublicKey(record.publicKeyB64);
-    } else {
-      await uploadPublicKey(record.publicKeyB64).catch(() => {});
+      record = markIdentitySynced(record);
+      await writeIdentity(record);
+    } else if (server.public_key === record.publicKeyB64) {
+      if (!record.verifiedOnServer) {
+        record = markIdentitySynced(record);
+        await writeIdentity(record);
+      }
     }
   }
 
@@ -167,7 +186,9 @@ export async function ensureIdentityKeys(
       await uploadPublicKey(record.publicKeyB64, true);
     }
 
+    record = markIdentitySynced(record);
     await writeIdentity(record);
+    clearConversationKeyCacheForUser(userId);
     const privateKey = await importPrivateKeyB64(record.privateKeyB64);
     cacheKeys(userId, record.publicKeyB64, privateKey);
     return { publicKeyB64: record.publicKeyB64, privateKey };
@@ -176,7 +197,7 @@ export async function ensureIdentityKeys(
   const pair = await generateX25519KeyPair();
   const publicKeyB64 = await exportPublicKeyB64(pair.publicKey);
   const privateKeyB64 = await exportPrivateKeyB64(pair.privateKey);
-  record = { userId, privateKeyB64, publicKeyB64 };
+  record = markIdentitySynced({ userId, privateKeyB64, publicKeyB64 });
   await writeIdentity(record);
   await uploadPublicKey(publicKeyB64);
 
@@ -201,6 +222,7 @@ export async function setupKeyBackup(userId: string, passphrase: string): Promis
 }
 
 export function clearIdentityCache() {
+  if (cachedUserId) clearConversationKeyCacheForUser(cachedUserId);
   cachedPrivateKey = null;
   cachedPublicB64 = null;
   cachedUserId = null;

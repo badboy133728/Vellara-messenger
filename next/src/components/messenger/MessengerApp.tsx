@@ -20,6 +20,7 @@ import {
 import { buildForwardReencryptUpdates } from '@/lib/e2e/reencryptForward';
 import { useE2EInit } from '@/hooks/useE2EInit';
 import { E2ERecoveryModal } from '@/components/messenger/E2ERecoveryModal';
+import { clearConversationKeyCacheForUser } from '@/lib/crypto/conversationKey';
 import { ensureIdentityKeys } from '@/lib/crypto/identity';
 import type { SendMessageOptions } from '@/lib/chat/sendMessage';
 import { readCachedMessages, writeCachedMessages } from '@/lib/chat/messageCache';
@@ -515,8 +516,16 @@ function MessengerAppInner({ user }: { user: Profile }) {
         null;
       const ctx = getE2EContext(convId, partnerHint);
       if (!ctx) return list;
-      await ensureIdentityKeys(user.id).catch(() => {});
-      return decryptMessagesForConversation(user.id, ctx, list);
+      await ensureIdentityKeys(user.id);
+      let decrypted = await decryptMessagesForConversation(user.id, ctx, list);
+      const needsRetry = decrypted.some(
+        (m) => m.e2e_failed && (m.content?.startsWith('e2e:v1:') || m.e2e_plaintext?.startsWith('🔒')),
+      );
+      if (needsRetry) {
+        clearConversationKeyCacheForUser(user.id);
+        decrypted = await decryptMessagesForConversation(user.id, ctx, list);
+      }
+      return decrypted;
     },
     [getE2EContext, user.id],
   );
@@ -887,8 +896,15 @@ function MessengerAppInner({ user }: { user: Profile }) {
     const replyToId = options?.replyToId;
     const convId = activeId;
     await ensureIdentityKeys(user.id);
-    const partnerId = activeConv?.other_user?.id ?? null;
+    clearConversationKeyCacheForUser(user.id);
+    const partnerId =
+      activeConv?.other_user?.id ??
+      conversationsRef.current.find((c) => c.id === convId)?.other_user?.id ??
+      null;
     const e2eCtx = getE2EContext(convId, partnerId);
+    if (text && activeConv?.type !== 'group' && !e2eCtx) {
+      throw new Error('Не удалось определить собеседника для шифрования. Обновите страницу.');
+    }
     const e2eFiles = e2eCtx ? buildE2EFileTransform(user.id, e2eCtx) : undefined;
 
     const postOne = async (form: FormData, plainText?: string, plainFileName?: string) => {

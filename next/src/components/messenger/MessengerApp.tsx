@@ -17,6 +17,7 @@ import {
   decryptMessagesForConversation,
   encryptOutgoingText,
 } from '@/lib/e2e/messageCrypto';
+import { buildForwardReencryptUpdates } from '@/lib/e2e/reencryptForward';
 import { useE2EInit } from '@/hooks/useE2EInit';
 import { ensureIdentityKeys } from '@/lib/crypto/identity';
 import type { SendMessageOptions } from '@/lib/chat/sendMessage';
@@ -480,6 +481,27 @@ function MessengerAppInner({ user }: { user: Profile }) {
       return buildE2EContextFromConversation(convId, convType, memberIds, user.id, partnerId);
     },
     [user.id],
+  );
+
+  const resolveE2EContextForConv = useCallback(
+    async (convId: number): Promise<ConversationKeyContext | null> => {
+      const conv = conversationsRef.current.find((c) => c.id === convId);
+      const convType = conv?.type ?? 'private';
+      if (convType === 'group') {
+        try {
+          const data = await api<{ members: Array<{ id: string }> }>(
+            `/api/chat/groups/${convId}`,
+          );
+          const memberIds = (data.members ?? []).map((m) => m.id);
+          if (!memberIds.length) return null;
+          return buildE2EContextFromConversation(convId, convType, memberIds, user.id, null);
+        } catch {
+          return null;
+        }
+      }
+      return getE2EContext(convId);
+    },
+    [getE2EContext, user.id],
   );
 
   const decryptConvMessages = useCallback(
@@ -1027,23 +1049,55 @@ function MessengerAppInner({ user }: { user: Profile }) {
   );
 
   const forwardMessagesToChats = async (
-    messageIds: number[],
+    sources: FormattedMessage[],
     conversationIds: number[],
     caption: string,
   ) => {
+    await ensureIdentityKeys(user.id).catch(() => {});
+
+    const sourceConvId = sources[0]?.conversation_id ?? activeIdRef.current;
+    const sourcePartnerHint =
+      sources.find((m) => m.user_id !== user.id)?.user_id ??
+      sources.find((m) => m.sender?.id && m.sender.id !== user.id)?.sender?.id ??
+      null;
+    const sourceCtx = sourceConvId ? getE2EContext(sourceConvId, sourcePartnerHint) : null;
+
     const result = await api<{ messages: FormattedMessage[] }>(
       '/api/chat/messages/forward',
       {
         method: 'POST',
         body: JSON.stringify({
-          message_ids: messageIds,
+          message_ids: sources.map((m) => m.id),
           conversation_ids: conversationIds,
           caption,
         }),
       },
     );
 
-    const forwarded = result.messages ?? [];
+    let forwarded = result.messages ?? [];
+
+    if (sourceCtx && forwarded.length) {
+      const updates = await buildForwardReencryptUpdates(
+        user.id,
+        sources,
+        sourceCtx,
+        forwarded,
+        caption,
+        resolveE2EContextForConv,
+      );
+      if (updates.length) {
+        const finalized = await api<{ messages: FormattedMessage[] }>(
+          '/api/chat/messages/forward/finalize',
+          {
+            method: 'POST',
+            body: JSON.stringify({ updates }),
+          },
+        );
+        const byId = new Map((finalized.messages ?? []).map((m) => [m.id, m]));
+        forwarded = forwarded.map((m) => byId.get(m.id) ?? m);
+      }
+    }
+
     const convId = activeIdRef.current;
 
     const lastByConv = new Map<number, FormattedMessage>();
@@ -1065,22 +1119,23 @@ function MessengerAppInner({ user }: { user: Profile }) {
     if (convId) {
       const forActive = forwarded.filter((m) => m.conversation_id === convId);
       if (forActive.length) {
+        const enriched = forActive.map((msg) =>
+          enrichMessageReply(enrichMessageSender(msg, groupMembersRef.current, user), []),
+        );
+        const decrypted = await decryptConvMessages(convId, enriched);
         setMessages((prev) => {
           let next = prev;
-          for (const msg of forActive) {
-            const enriched = enrichMessageReply(
-              enrichMessageSender(msg, groupMembersRef.current, user),
-              next,
-            );
-            if (next.some((m) => m.id === enriched.id)) continue;
-            next = applyGroupRead([...next, enriched], membersRead, convId);
+          for (const msg of decrypted) {
+            const withReply = enrichMessageReply(msg, next);
+            if (next.some((m) => m.id === withReply.id)) continue;
+            next = applyGroupRead([...next, withReply], membersRead, convId);
           }
           return next;
         });
       }
     }
 
-    const msgCount = messageIds.length;
+    const msgCount = sources.length;
     const chatCount = conversationIds.length;
     const msgWord =
       msgCount === 1 ? 'сообщение' : msgCount < 5 ? 'сообщения' : 'сообщений';
@@ -1410,11 +1465,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
           excludeConversationId={forwardPayload.excludeConversationId}
           onClose={() => setForwardPayload(null)}
           onForward={(ids, caption) =>
-            forwardMessagesToChats(
-              forwardPayload.messages.map((m) => m.id),
-              ids,
-              caption,
-            )
+            forwardMessagesToChats(forwardPayload.messages, ids, caption)
           }
         />
       )}

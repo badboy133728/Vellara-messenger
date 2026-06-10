@@ -1,5 +1,6 @@
 import { requireAuth } from '@/lib/auth';
 import { ensureMember } from '@/lib/chat/conversations';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export async function GET(
   _request: Request,
@@ -69,7 +70,8 @@ export async function POST(
       updated_at: new Date().toISOString(),
     }));
 
-  const { error } = await supabase.from('conversation_key_envelopes').upsert(rows, {
+  const admin = createAdminClient();
+  const { error } = await admin.from('conversation_key_envelopes').upsert(rows, {
     onConflict: 'conversation_id,user_id',
   });
 

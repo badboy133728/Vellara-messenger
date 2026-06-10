@@ -37,5 +37,10 @@ export async function prepareRealtime(
     }
     return ok;
   }
-  return ensureRealtimeBoot(supabase);
+  const ok = await ensureRealtimeBoot(supabase);
+  if (!ok) {
+    // Avoid sticky false promise: next retry should attempt a fresh connect.
+    resetRealtimeBoot();
+  }
+  return ok;
 }

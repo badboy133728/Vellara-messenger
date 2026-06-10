@@ -1,7 +1,11 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import type { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js';
+import type {
+  RealtimeChannel,
+  RealtimePostgresChangesPayload,
+  REALTIME_SUBSCRIBE_STATES,
+} from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/client';
 import { ensureRealtimeAuth, prepareRealtime } from '@/lib/realtime/ready';
 
@@ -25,14 +29,14 @@ export function usePresenceRealtime(
     const channels: RealtimeChannel[] = [];
     let binding = false;
 
-    const bindAll = async () => {
+    const bindAll = async (hardReconnect = false) => {
       if (disposed || binding) return;
       binding = true;
       try {
-        const authOk = await prepareRealtime(supabase, false);
+        const authOk = await prepareRealtime(supabase, hardReconnect);
         if (!authOk) {
           window.setTimeout(() => {
-            if (!disposed) void bindAll();
+            if (!disposed) void bindAll(true);
           }, 1500);
           return;
         }
@@ -54,7 +58,13 @@ export function usePresenceRealtime(
                   handlerRef.current(row.id, row.last_seen_at ?? null);
                 },
               )
-              .subscribe(),
+              .subscribe((status: `${REALTIME_SUBSCRIBE_STATES}`) => {
+                if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                  window.setTimeout(() => {
+                    if (!disposed) void bindAll(true);
+                  }, 1500);
+                }
+              }),
           );
         });
       } finally {
@@ -62,17 +72,21 @@ export function usePresenceRealtime(
       }
     };
 
-    void bindAll();
+    void bindAll(false);
 
     const onVisible = () => {
       if (document.visibilityState !== 'visible' || disposed) return;
       void ensureRealtimeAuth(supabase);
     };
     document.addEventListener('visibilitychange', onVisible);
+    const refreshAuth = window.setInterval(() => {
+      void ensureRealtimeAuth(supabase);
+    }, 3 * 60 * 1000);
 
     return () => {
       disposed = true;
       document.removeEventListener('visibilitychange', onVisible);
+      window.clearInterval(refreshAuth);
       channels.forEach((ch) => supabase.removeChannel(ch));
     };
   }, [idsKey]);

@@ -190,7 +190,7 @@ export function useActiveConversationRealtime(activeId: number | null, handlers:
           channel = null;
         }
         channel = subscribeConversation(supabase, activeId, handlersRef, () => {
-          if (!disposed) void bind(false);
+          if (!disposed) void bind(true);
         });
       } finally {
         binding = false;
@@ -275,7 +275,7 @@ export function useChatRealtime(conversationIdsKey: string, handlers: Pick<Handl
             .subscribe((status: `${REALTIME_SUBSCRIBE_STATES}`) => {
               if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
                 window.setTimeout(() => {
-                  if (!disposed) void bindAll(false);
+                  if (!disposed) void bindAll(true);
                 }, 1500);
               }
             });
@@ -330,14 +330,14 @@ export function useUserRealtime(userId: string | undefined, handlers: UserRealti
     let channel: RealtimeChannel | null = null;
     let binding = false;
 
-    const bind = async () => {
+    const bind = async (hardReconnect = false) => {
       if (disposed || binding) return;
       binding = true;
       try {
-        const authOk = await prepareRealtime(supabase, false);
+        const authOk = await prepareRealtime(supabase, hardReconnect);
         if (!authOk) {
           window.setTimeout(() => {
-            if (!disposed) void bind();
+            if (!disposed) void bind(true);
           }, 1500);
           return;
         }
@@ -424,7 +424,7 @@ export function useUserRealtime(userId: string | undefined, handlers: UserRealti
           .subscribe((status: `${REALTIME_SUBSCRIBE_STATES}`) => {
             if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
               window.setTimeout(() => {
-                if (!disposed) void bind();
+                if (!disposed) void bind(true);
               }, 1500);
             }
           });
@@ -433,7 +433,7 @@ export function useUserRealtime(userId: string | undefined, handlers: UserRealti
       }
     };
 
-    void bind();
+    void bind(false);
 
     const onVisible = () => {
       if (document.visibilityState !== 'visible' || disposed) return;

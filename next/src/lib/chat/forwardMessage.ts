@@ -5,6 +5,7 @@ import { formatMessagesWithReplies } from '@/lib/chat/messageList';
 import { canManageGroup } from '@/lib/chat/permissions';
 import { broadcastToConversation } from '@/lib/realtime/broadcast';
 import { notifyConversationPush } from '@/lib/push/notify';
+import { isE2EContent } from '@/lib/crypto/message';
 import { copyMessageFile } from '@/lib/storage-server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { FormattedMessage, MessageRow, Profile } from '@/lib/types';
@@ -123,15 +124,22 @@ export async function forwardMessageToConversations(
 
     for (let i = 0; i < sources.length; i++) {
       const src = sources[i]!;
+      let messageContent = src.content ?? '';
+      if (i === 0 && trimmedCaption) {
+        if (messageContent && isE2EContent(messageContent)) {
+          // Подпись добавится на клиенте при перешифровке для целевого чата.
+          messageContent = trimmedCaption;
+        } else {
+          messageContent = messageContent
+            ? `${trimmedCaption}\n\n${messageContent}`
+            : trimmedCaption;
+        }
+      }
+
       const insert: Record<string, unknown> = {
         conversation_id: targetConvId,
         user_id: user.id,
-        content:
-          i === 0 && trimmedCaption
-            ? src.content
-              ? `${trimmedCaption}\n\n${src.content}`
-              : trimmedCaption
-            : src.content ?? '',
+        content: messageContent,
         forwarded_from_id: src.id,
         forwarded_from_conversation_id: src.conversation_id,
         forwarded_from_sender_name: forwardedFromSenderName,

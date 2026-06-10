@@ -501,7 +501,27 @@ function MessengerAppInner({ user }: { user: Profile }) {
           return null;
         }
       }
-      return getE2EContext(convId);
+
+      const direct = getE2EContext(convId);
+      if (direct) return direct;
+
+      try {
+        const data = await api<{ messages: FormattedMessage[] }>(
+          `/api/chat/${convId}/messages?limit=5`,
+        );
+        const partnerId =
+          data.messages?.find((m) => m.user_id !== user.id)?.user_id ?? null;
+        if (!partnerId) return null;
+        return buildE2EContextFromConversation(
+          convId,
+          'private',
+          [user.id, partnerId],
+          user.id,
+          partnerId,
+        );
+      } catch {
+        return null;
+      }
     },
     [getE2EContext, user.id],
   );
@@ -1077,6 +1097,14 @@ function MessengerAppInner({ user }: { user: Profile }) {
       sources.find((m) => m.user_id !== user.id)?.user_id ??
       sources.find((m) => m.sender?.id && m.sender.id !== user.id)?.sender?.id ??
       null;
+
+    if (sourceConvId) {
+      const srcConv = conversationsRef.current.find((c) => c.id === sourceConvId);
+      if (srcConv?.type === 'group') {
+        await syncGroupMembers(sourceConvId);
+      }
+    }
+
     const sourceCtx = sourceConvId ? getE2EContext(sourceConvId, sourcePartnerHint) : null;
 
     const result = await api<{ messages: FormattedMessage[] }>(
@@ -1093,7 +1121,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
 
     let forwarded = result.messages ?? [];
 
-    if (sourceCtx && forwarded.length) {
+    if (forwarded.length) {
       const updates = await buildForwardReencryptUpdates(
         user.id,
         sources,

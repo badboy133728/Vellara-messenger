@@ -4,6 +4,7 @@ import {
   type ConversationKeyContext,
 } from '@/lib/crypto/conversationKey';
 import {
+  containsE2EContent,
   decryptBlob,
   decryptFileName,
   decryptText,
@@ -12,6 +13,7 @@ import {
   encryptText,
   isE2EContent,
   isE2EFileName,
+  stripEmbeddedE2EContent,
 } from '@/lib/crypto/message';
 import { storageProxyUrl } from '@/lib/storage';
 import type { FormattedMessage } from '@/lib/types';
@@ -75,6 +77,10 @@ async function decryptMessagesWithKey(
     try {
       if (isE2EContent(m.content)) {
         copy.e2e_plaintext = await decryptText(key, m.content);
+      } else if (containsE2EContent(m.content)) {
+        const plainPart = stripEmbeddedE2EContent(m.content);
+        copy.e2e_plaintext = plainPart || '🔒 Не удалось расшифровать';
+        copy.e2e_failed = !plainPart;
       } else {
         copy.e2e_plaintext = m.content;
       }
@@ -169,7 +175,9 @@ export function formatMessagePreviewText(msg: PreviewMessage, maxLen = 120): str
   }
   const text = displayMessageContent(msg as FormattedMessage).trim();
   if (!text) return 'Сообщение';
-  if (isE2EContent(msg.content) && !msg.e2e_plaintext) return '🔒 Сообщение';
+  if ((isE2EContent(msg.content) || containsE2EContent(msg.content)) && !msg.e2e_plaintext) {
+    return '🔒 Сообщение';
+  }
   return text.length > maxLen ? `${text.slice(0, maxLen)}…` : text;
 }
 

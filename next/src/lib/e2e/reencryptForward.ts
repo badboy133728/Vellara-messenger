@@ -3,6 +3,7 @@ import { mimeHintForMessageFile } from '@/lib/chat/attachmentTypes';
 import type { ConversationKeyContext } from '@/lib/crypto/conversationKey';
 import { getConversationKey } from '@/lib/crypto/conversationKey';
 import {
+  containsE2EContent,
   decryptBlob,
   encryptBlob,
   encryptFileName,
@@ -25,12 +26,30 @@ export type ForwardReencryptUpdate = {
 
 function needsTargetEncryption(
   source: FormattedMessage,
+  forwarded: FormattedMessage,
   targetCtx: ConversationKeyContext | null,
 ): boolean {
   if (!targetCtx) return false;
-  if (isE2EContent(source.content) || isE2EFileName(source.file_original_name)) return true;
+  if (
+    isE2EContent(source.content) ||
+    isE2EFileName(source.file_original_name) ||
+    isE2EContent(forwarded.content) ||
+    containsE2EContent(forwarded.content) ||
+    isE2EFileName(forwarded.file_original_name)
+  ) {
+    return true;
+  }
   if (targetCtx.conversationType === 'group') return true;
   return Boolean(source.content?.trim() || source.file_path);
+}
+
+function sourcePlaintext(source: FormattedMessage): string {
+  const fromDisplay = displayMessageContent(source).trim();
+  if (fromDisplay && !isE2EContent(fromDisplay) && !containsE2EContent(fromDisplay)) {
+    return fromDisplay;
+  }
+  if (source.e2e_plaintext?.trim()) return source.e2e_plaintext.trim();
+  return isE2EContent(fromDisplay) ? '' : fromDisplay;
 }
 
 async function reencryptAttachment(
@@ -66,7 +85,7 @@ async function reencryptAttachment(
 export async function buildForwardReencryptUpdates(
   userId: string,
   sources: FormattedMessage[],
-  sourceCtx: ConversationKeyContext,
+  sourceCtx: ConversationKeyContext | null,
   forwarded: FormattedMessage[],
   caption: string,
   resolveTargetCtx: (convId: number) => Promise<ConversationKeyContext | null>,
@@ -84,9 +103,9 @@ export async function buildForwardReencryptUpdates(
     if (!source) continue;
 
     const targetCtx = await resolveTargetCtx(fwd.conversation_id);
-    if (!needsTargetEncryption(source, targetCtx)) continue;
+    if (!needsTargetEncryption(source, fwd, targetCtx)) continue;
 
-    let plaintext = displayMessageContent(source).trim();
+    let plaintext = sourcePlaintext(source);
     if (trimmedCaption && sourceId === firstSourceId) {
       plaintext = plaintext ? `${trimmedCaption}\n\n${plaintext}` : trimmedCaption;
     }
@@ -98,7 +117,7 @@ export async function buildForwardReencryptUpdates(
         : plaintext,
     };
 
-    if (fwd.file_path && targetCtx) {
+    if (fwd.file_path && targetCtx && sourceCtx) {
       const plainName =
         source.e2e_file_name ??
         (source.file_original_name && !isE2EFileName(source.file_original_name)

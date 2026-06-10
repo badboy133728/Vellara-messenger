@@ -7,6 +7,19 @@ export function isE2EContent(value: string | null | undefined): boolean {
   return !!value?.startsWith(E2E_PREFIX);
 }
 
+/** E2E-блок внутри строки (например, подпись + зашифрованный текст). */
+export function containsE2EContent(value: string | null | undefined): boolean {
+  return !!value?.includes(E2E_PREFIX);
+}
+
+export function stripEmbeddedE2EContent(value: string): string {
+  return value
+    .split('\n')
+    .filter((line) => !line.trim().startsWith(E2E_PREFIX))
+    .join('\n')
+    .trim();
+}
+
 export function isE2EFileName(value: string | null | undefined): boolean {
   return !!value?.startsWith(E2E_NAME_PREFIX);
 }

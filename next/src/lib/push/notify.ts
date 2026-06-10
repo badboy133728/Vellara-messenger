@@ -28,7 +28,7 @@ export async function notifyConversationPush(
     .maybeSingle();
 
   let title = senderName.trim() || 'Vellara';
-  if (conv?.type === 'group' && conv.title) {
+  if ((conv?.type === 'group' || conv?.type === 'channel') && conv.title) {
     title = conv.title;
   }
 

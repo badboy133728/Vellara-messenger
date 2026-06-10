@@ -18,7 +18,7 @@ type PushSubscriptionRow = {
 };
 
 /** Не слать push на устройство, где вкладка была активна недавно. */
-const PUSH_ACTIVE_GRACE_MS = 45_000;
+const PUSH_ACTIVE_GRACE_MS = 20_000;
 
 function isSubscriptionInactive(row: PushSubscriptionRow, nowMs: number): boolean {
   if (!row.last_active_at) return true;

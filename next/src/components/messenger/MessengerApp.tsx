@@ -746,10 +746,10 @@ function MessengerAppInner({ user }: { user: Profile }) {
   }, [conversations, syncConversations]);
 
   const realtimeConvIdsKey = useMemo(() => {
-    const ids = conversations.map((c) => c.id);
+    const ids = conversations.map((c) => c.id).filter((id) => id !== activeId);
     if (ids.length === 0) return '';
     return [...ids].sort((a, b) => a - b).join(',');
-  }, [conversations]);
+  }, [conversations, activeId]);
 
   useEffect(() => {
     const onVisible = () => {

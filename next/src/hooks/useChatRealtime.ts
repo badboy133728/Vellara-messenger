@@ -249,7 +249,7 @@ export function useChatRealtime(conversationIdsKey: string, handlers: Pick<Handl
 
         conversationIds.forEach((convId) => {
           const channel = supabase
-            .channel(`conversation-list:${convId}`, {
+            .channel(`conversation:${convId}`, {
               config: { broadcast: { self: false } },
             })
             .on(
@@ -279,7 +279,7 @@ export function useChatRealtime(conversationIdsKey: string, handlers: Pick<Handl
 
     const onVisible = () => {
       if (document.visibilityState !== 'visible' || disposed) return;
-      void bindAll(true);
+      void syncSupabaseRealtimeAuth(supabase);
     };
     document.addEventListener('visibilitychange', onVisible);
 

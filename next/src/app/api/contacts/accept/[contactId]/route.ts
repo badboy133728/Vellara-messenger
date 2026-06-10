@@ -22,16 +22,40 @@ export async function POST(
     return Response.json({ message: 'Заявка не найдена' }, { status: 404 });
   }
 
-  await supabase
+  const { error: acceptError } = await supabase
     .from('user_contacts')
     .update({ status: 'accepted' })
     .eq('id', request.id);
 
-  await supabase.from('user_contacts').insert({
-    user_id: user.id,
-    contact_id: senderId,
-    status: 'accepted',
-  });
+  if (acceptError) {
+    return Response.json({ message: 'Не удалось принять заявку' }, { status: 500 });
+  }
+
+  const { data: reverse } = await supabase
+    .from('user_contacts')
+    .select('id')
+    .eq('user_id', user.id)
+    .eq('contact_id', senderId)
+    .maybeSingle();
+
+  if (reverse) {
+    const { error: reverseError } = await supabase
+      .from('user_contacts')
+      .update({ status: 'accepted' })
+      .eq('id', reverse.id);
+    if (reverseError) {
+      return Response.json({ message: 'Не удалось добавить контакт' }, { status: 500 });
+    }
+  } else {
+    const { error: insertError } = await supabase.from('user_contacts').insert({
+      user_id: user.id,
+      contact_id: senderId,
+      status: 'accepted',
+    });
+    if (insertError) {
+      return Response.json({ message: 'Не удалось добавить контакт' }, { status: 500 });
+    }
+  }
 
   await broadcastToUser(supabase, senderId, 'ContactRequestAccepted', {
     contact_id: user.id,

@@ -1,9 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 
-function wait(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 /** Ephemeral events: typing, new message fan-out (client-to-client via broadcast channel). */
 export async function broadcastToConversation(
   _supabase: unknown,
@@ -18,7 +14,6 @@ export async function broadcastToConversation(
 
   await new Promise<void>((resolve) => {
     const done = async () => {
-      await wait(120);
       supabase.removeChannel(channel);
       resolve();
     };
@@ -51,7 +46,6 @@ export async function broadcastToUser(
 
   await new Promise<void>((resolve) => {
     const done = async () => {
-      await wait(120);
       supabase.removeChannel(channel);
       resolve();
     };

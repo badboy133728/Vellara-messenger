@@ -45,6 +45,7 @@ export function ContactsPanel({
   const { isAuthenticated } = useAuth();
   const { startCall, loadContactIds } = useCall();
   const [contactIds, setContactIds] = useState<Set<string>>(new Set());
+  const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const incomingCountRef = useRef(0);
 
   const load = useCallback(async () => {
@@ -121,9 +122,17 @@ export function ContactsPanel({
   };
 
   const accept = async (senderId: string) => {
-    await api(`/api/contacts/accept/${senderId}`, { method: 'POST' });
-    await load();
-    showToast('Контакт добавлен');
+    if (acceptingId) return;
+    setAcceptingId(senderId);
+    try {
+      await api(`/api/contacts/accept/${senderId}`, { method: 'POST' });
+      await load();
+      showToast('Контакт добавлен');
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'Не удалось принять заявку');
+    } finally {
+      setAcceptingId(null);
+    }
   };
 
   const reject = async (senderId: string) => {
@@ -251,12 +260,13 @@ export function ContactsPanel({
                   <div className="contact-card__actions">
                     <button
                       type="button"
-                      className="profile-btn profile-btn--gold profile-btn--icon contact-card__action"
-                      onClick={() => accept(req.sender_id)}
+                      className="profile-btn profile-btn--gold contact-card__action contact-card__action--accept"
+                      onClick={() => void accept(req.sender_id)}
+                      disabled={acceptingId === req.sender_id}
                       title="Принять"
                       aria-label="Принять заявку"
                     >
-                      <VellaraIcon name="check" size={18} />
+                      {acceptingId === req.sender_id ? '…' : 'Принять'}
                     </button>
                     <button
                       type="button"

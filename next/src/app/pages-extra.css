@@ -395,6 +395,15 @@
   font-size: 15px;
 }
 
+.contact-card__action--accept {
+  min-width: 88px;
+  height: 36px;
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 @media (max-width: 560px) {
   .contact-card {
     grid-template-columns: 1fr;
@@ -929,7 +938,18 @@
   color: var(--vellara-text, #f1f5f9);
   cursor: pointer;
   font-size: 15px;
+  line-height: 1.3;
   border-radius: 0;
+}
+
+.msg-context-menu__list-item svg {
+  flex-shrink: 0;
+  opacity: 0.9;
+}
+
+.msg-context-menu__list-item span {
+  flex: 1;
+  min-width: 0;
 }
 
 .msg-context-menu__list-item:hover {
@@ -1033,9 +1053,13 @@
   opacity: 0.9;
 }
 
+.conv-actions-menu {
+  padding-top: 6px;
+}
+
 .conv-actions-menu__title {
-  margin: 0 0 8px;
-  padding: 4px 14px 0;
+  margin: 0;
+  padding: 8px 18px 6px;
   font-size: 12px;
   font-weight: 600;
   color: var(--vellara-text-muted, #94a3b8);
@@ -1044,8 +1068,35 @@
   text-overflow: ellipsis;
 }
 
-.conv-actions-menu button.danger {
+.conv-actions-menu .msg-context-menu__list {
+  padding: 2px 0 4px;
+}
+
+.conv-actions-menu .msg-context-menu__list-item {
+  gap: 14px;
+}
+
+.conv-actions-menu .msg-context-menu__list-item svg {
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.conv-actions-menu .msg-context-menu__list-item span {
+  flex: 1;
+  min-width: 0;
+}
+
+.conv-actions-menu .msg-context-menu__list-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.conv-actions-menu .msg-context-menu__list-item.danger {
   color: #f87171;
+}
+
+.conv-actions-menu .msg-context-menu__list-item.danger svg {
+  opacity: 1;
 }
 
 .conv-info { flex: 1; min-width: 0; }

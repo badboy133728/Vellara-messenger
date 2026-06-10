@@ -33,38 +33,51 @@ export function ConversationActionsMenu({
   if (typeof document === 'undefined') return null;
 
   return createPortal(
-    <div className="msg-menu-backdrop" onClick={onClose}>
+    <div
+      className={`msg-menu-backdrop ${isMobile ? '' : 'msg-menu-backdrop--desktop'}`}
+      onClick={onClose}
+    >
       <div
-        className={`msg-context-menu conv-actions-menu ${isMobile ? 'msg-context-menu--sheet' : ''}`}
+        className={`msg-context-menu conv-actions-menu ${isMobile ? 'msg-context-menu--sheet' : 'msg-context-menu--popup'}`}
         style={isMobile ? undefined : { top: y, left: x }}
         onClick={(e) => e.stopPropagation()}
+        role="menu"
+        aria-label="Действия с диалогом"
       >
         <p className="conv-actions-menu__title">{conversationTitle(conversation)}</p>
-        <button
-          type="button"
-          className="msg-context-menu__item--with-icon"
-          disabled={!canPin && !conversation.is_pinned}
-          title={
-            !conversation.is_pinned && pinnedCount >= 3
-              ? 'Можно закрепить не более 3 чатов'
-              : undefined
-          }
-          onClick={onPin}
-        >
-          <VellaraIcon name="pin" size={16} />
-          {pinLabel}
-        </button>
-        <button type="button" className="msg-context-menu__item--with-icon" onClick={onArchive}>
-          <VellaraIcon name="archive" size={16} />
-          {archiveLabel}
-        </button>
-        <button type="button" className="msg-context-menu__item--with-icon danger" onClick={onDelete}>
-          <VellaraIcon name="trash" size={16} />
-          Удалить чат
-        </button>
-        <button type="button" className="msg-context-menu__cancel" onClick={onClose}>
-          Отмена
-        </button>
+        <div className="msg-context-menu__list">
+          <button
+            type="button"
+            className="msg-context-menu__list-item"
+            disabled={!canPin && !conversation.is_pinned}
+            title={
+              !conversation.is_pinned && pinnedCount >= 3
+                ? 'Можно закрепить не более 3 чатов'
+                : undefined
+            }
+            onClick={onPin}
+          >
+            <VellaraIcon name="pin" size={18} />
+            <span>{pinLabel}</span>
+          </button>
+          <button type="button" className="msg-context-menu__list-item" onClick={onArchive}>
+            <VellaraIcon name="archive" size={18} />
+            <span>{archiveLabel}</span>
+          </button>
+          <button
+            type="button"
+            className="msg-context-menu__list-item danger"
+            onClick={onDelete}
+          >
+            <VellaraIcon name="trash" size={18} />
+            <span>Удалить чат</span>
+          </button>
+        </div>
+        {isMobile && (
+          <button type="button" className="msg-context-menu__cancel" onClick={onClose}>
+            Отмена
+          </button>
+        )}
       </div>
     </div>,
     document.body,

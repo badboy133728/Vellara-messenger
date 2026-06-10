@@ -503,27 +503,37 @@ export function FavoritesPanel({
       </div>
 
       {menu && (
-        <div
-          className="msg-context-menu"
-          style={{ top: menu.y, left: menu.x }}
-          onClick={() => setMenu(null)}
-        >
-          {onForwardMessage && !menu.item.message.is_deleted && (
-            <button
-              type="button"
-              className="msg-context-menu__item--with-icon"
-              onClick={() => {
-                onForwardMessage(menu.item.message);
-                setMenu(null);
-              }}
-            >
-              <VellaraIcon name="forward" size={16} />
-              Переслать
-            </button>
-          )}
-          <button type="button" onClick={() => void removeFromFavorites(menu.item)}>
-            Убрать из избранного
-          </button>
+        <div className="msg-menu-backdrop msg-menu-backdrop--desktop" onClick={() => setMenu(null)}>
+          <div
+            className="msg-context-menu msg-context-menu--popup"
+            style={{ top: menu.y, left: menu.x }}
+            onClick={(e) => e.stopPropagation()}
+            role="menu"
+          >
+            <div className="msg-context-menu__list">
+              {onForwardMessage && !menu.item.message.is_deleted && (
+                <button
+                  type="button"
+                  className="msg-context-menu__list-item"
+                  onClick={() => {
+                    onForwardMessage(menu.item.message);
+                    setMenu(null);
+                  }}
+                >
+                  <VellaraIcon name="forward" size={18} />
+                  <span>Переслать</span>
+                </button>
+              )}
+              <button
+                type="button"
+                className="msg-context-menu__list-item danger"
+                onClick={() => void removeFromFavorites(menu.item)}
+              >
+                <VellaraIcon name="trash" size={18} />
+                <span>Убрать из избранного</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

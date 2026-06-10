@@ -15,14 +15,18 @@ export function usePushActivePing(enabled = true) {
 
     let cancelled = false;
 
-    const ping = async () => {
+    const getEndpoint = async () => {
+      const subscribed = await isPushSubscribed();
+      if (!subscribed) return null;
+      const registration = await navigator.serviceWorker.getRegistration('/');
+      const subscription = await registration?.pushManager.getSubscription();
+      return subscription?.endpoint ?? null;
+    };
+
+    const markActive = async () => {
       if (cancelled || document.visibilityState !== 'visible') return;
       try {
-        const subscribed = await isPushSubscribed();
-        if (!subscribed) return;
-        const registration = await navigator.serviceWorker.getRegistration('/');
-        const subscription = await registration?.pushManager.getSubscription();
-        const endpoint = subscription?.endpoint;
+        const endpoint = await getEndpoint();
         if (!endpoint) return;
         await api('/api/push/active', {
           method: 'POST',
@@ -33,16 +37,42 @@ export function usePushActivePing(enabled = true) {
       }
     };
 
-    ping();
-    const intervalId = window.setInterval(ping, PING_MS);
-    document.addEventListener('visibilitychange', ping);
-    window.addEventListener('focus', ping);
+    const markInactive = async () => {
+      if (cancelled) return;
+      try {
+        const endpoint = await getEndpoint();
+        if (!endpoint) return;
+        await api('/api/push/inactive', {
+          method: 'POST',
+          body: JSON.stringify({ endpoint }),
+        });
+      } catch {
+        /* ignore */
+      }
+    };
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        void markActive();
+      } else {
+        void markInactive();
+      }
+    };
+
+    if (document.visibilityState === 'visible') {
+      void markActive();
+    }
+    const intervalId = window.setInterval(markActive, PING_MS);
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('focus', markActive);
+    window.addEventListener('pagehide', markInactive);
 
     return () => {
       cancelled = true;
       window.clearInterval(intervalId);
-      document.removeEventListener('visibilitychange', ping);
-      window.removeEventListener('focus', ping);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('focus', markActive);
+      window.removeEventListener('pagehide', markInactive);
     };
   }, [enabled]);
 }

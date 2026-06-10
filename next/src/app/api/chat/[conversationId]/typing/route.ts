@@ -3,10 +3,6 @@ import { ensureMember } from '@/lib/chat/conversations';
 import { broadcastToConversation } from '@/lib/realtime/broadcast';
 import { createAdminClient } from '@/lib/supabase/admin';
 
-function wait(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 const TYPING_TTL_MS = 6000;
 
 export async function GET(
@@ -69,8 +65,6 @@ export async function POST(
     user_id: user.id,
   };
 
-  await broadcastToConversation(supabase, convId, 'UserTyping', payload);
-  await wait(450);
   void broadcastToConversation(supabase, convId, 'UserTyping', payload);
 
   return Response.json({ ok: true });

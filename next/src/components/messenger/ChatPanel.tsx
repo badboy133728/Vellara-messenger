@@ -1131,7 +1131,7 @@ export function ChatPanel({
     return (
       <div
         key={item.key}
-        className={`message-row ${mine ? 'message-row--mine' : 'message-row--other'}${forwardSelectMode && canSelect ? ' message-row--selectable' : ''}${isSelected ? ' message-row--selected' : ''}${isSwipeActive && swipeDir === 'rtl' ? ' message-row--swiping message-row--swiping-rtl' : ''}`}
+        className={`message-row ${mine ? 'message-row--mine' : 'message-row--other'}${forwardSelectMode && canSelect ? ' message-row--selectable' : ''}${isSelected ? ' message-row--selected' : ''}${isSwipeActive && swipeDir === 'rtl' && mine ? ' message-row--swiping message-row--swiping-rtl' : ''}`}
         onClick={handleRowClick}
         onContextMenu={(e) => {
           if (forwardSelectMode) return;
@@ -1139,7 +1139,7 @@ export function ChatPanel({
         }}
         onTouchStart={(e) => {
           if (forwardSelectMode) return;
-          rowGesture.onTouchStart(e, m, m.id);
+          rowGesture.onTouchStart(e, m, m.id, mine);
         }}
         onTouchMove={rowGesture.onTouchMove}
         onTouchEnd={rowGesture.onTouchEnd}
@@ -1174,7 +1174,7 @@ export function ChatPanel({
         <div
           className={`message-row-body ${mine ? 'message-row-body--mine' : 'message-row-body--other'} ${isGroup ? 'message-row-body--group' : ''}`}
           style={
-            swipeOffset > 0 && swipeDir === 'rtl'
+            swipeOffset > 0 && swipeDir === 'rtl' && mine
               ? { transform: `translateX(-${swipeOffset}px)` }
               : undefined
           }

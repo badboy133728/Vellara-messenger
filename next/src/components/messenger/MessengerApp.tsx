@@ -394,13 +394,6 @@ function MessengerAppInner({ user }: { user: Profile }) {
     return () => window.clearInterval(timer);
   }, [refreshIncomingCount]);
 
-  useUserRealtime(user.id, {
-    onCallSignaling,
-    onUserMessage: handleListRealtimeMessage,
-    onContactsChanged,
-    onContactRequest,
-  });
-
   const chatOpen = isMobile && activeId != null;
   const hideMobileNav = tab === 'chats' && (chatOpen || profileUserId != null);
 
@@ -912,6 +905,13 @@ function MessengerAppInner({ user }: { user: Profile }) {
 
   useChatRealtime(realtimeConvIdsKey, {
     onMessage: handleListRealtimeMessage,
+  });
+
+  useUserRealtime(user.id, {
+    onCallSignaling,
+    onUserMessage: handleListRealtimeMessage,
+    onContactsChanged,
+    onContactRequest,
   });
 
   useActiveConversationRealtime(activeId, {

@@ -19,6 +19,7 @@ export async function api<T = unknown>(
 
   const res = await fetch(path, {
     credentials: 'include',
+    cache: 'no-store',
     ...fetchOptions,
     headers: {
       Accept: 'application/json',

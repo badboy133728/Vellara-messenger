@@ -3,7 +3,7 @@ import { assertCanPostToConversation } from '@/lib/chat/channelAccess';
 import { ensureMember } from '@/lib/chat/conversations';
 import { formatMessagesWithReplies } from '@/lib/chat/messageList';
 import { canManageGroup } from '@/lib/chat/permissions';
-import { publishConversationMessage } from '@/lib/realtime/publish';
+import { publishConversationMessage, publishUserMessage } from '@/lib/realtime/publish';
 import { notifyConversationPush } from '@/lib/push/notify';
 import {
   applyMessageAttachment,
@@ -228,6 +228,24 @@ export async function POST(
     ...formatted,
     conversation_id: convId,
   });
+
+  // Ensure recipients see brand-new dialogs instantly even before they subscribe
+  // to the conversation:* channel.
+  const { data: members } = await supabase
+    .from('conversation_members')
+    .select('user_id')
+    .eq('conversation_id', convId);
+  const recipients = (members ?? [])
+    .map((m) => m.user_id as string)
+    .filter((id) => id !== user.id);
+  await Promise.all(
+    recipients.map((recipientId) =>
+      publishUserMessage(recipientId, {
+        ...formatted,
+        conversation_id: convId,
+      }),
+    ),
+  );
 
   void notifyConversationPush(
     supabase,

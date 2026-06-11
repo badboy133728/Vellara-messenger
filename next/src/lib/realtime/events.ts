@@ -4,6 +4,7 @@ export const REALTIME_EVENT_VERSION = 2;
 
 export type RealtimeEventName =
   | 'NewMessage'
+  | 'UserMessage'
   | 'MessageUpdated'
   | 'UserTyping'
   | 'MemberRead'
@@ -65,6 +66,7 @@ export type ContactRemovedPayload = {
 
 export type RealtimeEventPayloadMap = {
   NewMessage: RealtimeMessagePayload;
+  UserMessage: RealtimeMessagePayload;
   MessageUpdated: RealtimeMessagePayload;
   UserTyping: UserTypingPayload;
   MemberRead: MemberReadPayload;
@@ -98,6 +100,10 @@ export function realtimeDedupKey<K extends RealtimeEventName>(
     case 'NewMessage': {
       const p = payload as RealtimeMessagePayload;
       return `message:${p.conversation_id}:${p.id}`;
+    }
+    case 'UserMessage': {
+      const p = payload as RealtimeMessagePayload;
+      return `user-message:${p.conversation_id}:${p.id}`;
     }
     case 'MessageUpdated': {
       const p = payload as RealtimeMessagePayload;

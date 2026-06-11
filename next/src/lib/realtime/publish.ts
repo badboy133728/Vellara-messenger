@@ -80,6 +80,13 @@ export async function publishConversationMessage(payload: RealtimeEventPayload<'
   return publishConversationEvent(payload.conversation_id, 'NewMessage', payload);
 }
 
+export async function publishUserMessage(
+  userId: string,
+  payload: RealtimeEventPayload<'UserMessage'>,
+) {
+  return publishUserEvent(userId, 'UserMessage', payload);
+}
+
 export async function publishConversationMessageUpdated(
   payload: RealtimeEventPayload<'MessageUpdated'>,
 ) {

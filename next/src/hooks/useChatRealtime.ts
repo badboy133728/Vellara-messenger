@@ -406,6 +406,7 @@ export type ContactRequestPayload = {
 
 export type UserRealtimeHandlers = {
   onCallSignaling?: (payload: unknown, meta?: RealtimeMeta) => void;
+  onUserMessage?: (payload: FormattedMessage, meta?: RealtimeMeta) => void;
   onContactsChanged?: (meta?: RealtimeMeta) => void;
   onContactRequest?: (payload: ContactRequestPayload, meta?: RealtimeMeta) => void;
 };
@@ -447,6 +448,16 @@ export function useUserRealtime(userId: string | undefined, handlers: UserRealti
             if (deduperRef.current.shouldSkip(envelope.meta.dedup_key)) return;
             handlersRef.current.onCallSignaling?.(envelope.data, {
               event: 'CallSignaling',
+              source: 'broadcast',
+              dedupKey: envelope.meta.dedup_key,
+              eventId: envelope.meta.event_id,
+            });
+          })
+          .on('broadcast', { event: 'UserMessage' }, (message: { payload: unknown }) => {
+            const envelope = parseRealtimeEnvelope('UserMessage', message.payload);
+            if (deduperRef.current.shouldSkip(envelope.meta.dedup_key)) return;
+            handlersRef.current.onUserMessage?.(envelope.data as FormattedMessage, {
+              event: 'UserMessage',
               source: 'broadcast',
               dedupKey: envelope.meta.dedup_key,
               eventId: envelope.meta.event_id,

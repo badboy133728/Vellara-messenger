@@ -396,6 +396,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
 
   useUserRealtime(user.id, {
     onCallSignaling,
+    onUserMessage: handleListRealtimeMessage,
     onContactsChanged,
     onContactRequest,
   });

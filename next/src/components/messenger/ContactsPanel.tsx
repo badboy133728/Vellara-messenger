@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import { ContactAvatar } from '@/components/ContactAvatar';
 import { VellaraIcon } from '@/components/icons/VellaraIcon';
 import { useAuth } from '@/hooks/useAuth';
+import { useUserRealtime } from '@/hooks/useChatRealtime';
 import { useCall } from '@/hooks/useCallManager';
 import { displayFullName } from '@/utils/formatName';
 import { UserProfilePanel } from './UserProfilePanel';
@@ -42,7 +43,7 @@ export function ContactsPanel({
   const [loading, setLoading] = useState(true);
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
   const [toast, setToast] = useState('');
-  const { isAuthenticated } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const { startCall, loadContactIds } = useCall();
   const [contactIds, setContactIds] = useState<Set<string>>(new Set());
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
@@ -59,6 +60,24 @@ export function ContactsPanel({
     incomingCountRef.current = inc.length;
     setContactIds(await loadContactIds());
   }, [loadContactIds]);
+
+  const showToast = useCallback((msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(''), 3000);
+  }, []);
+
+  useUserRealtime(user?.id, {
+    onContactsChanged: () => {
+      if (!isAuthenticated) return;
+      void load();
+    },
+    onContactRequest: (payload) => {
+      if (!isAuthenticated) return;
+      const who = displayFullName(payload.name ?? '', payload.last_name ?? '', 'Пользователь');
+      showToast(`${who} отправил заявку в контакты`);
+      void load();
+    },
+  });
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -107,11 +126,6 @@ export function ContactsPanel({
     }, 300);
     return () => clearTimeout(t);
   }, [query]);
-
-  const showToast = (msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(''), 3000);
-  };
 
   const sendRequest = async (contactId: string) => {
     await api('/api/contacts/send', {

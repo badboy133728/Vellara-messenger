@@ -90,6 +90,45 @@ export function ContactsPanel({
   }, [load, isAuthenticated]);
 
   useEffect(() => {
+    if (!isAuthenticated) return;
+    let disposed = false;
+    let inFlight = false;
+
+    const safeRefresh = () => {
+      if (disposed || inFlight) return;
+      inFlight = true;
+      load()
+        .catch(() => {
+          /* ignore transient sync errors */
+        })
+        .finally(() => {
+          inFlight = false;
+        });
+    };
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') safeRefresh();
+    };
+    const onFocus = () => safeRefresh();
+    const onPageShow = () => safeRefresh();
+
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('pageshow', onPageShow);
+    document.addEventListener('visibilitychange', onVisible);
+
+    // Mobile browsers can suspend realtime channels aggressively; poll as fallback.
+    const timer = window.setInterval(safeRefresh, 5000);
+
+    return () => {
+      disposed = true;
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('pageshow', onPageShow);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.clearInterval(timer);
+    };
+  }, [isAuthenticated, load]);
+
+  useEffect(() => {
     if (contactsRefreshKey < 1) return;
     (async () => {
       try {

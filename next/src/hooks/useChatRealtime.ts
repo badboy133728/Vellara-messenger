@@ -511,8 +511,8 @@ export function useUserRealtime(userId: string | undefined, handlers: UserRealti
               filter: `contact_id=eq.${userId}`,
             },
             (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
-              const row = payload.new as { user_id?: string; status?: string };
-              const dedupKey = `contact-request-sent:${row.user_id ?? 'unknown'}`;
+              const row = payload.new as { id?: number | string; user_id?: string; status?: string };
+              const dedupKey = `contact-request-sent:${row.user_id ?? 'unknown'}:${row.id ?? 'na'}`;
               if (deduperRef.current.shouldSkip(dedupKey)) return;
               if (row.status === 'pending' && row.user_id) {
                 handlersRef.current.onContactRequest?.(
@@ -542,9 +542,15 @@ export function useUserRealtime(userId: string | undefined, handlers: UserRealti
               filter: `user_id=eq.${userId}`,
             },
             (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
-              const row = payload.new as { status?: string };
-              if (row?.status !== 'accepted') return;
-              const dedupKey = `contact-request-accepted:${userId}`;
+              const row = payload.new as {
+                id?: number | string;
+                user_id?: string;
+                contact_id?: string;
+                status?: string;
+              };
+              const old = payload.old as { status?: string } | null;
+              if (row?.status !== 'accepted' || old?.status === 'accepted') return;
+              const dedupKey = `contact-request-accepted:${row.user_id ?? userId}:${row.contact_id ?? 'unknown'}:${row.id ?? 'na'}`;
               if (deduperRef.current.shouldSkip(dedupKey)) return;
               notifyContacts({
                 event: 'ContactRequestAccepted',
@@ -562,8 +568,16 @@ export function useUserRealtime(userId: string | undefined, handlers: UserRealti
               table: 'user_contacts',
               filter: `contact_id=eq.${userId}`,
             },
-            () => {
-              const dedupKey = `contact-update:${userId}`;
+            (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
+              const row = payload.new as {
+                id?: number | string;
+                user_id?: string;
+                contact_id?: string;
+                status?: string;
+              };
+              const old = payload.old as { status?: string } | null;
+              if (row?.status !== 'accepted' || old?.status === 'accepted') return;
+              const dedupKey = `contact-update:${row.contact_id ?? userId}:${row.user_id ?? 'unknown'}:${row.id ?? 'na'}`;
               if (deduperRef.current.shouldSkip(dedupKey)) return;
               notifyContacts({
                 event: 'ContactRequestAccepted',
@@ -581,8 +595,9 @@ export function useUserRealtime(userId: string | undefined, handlers: UserRealti
               table: 'user_contacts',
               filter: `contact_id=eq.${userId}`,
             },
-            () => {
-              const dedupKey = `contact-removed:${userId}`;
+            (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
+              const row = payload.old as { id?: number | string; user_id?: string; contact_id?: string } | null;
+              const dedupKey = `contact-removed:${row?.contact_id ?? userId}:${row?.user_id ?? 'unknown'}:${row?.id ?? 'na'}`;
               if (deduperRef.current.shouldSkip(dedupKey)) return;
               notifyContacts({
                 event: 'ContactRemoved',
@@ -600,8 +615,9 @@ export function useUserRealtime(userId: string | undefined, handlers: UserRealti
               table: 'user_contacts',
               filter: `user_id=eq.${userId}`,
             },
-            () => {
-              const dedupKey = `contact-removed:${userId}:self`;
+            (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
+              const row = payload.old as { id?: number | string; user_id?: string; contact_id?: string } | null;
+              const dedupKey = `contact-removed:self:${row?.user_id ?? userId}:${row?.contact_id ?? 'unknown'}:${row?.id ?? 'na'}`;
               if (deduperRef.current.shouldSkip(dedupKey)) return;
               notifyContacts({
                 event: 'ContactRemoved',

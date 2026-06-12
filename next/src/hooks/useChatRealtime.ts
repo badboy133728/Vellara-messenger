@@ -40,7 +40,19 @@ type Handlers = {
   }, meta?: RealtimeMeta) => void;
 };
 
+function rowConversationId(row: Record<string, unknown>): number | null {
+  const raw = row.conversation_id;
+  const parsed = typeof raw === 'number' ? raw : Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function rowBelongsToConversation(row: Record<string, unknown>, convId: number): boolean {
+  const parsed = rowConversationId(row);
+  return parsed == null || parsed === convId;
+}
+
 function rowToMessage(row: Record<string, unknown>, convId: number): FormattedMessage {
+  const rowConvId = rowConversationId(row) ?? convId;
   const forwardedFromId = (row.forwarded_from_id as number | null) ?? null;
   const forwardedFromSenderName = (row.forwarded_from_sender_name as string | null) ?? null;
   const forwardedFromConversationId =
@@ -48,7 +60,7 @@ function rowToMessage(row: Record<string, unknown>, convId: number): FormattedMe
 
   return {
     id: row.id as number,
-    conversation_id: convId,
+    conversation_id: rowConvId,
     message_type: (row.message_type as string) ?? 'user',
     content: (row.content as string) ?? '',
     user_id: row.user_id as string,
@@ -118,7 +130,9 @@ function subscribeConversation(
       'postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${convId}` },
       (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
-        emit('NewMessage', 'postgres', rowToMessage(payload.new as Record<string, unknown>, convId), (data, meta) =>
+        const row = payload.new as Record<string, unknown>;
+        if (!rowBelongsToConversation(row, convId)) return;
+        emit('NewMessage', 'postgres', rowToMessage(row, convId), (data, meta) =>
           handlersRef.current?.onMessage?.(
             data as FormattedMessage,
             meta,
@@ -130,10 +144,12 @@ function subscribeConversation(
       'postgres_changes',
       { event: 'UPDATE', schema: 'public', table: 'messages', filter: `conversation_id=eq.${convId}` },
       (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
+        const row = payload.new as Record<string, unknown>;
+        if (!rowBelongsToConversation(row, convId)) return;
         emit(
           'MessageUpdated',
           'postgres',
-          rowToMessage(payload.new as Record<string, unknown>, convId),
+          rowToMessage(row, convId),
           (data, meta) =>
             handlersRef.current?.onMessageUpdate?.(
               data as FormattedMessage,
@@ -147,6 +163,7 @@ function subscribeConversation(
       { event: 'UPDATE', schema: 'public', table: 'conversation_members', filter: `conversation_id=eq.${convId}` },
       (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
         const row = payload.new as Record<string, unknown>;
+        if (!rowBelongsToConversation(row, convId)) return;
         const old = payload.old as Record<string, unknown> | undefined;
 
         const lastReadAt = row.last_read_at as string | null;
@@ -347,7 +364,9 @@ export function useChatRealtime(conversationIdsKey: string, handlers: Pick<Handl
               'postgres_changes',
               { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${convId}` },
               (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
-                const msg = rowToMessage(payload.new as Record<string, unknown>, convId);
+                const row = payload.new as Record<string, unknown>;
+                if (!rowBelongsToConversation(row, convId)) return;
+                const msg = rowToMessage(row, convId);
                 const dedupKey = realtimeDedupKey('NewMessage', msg as never);
                 if (deduperRef.current.shouldSkip(dedupKey)) return;
                 handlersRef.current.onMessage?.(

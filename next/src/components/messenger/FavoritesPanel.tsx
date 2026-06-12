@@ -7,13 +7,25 @@ import { VellaraIcon } from '@/components/icons/VellaraIcon';
 import { api } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import {
+  effectiveMessageFileType,
   isImageAttachment,
   isVideoAttachment,
   maxBytesForFile,
+  mimeHintForMessageFile,
 } from '@/lib/chat/attachmentTypes';
 import { prepareMessageFileForSend, type PreparedMessageFile } from '@/lib/chat/messageFileUpload';
 import { storageDisplayUrl } from '@/lib/storage';
-import type { FormattedMessage } from '@/lib/types';
+import type { ConversationListItem, FormattedMessage } from '@/lib/types';
+import {
+  buildE2EContextFromConversation,
+  decryptMessagesForConversation,
+  displayFileName,
+  displayMessageContent,
+  resolveDecryptedMediaUrl,
+} from '@/lib/e2e/messageCrypto';
+import type { ConversationKeyContext } from '@/lib/crypto/conversationKey';
+import { useDecryptedFileUrl } from '@/hooks/useDecryptedFileUrl';
+import { VoiceMessagePlayer } from '@/components/VoiceMessagePlayer';
 
 type SavedItem = {
   saved_at: string;
@@ -35,6 +47,82 @@ type PendingAttachment = {
 
 const FAV_FILE_INPUT_ID = 'favorites-attach-input';
 
+type GroupDetailResponse = {
+  members: Array<{ id: string }>;
+};
+
+function FavoriteImageThumb({
+  message,
+  userId,
+  e2eContext,
+  onClick,
+  moreCount,
+}: {
+  message: FormattedMessage;
+  userId: string;
+  e2eContext: ConversationKeyContext | null;
+  onClick: () => void;
+  moreCount?: number;
+}) {
+  const src = useDecryptedFileUrl(
+    userId,
+    e2eContext,
+    message.file_path,
+    message.file_original_name,
+    mimeHintForMessageFile(message) ?? 'image/jpeg',
+  );
+  if (!src) return null;
+  return (
+    <button type="button" className="msg-image-btn" onClick={onClick}>
+      <img src={src} alt="Фото" loading="lazy" />
+      {!!moreCount && <span className="fav-album-more">+{moreCount}</span>}
+    </button>
+  );
+}
+
+function FavoriteNonImageAttachment({
+  message,
+  userId,
+  e2eContext,
+}: {
+  message: FormattedMessage;
+  userId: string;
+  e2eContext: ConversationKeyContext | null;
+}) {
+  const fileType = effectiveMessageFileType(message);
+  const src = useDecryptedFileUrl(
+    userId,
+    e2eContext,
+    message.file_path,
+    message.file_original_name,
+    mimeHintForMessageFile(message),
+  );
+  if (!src || !message.file_path || !fileType || fileType === 'image') return null;
+
+  if (fileType === 'video') {
+    return (
+      <div className="msg-video-wrap">
+        <video className="msg-video" src={src} controls playsInline preload="metadata" />
+      </div>
+    );
+  }
+  if (fileType === 'voice') {
+    return <VoiceMessagePlayer src={src} duration={message.voice_duration || 0} />;
+  }
+  return (
+    <a
+      href={src}
+      className="msg-doc-link"
+      target="_blank"
+      rel="noreferrer"
+      download={displayFileName(message) || 'file'}
+    >
+      <VellaraIcon name="document" size={16} className="msg-doc-link__icon" />
+      {displayFileName(message) || 'Файл'}
+    </a>
+  );
+}
+
 export function FavoritesPanel({
   onForwardMessage,
   isMobile = false,
@@ -51,6 +139,9 @@ export function FavoritesPanel({
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number; item: SavedItem } | null>(null);
   const [lightbox, setLightbox] = useState<{ urls: string[]; index: number } | null>(null);
+  const [e2eContextsByConversation, setE2eContextsByConversation] = useState<
+    Record<number, ConversationKeyContext>
+  >({});
 
   const feedRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -59,10 +150,102 @@ export function FavoritesPanel({
   const composerRef = useRef<HTMLDivElement>(null);
   const attachmentUrlsRef = useRef<Set<string>>(new Set());
 
+  const resolveE2EContexts = useCallback(
+    async (rawItems: SavedItem[]) => {
+      if (!user) return {} as Record<number, ConversationKeyContext>;
+
+      const convIds = [
+        ...new Set(
+          rawItems
+            .filter((item) => !item.is_own_note && item.source.conversation_id > 0)
+            .map((item) => item.source.conversation_id),
+        ),
+      ];
+      if (!convIds.length) return {} as Record<number, ConversationKeyContext>;
+
+      const conversations = await api<ConversationListItem[]>('/api/chat').catch(() => []);
+      const convMap = new Map(conversations.map((c) => [c.id, c]));
+      const contexts: Record<number, ConversationKeyContext> = {};
+
+      for (const convId of convIds) {
+        const sample = rawItems.find((item) => item.source.conversation_id === convId);
+        const convType = convMap.get(convId)?.type ?? sample?.source.conversation_type ?? 'private';
+
+        if (convType === 'channel' || convType === 'saved') continue;
+
+        if (convType === 'group') {
+          const detail = await api<GroupDetailResponse>(`/api/chat/groups/${convId}`).catch(() => null);
+          const memberIds = (detail?.members ?? []).map((m) => m.id);
+          if (!memberIds.length) continue;
+          contexts[convId] = buildE2EContextFromConversation(
+            convId,
+            'group',
+            memberIds,
+            user.id,
+            null,
+          );
+          continue;
+        }
+
+        const partnerId =
+          convMap.get(convId)?.other_user?.id ??
+          rawItems
+            .filter((item) => item.source.conversation_id === convId)
+            .map((item) => item.message.user_id)
+            .find((id) => id !== user.id) ??
+          null;
+
+        if (!partnerId) continue;
+
+        contexts[convId] = buildE2EContextFromConversation(
+          convId,
+          'private',
+          [user.id, partnerId],
+          user.id,
+          partnerId,
+        );
+      }
+
+      return contexts;
+    },
+    [user],
+  );
+
   const load = useCallback(async () => {
     const res = await api<{ data: SavedItem[] }>('/api/chat/messages/saved');
-    setItems(res.data ?? []);
-  }, []);
+    const rawItems = res.data ?? [];
+    const contexts = await resolveE2EContexts(rawItems);
+
+    const byConv = new Map<number, number[]>();
+    rawItems.forEach((item, index) => {
+      const convId = item.source.conversation_id;
+      if (!contexts[convId]) return;
+      const list = byConv.get(convId) ?? [];
+      list.push(index);
+      byConv.set(convId, list);
+    });
+
+    const nextItems: SavedItem[] = rawItems.map((item) => ({
+      ...item,
+      message: { ...item.message },
+    }));
+
+    for (const [convId, indexes] of byConv) {
+      const ctx = contexts[convId];
+      if (!ctx) continue;
+      const messages = indexes.map((i) => nextItems[i]!.message);
+      const decrypted = await decryptMessagesForConversation(user!.id, ctx, messages).catch(() => messages);
+      indexes.forEach((i, idx) => {
+        nextItems[i] = {
+          ...nextItems[i]!,
+          message: decrypted[idx] ?? nextItems[i]!.message,
+        };
+      });
+    }
+
+    setE2eContextsByConversation(contexts);
+    setItems(nextItems);
+  }, [resolveE2EContexts, user]);
 
   useEffect(() => {
     load()
@@ -257,37 +440,69 @@ export function FavoritesPanel({
     }
   };
 
-  const openImageLightbox = (m: FormattedMessage) => {
-    const url = storageDisplayUrl(m.file_path) ?? '';
-    if (!url) return;
-    let urls = [url];
+  const openImageLightbox = async (item: SavedItem) => {
+    const m = item.message;
+    const ctx = e2eContextsByConversation[item.source.conversation_id] ?? null;
+    const resolveImageUrl = async (message: FormattedMessage) => {
+      if (user && ctx) {
+        const decrypted = await resolveDecryptedMediaUrl(
+          user.id,
+          ctx,
+          message.file_path,
+          message.file_original_name,
+          mimeHintForMessageFile(message) ?? 'image/jpeg',
+        ).catch(() => null);
+        if (decrypted) return decrypted;
+      }
+      return storageDisplayUrl(message.file_path);
+    };
+
+    const firstUrl = await resolveImageUrl(m);
+    if (!firstUrl) return;
+
+    let urls = [firstUrl];
     let index = 0;
     if (m.album_group_id) {
-      urls = items
-        .map((i) => i.message)
-        .filter((x) => x.album_group_id === m.album_group_id && x.file_type === 'image')
-        .map((x) => storageDisplayUrl(x.file_path))
-        .filter((u): u is string => !!u);
-      index = Math.max(0, urls.indexOf(url));
+      const album = items
+        .filter(
+          (i) =>
+            i.source.conversation_id === item.source.conversation_id &&
+            i.message.album_group_id === m.album_group_id &&
+            effectiveMessageFileType(i.message) === 'image',
+        )
+        .map((i) => i.message);
+      const withUrls = await Promise.all(
+        album.map(async (img) => ({
+          id: img.id,
+          url: await resolveImageUrl(img),
+        })),
+      );
+      urls = withUrls.map((entry) => entry.url).filter((u): u is string => !!u);
+      index = Math.max(0, withUrls.findIndex((entry) => entry.id === m.id));
     }
+    if (!urls.length) return;
     setLightbox({ urls, index });
   };
 
   const renderMessageBody = (item: SavedItem) => {
     const m = item.message;
+    const e2eContext = e2eContextsByConversation[item.source.conversation_id] ?? null;
     if (m.is_deleted) {
       return <div className="msg-deleted">Сообщение удалено</div>;
     }
 
     const albumMessages =
-      m.album_group_id && m.file_type === 'image'
-        ? items
-            .map((i) => i.message)
-            .filter((x) => x.album_group_id === m.album_group_id && x.file_type === 'image')
+      m.album_group_id && effectiveMessageFileType(m) === 'image'
+        ? items.filter(
+            (i) =>
+              i.source.conversation_id === item.source.conversation_id &&
+              i.message.album_group_id === m.album_group_id &&
+              effectiveMessageFileType(i.message) === 'image',
+          )
         : [];
     const showAlbum = albumMessages.length > 1;
-    const isAlbumAnchor =
-      !showAlbum || albumMessages[0]?.id === m.id;
+    const isAlbumAnchor = !showAlbum || albumMessages[0]?.message.id === m.id;
+    const text = displayMessageContent(m);
 
     if (showAlbum && !isAlbumAnchor) return null;
 
@@ -295,58 +510,34 @@ export function FavoritesPanel({
       <>
         {showAlbum ? (
           <div className={`fav-album-grid fav-album-grid--${Math.min(albumMessages.length, 4)}`}>
-            {albumMessages.slice(0, 4).map((img, idx) => (
-              <button
-                key={img.id}
-                type="button"
-                className="msg-image-btn"
-                onClick={() => openImageLightbox(m)}
-              >
-                <img src={storageDisplayUrl(img.file_path) ?? ''} alt="Фото" loading="lazy" />
-                {albumMessages.length > 4 && idx === 3 && (
-                  <span className="fav-album-more">+{albumMessages.length - 4}</span>
-                )}
-              </button>
+            {albumMessages.slice(0, 4).map((albumItem, idx) => (
+              <FavoriteImageThumb
+                key={albumItem.message.id}
+                message={albumItem.message}
+                userId={user?.id ?? ''}
+                e2eContext={e2eContext}
+                onClick={() => {
+                  void openImageLightbox(item);
+                }}
+                moreCount={albumMessages.length > 4 && idx === 3 ? albumMessages.length - 4 : 0}
+              />
             ))}
           </div>
         ) : (
           m.file_path &&
-          m.file_type === 'image' && (
-            <button
-              type="button"
-              className="msg-image-btn"
-              onClick={() => openImageLightbox(m)}
-            >
-              <img src={storageDisplayUrl(m.file_path) ?? ''} alt="Фото" loading="lazy" />
-            </button>
+          effectiveMessageFileType(m) === 'image' && (
+            <FavoriteImageThumb
+              message={m}
+              userId={user?.id ?? ''}
+              e2eContext={e2eContext}
+              onClick={() => {
+                void openImageLightbox(item);
+              }}
+            />
           )
         )}
-        {m.file_path && m.file_type === 'video' && (
-          <div className="msg-video-wrap">
-            <video
-              className="msg-video"
-              src={storageDisplayUrl(m.file_path) ?? ''}
-              controls
-              playsInline
-              preload="metadata"
-            />
-          </div>
-        )}
-        {m.file_path && m.file_type === 'voice' && (
-          <audio controls src={storageDisplayUrl(m.file_path) ?? ''} />
-        )}
-        {m.file_path && m.file_type === 'document' && (
-          <a
-            href={storageDisplayUrl(m.file_path) ?? '#'}
-            className="msg-doc-link"
-            target="_blank"
-            rel="noreferrer"
-          >
-            <VellaraIcon name="document" size={16} className="msg-doc-link__icon" />
-            {m.file_original_name || 'Файл'}
-          </a>
-        )}
-        {m.content && <div className="msg-content">{m.content}</div>}
+        <FavoriteNonImageAttachment message={m} userId={user?.id ?? ''} e2eContext={e2eContext} />
+        {text && <div className="msg-content">{text}</div>}
       </>
     );
   };

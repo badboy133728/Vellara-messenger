@@ -243,24 +243,74 @@ export function ChatPanel({
 
   const inChannelCommentsView = isChannel && !!channelCommentsPost;
 
+  const channelRootPostByMessageId = useMemo(() => {
+    const roots = new Map<number, number>();
+    if (!isChannel) return roots;
+
+    const byId = new Map(messages.map((m) => [m.id, m]));
+
+    const resolveRootPostId = (msg: FormattedMessage): number | null => {
+      if (!msg.reply_to_id) return null;
+      const cached = roots.get(msg.id);
+      if (cached) return cached;
+
+      const visited = new Set<number>([msg.id]);
+      let currentParentId: number | null = msg.reply_to_id;
+      let root: number | null = null;
+
+      while (currentParentId) {
+        if (visited.has(currentParentId)) break;
+        visited.add(currentParentId);
+        const parent = byId.get(currentParentId);
+
+        if (!parent) {
+          // Parent could be outside current slice: fallback to direct parent id.
+          root = msg.reply_to_id;
+          break;
+        }
+
+        if (!parent.reply_to_id) {
+          root = parent.id;
+          break;
+        }
+
+        currentParentId = parent.reply_to_id;
+      }
+
+      if (!root) root = msg.reply_to_id;
+      roots.set(msg.id, root);
+      return root;
+    };
+
+    messages.forEach((m) => {
+      if (m.reply_to_id) resolveRootPostId(m);
+    });
+
+    return roots;
+  }, [messages, isChannel]);
+
   const commentCounts = useMemo(() => {
     const map = new Map<number, number>();
     if (!isChannel) return map;
     for (const m of messages) {
-      if (m.reply_to_id) {
-        map.set(m.reply_to_id, (map.get(m.reply_to_id) ?? 0) + 1);
-      }
+      if (!m.reply_to_id) continue;
+      const postId = channelRootPostByMessageId.get(m.id) ?? m.reply_to_id;
+      map.set(postId, (map.get(postId) ?? 0) + 1);
     }
     return map;
-  }, [messages, isChannel]);
+  }, [messages, isChannel, channelRootPostByMessageId]);
 
   const visibleMessages = useMemo(() => {
     if (!isChannel) return messages;
     if (channelCommentsPost) {
-      return messages.filter((m) => m.reply_to_id === channelCommentsPost.id);
+      return messages.filter((m) => {
+        if (!m.reply_to_id) return false;
+        const postId = channelRootPostByMessageId.get(m.id) ?? m.reply_to_id;
+        return postId === channelCommentsPost.id;
+      });
     }
     return messages.filter((m) => !m.reply_to_id);
-  }, [messages, isChannel, channelCommentsPost]);
+  }, [messages, isChannel, channelCommentsPost, channelRootPostByMessageId]);
 
   const feed = useMemo(
     () =>

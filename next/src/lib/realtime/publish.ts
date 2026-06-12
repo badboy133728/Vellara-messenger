@@ -76,6 +76,31 @@ async function publishUserEvent<K extends RealtimeEventName>(
   }
 }
 
+async function publishUserEventWithRetry<K extends RealtimeEventName>(
+  userId: string,
+  event: K,
+  payload: RealtimeEventPayload<K>,
+  attempts = 3,
+): Promise<RealtimePublishResult> {
+  let last: RealtimePublishResult | null = null;
+  for (let i = 0; i < attempts; i += 1) {
+    const result = await publishUserEvent(userId, event, payload);
+    if (result.ok) return result;
+    last = result;
+    if (i < attempts - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 180 * (i + 1)));
+    }
+  }
+  return (
+    last ?? {
+      ok: false,
+      topic: `user:${userId}`,
+      event,
+      reason: 'send_failed',
+    }
+  );
+}
+
 export async function publishConversationMessage(payload: RealtimeEventPayload<'NewMessage'>) {
   return publishConversationEvent(payload.conversation_id, 'NewMessage', payload);
 }
@@ -111,7 +136,7 @@ export async function publishUserCallSignaling(
   userId: string,
   payload: RealtimeEventPayload<'CallSignaling'>,
 ) {
-  return publishUserEvent(userId, 'CallSignaling', payload);
+  return publishUserEventWithRetry(userId, 'CallSignaling', payload, 4);
 }
 
 export async function publishUserContactRequestSent(

@@ -155,6 +155,7 @@ export function CallProvider({ userId, children }: { userId: string; children: R
     payload: { sdp: RTCSessionDescriptionInit };
   } | null>(null);
   const offerStartedForCallRef = useRef<number | null>(null);
+  const incomingSyncInFlightRef = useRef(false);
 
   const syncStreams = useCallback(() => {
     const rtc = rtcRef.current;
@@ -346,6 +347,58 @@ export function CallProvider({ userId, children }: { userId: string; children: R
       if (ch) void supabase.removeChannel(ch);
     };
   }, [userId, resetCallState]);
+
+  useEffect(() => {
+    const syncIncomingFallback = async () => {
+      if (incomingSyncInFlightRef.current) return;
+      if (document.visibilityState !== 'visible') return;
+      if (stateRef.current.phase !== 'idle') return;
+      incomingSyncInFlightRef.current = true;
+      try {
+        const calls = await api<
+          Array<{
+            id: number;
+            room_id?: string;
+            type?: 'voice' | 'video';
+            status: string;
+            direction: string;
+            peer?: CallPeer | null;
+          }>
+        >('/api/calls');
+        const incomingRinging = calls.find(
+          (c) => c.direction === 'incoming' && c.status === 'ringing',
+        );
+        if (!incomingRinging || stateRef.current.phase !== 'idle') return;
+        setState((s) => ({
+          ...s,
+          incoming: {
+            call_id: incomingRinging.id,
+            room_id: incomingRinging.room_id,
+            type: incomingRinging.type || 'voice',
+            caller: incomingRinging.peer ?? undefined,
+            call: {
+              id: incomingRinging.id,
+              peer: incomingRinging.peer ?? null,
+              room_id: incomingRinging.room_id,
+            },
+          },
+          roomId: incomingRinging.room_id ?? null,
+          phase: 'incoming',
+          connectionState: 'ringing',
+        }));
+        startRinging();
+      } catch {
+        /* ignore temporary network/realtime gaps */
+      } finally {
+        incomingSyncInFlightRef.current = false;
+      }
+    };
+
+    const timer = window.setInterval(() => {
+      void syncIncomingFallback();
+    }, 8000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const setupCallerPeer = useCallback(
     async (callId: number) => {
@@ -567,6 +620,16 @@ export function CallProvider({ userId, children }: { userId: string; children: R
         String(current.call?.id) === String(callId)
       ) {
         setState((s) => ({ ...s, connectionState: 'connecting' }));
+        // Re-send offer on accept to recover from race where initial offer was delivered too early.
+        try {
+          if (rtc.hasPeer()) {
+            await rtc.createOffer(callId);
+          } else {
+            await setupCallerPeer(callId);
+          }
+        } catch {
+          /* best-effort renegotiation */
+        }
         return;
       }
 
@@ -587,7 +650,10 @@ export function CallProvider({ userId, children }: { userId: string; children: R
 
       if (signal === 'call:offer' && fromUserId !== myId) {
         const offerPayload = innerPayload as { sdp: RTCSessionDescriptionInit };
-        if (current.phase === 'incoming' && String(current.incoming?.call_id) === String(callId)) {
+        if (
+          current.phase === 'idle' ||
+          (current.phase === 'incoming' && String(current.incoming?.call_id) === String(callId))
+        ) {
           pendingOfferRef.current = { callId, payload: offerPayload };
           return;
         }
@@ -618,7 +684,7 @@ export function CallProvider({ userId, children }: { userId: string; children: R
         await rtc.handleIce(innerPayload as { candidate?: RTCIceCandidateInit });
       }
     },
-    [userId, resetCallState, syncStreams, handleIncomingOffer],
+    [userId, resetCallState, syncStreams, handleIncomingOffer, setupCallerPeer],
   );
 
   const toggleMute = useCallback(() => {

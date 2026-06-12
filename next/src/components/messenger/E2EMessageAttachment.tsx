@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useDecryptedFileUrl } from '@/hooks/useDecryptedFileUrl';
 import type { ConversationKeyContext } from '@/lib/crypto/conversationKey';
 import { mimeHintForMessageFile } from '@/lib/chat/attachmentTypes';
@@ -24,8 +25,36 @@ export function E2EImageAttachment({ message, userId, e2eContext, onMediaLoad }:
     message.file_original_name,
     mimeHintForMessageFile(message) ?? 'image/jpeg',
   );
-  if (!src) return null;
-  return <img src={src} alt="Фото" decoding="async" onLoad={onMediaLoad} />;
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  useEffect(() => {
+    setIsLoaded(false);
+  }, [src, message.id, message.file_path]);
+
+  const isLoading = !src || !isLoaded;
+
+  return (
+    <span className={`msg-media-skeleton-wrap${isLoading ? ' is-loading' : ''}`}>
+      {isLoading && (
+        <span className="msg-media-skeleton" aria-hidden="true">
+          <span className="attachment-preview-shimmer" aria-hidden="true" />
+        </span>
+      )}
+      {src && (
+        <img
+          src={src}
+          alt="Фото"
+          decoding="async"
+          className="msg-media-skeleton-wrap__img"
+          onLoad={() => {
+            setIsLoaded(true);
+            onMediaLoad?.();
+          }}
+          onError={() => setIsLoaded(true)}
+        />
+      )}
+    </span>
+  );
 }
 
 export function E2EVideoAttachment({ message, userId, e2eContext, onMediaLoad }: Props) {
@@ -36,16 +65,37 @@ export function E2EVideoAttachment({ message, userId, e2eContext, onMediaLoad }:
     message.file_original_name,
     mimeHintForMessageFile(message) ?? 'video/mp4',
   );
-  if (!src) return null;
+  const [isReady, setIsReady] = useState(false);
+
+  useEffect(() => {
+    setIsReady(false);
+  }, [src, message.id, message.file_path]);
+
+  const isLoading = !src || !isReady;
+
   return (
-    <video
-      className="msg-video"
-      src={src}
-      controls
-      playsInline
-      preload="metadata"
-      onLoadedMetadata={onMediaLoad}
-    />
+    <div className={`msg-video-skeleton-wrap${isLoading ? ' is-loading' : ''}`}>
+      {isLoading && (
+        <span className="msg-media-skeleton" aria-hidden="true">
+          <span className="attachment-preview-shimmer" aria-hidden="true" />
+        </span>
+      )}
+      {src && (
+        <video
+          className="msg-video"
+          src={src}
+          controls
+          playsInline
+          preload="metadata"
+          onLoadedMetadata={() => {
+            setIsReady(true);
+            onMediaLoad?.();
+          }}
+          onCanPlay={() => setIsReady(true)}
+          onError={() => setIsReady(true)}
+        />
+      )}
+    </div>
   );
 }
 

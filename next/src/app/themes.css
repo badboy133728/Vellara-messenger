@@ -13,6 +13,14 @@ html:not([data-theme]) {
   --vellara-text-muted: #94a3b8;
   --vellara-bubble-other: #2a2a2a;
   --vellara-accent-text: #1a1612;
+  --vellara-theme-bar: #121212;
+  --vellara-emphasis-bg: rgba(201, 168, 133, 0.12);
+  --vellara-emphasis-bg-strong: rgba(201, 168, 133, 0.22);
+  --vellara-accent-tint: rgba(201, 168, 133, 0.15);
+  --vellara-highlight: #5b8cff;
+  --vellara-highlight-soft: #7eb8e8;
+  --vellara-status-info: #2563eb;
+  --vellara-input-placeholder: #64748b;
 }
 
 html[data-theme='midnight'] {
@@ -27,6 +35,14 @@ html[data-theme='midnight'] {
   --vellara-text-muted: #94a3b8;
   --vellara-bubble-other: #1e293b;
   --vellara-accent-text: #0f172a;
+  --vellara-theme-bar: #0a0f1a;
+  --vellara-emphasis-bg: rgba(96, 165, 250, 0.16);
+  --vellara-emphasis-bg-strong: rgba(96, 165, 250, 0.26);
+  --vellara-accent-tint: rgba(96, 165, 250, 0.2);
+  --vellara-highlight: #60a5fa;
+  --vellara-highlight-soft: #93c5fd;
+  --vellara-status-info: #60a5fa;
+  --vellara-input-placeholder: #94a3b8;
 }
 
 html[data-theme='forest'] {
@@ -41,6 +57,14 @@ html[data-theme='forest'] {
   --vellara-text-muted: #86efac;
   --vellara-bubble-other: #1c2e24;
   --vellara-accent-text: #052e16;
+  --vellara-theme-bar: #0d1410;
+  --vellara-emphasis-bg: rgba(52, 211, 153, 0.16);
+  --vellara-emphasis-bg-strong: rgba(52, 211, 153, 0.26);
+  --vellara-accent-tint: rgba(52, 211, 153, 0.2);
+  --vellara-highlight: #34d399;
+  --vellara-highlight-soft: #6ee7b7;
+  --vellara-status-info: #34d399;
+  --vellara-input-placeholder: #86efac;
 }
 
 html[data-theme='rose'] {
@@ -55,6 +79,14 @@ html[data-theme='rose'] {
   --vellara-text-muted: #f9a8d4;
   --vellara-bubble-other: #2a1a22;
   --vellara-accent-text: #500724;
+  --vellara-theme-bar: #140c10;
+  --vellara-emphasis-bg: rgba(244, 114, 182, 0.16);
+  --vellara-emphasis-bg-strong: rgba(244, 114, 182, 0.26);
+  --vellara-accent-tint: rgba(244, 114, 182, 0.2);
+  --vellara-highlight: #f472b6;
+  --vellara-highlight-soft: #f9a8d4;
+  --vellara-status-info: #f472b6;
+  --vellara-input-placeholder: #f9a8d4;
 }
 
 html[data-theme='light'] {
@@ -69,6 +101,14 @@ html[data-theme='light'] {
   --vellara-text-muted: #64748b;
   --vellara-bubble-other: #e2e8f0;
   --vellara-accent-text: #ffffff;
+  --vellara-theme-bar: #f4f4f5;
+  --vellara-emphasis-bg: rgba(168, 132, 95, 0.14);
+  --vellara-emphasis-bg-strong: rgba(168, 132, 95, 0.24);
+  --vellara-accent-tint: rgba(168, 132, 95, 0.18);
+  --vellara-highlight: #7c6a52;
+  --vellara-highlight-soft: #a8845f;
+  --vellara-status-info: #64748b;
+  --vellara-input-placeholder: #64748b;
 }
 
 html[data-theme='light'] .side-menu,

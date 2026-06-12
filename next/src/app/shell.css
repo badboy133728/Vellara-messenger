@@ -9,7 +9,7 @@
   --v-border-subtle: var(--vellara-border-subtle, #2e2e2e);
   --v-gold: var(--vellara-gold, #c9a885);
   --v-gold-soft: var(--vellara-gold-soft, #d9c4a3);
-  --v-gold-dim: rgba(201, 168, 133, 0.12);
+  --v-gold-dim: var(--vellara-emphasis-bg, rgba(201, 168, 133, 0.12));
   --v-text: var(--vellara-text, #f1f5f9);
   --v-text-muted: var(--vellara-text-muted, #94a3b8);
   --v-sidebar-w: 248px;
@@ -34,7 +34,12 @@
   display: flex;
   flex-direction: column;
   padding: 16px 12px;
-  background: linear-gradient(180deg, #1c1c1c 0%, var(--v-panel) 40%, #181818 100%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--v-panel) 88%, black 12%) 0%,
+    var(--v-panel) 40%,
+    color-mix(in srgb, var(--v-panel) 92%, black 8%) 100%
+  );
   border-right: 1px solid var(--v-border);
   box-shadow: 4px 0 24px rgba(0, 0, 0, 0.25);
 }
@@ -93,7 +98,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #64748b;
+  color: var(--v-text-muted);
 }
 
 .side-menu__nav {
@@ -157,7 +162,7 @@
 }
 
 .nav-item.active .nav-item__icon {
-  background: rgba(201, 168, 133, 0.2);
+  background: var(--vellara-emphasis-bg-strong, rgba(201, 168, 133, 0.2));
 }
 
 .nav-item__label {
@@ -224,7 +229,7 @@
 .account-card.active {
   border-color: var(--v-gold);
   background: var(--v-gold-dim);
-  box-shadow: 0 0 0 1px rgba(201, 168, 133, 0.2);
+  box-shadow: 0 0 0 1px var(--vellara-emphasis-bg-strong, rgba(201, 168, 133, 0.2));
 }
 
 .account-card__avatar-wrap {

@@ -49,6 +49,8 @@ export type PendingFeedItem = {
   content: string;
   previewUrls: string[];
   videoPreviewUrls: string[];
+  fileTypeHint?: 'voice';
+  voiceDuration?: number;
 };
 
 export type DateFeedItem = {

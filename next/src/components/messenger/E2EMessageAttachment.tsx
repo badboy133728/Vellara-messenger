@@ -8,6 +8,7 @@ import { displayFileName } from '@/lib/e2e/messageCrypto';
 import type { FormattedMessage } from '@/lib/types';
 import { VellaraIcon } from '@/components/icons/VellaraIcon';
 import { VoiceMessagePlayer } from '@/components/VoiceMessagePlayer';
+import { formatVoiceDuration } from '@/utils/messagePreview';
 
 type Props = {
   message: FormattedMessage;
@@ -107,7 +108,18 @@ export function E2EVoiceAttachment({ message, userId, e2eContext, isMine }: Prop
     message.file_original_name,
     mimeHintForMessageFile(message) ?? 'audio/ogg',
   );
-  if (!src) return null;
+  if (!src) {
+    return (
+      <div className="msg-voice-loading" aria-hidden="true">
+        <span className="msg-voice-loading__wave">
+          <span className="attachment-preview-shimmer" aria-hidden="true" />
+        </span>
+        <span className="msg-voice-loading__time">
+          {formatVoiceDuration(message.voice_duration || 0)}
+        </span>
+      </div>
+    );
+  }
   return <VoiceMessagePlayer src={src} duration={message.voice_duration || 0} isMine={isMine} />;
 }
 

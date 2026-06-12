@@ -80,6 +80,8 @@ type PendingSend = {
   previewUrls: string[];
   videoPreviewUrls: string[];
   fileCount: number;
+  fileTypeHint?: 'voice';
+  voiceDuration?: number;
   created_at: string;
   expectedIds: number[];
   baselineMessageIds: number[];
@@ -113,7 +115,13 @@ function pendingStillVisible(
   }
 
   if (pending.fileCount > 0) {
-    const withFile = newFromMe.filter((m) => m.file_path);
+    const withFile = newFromMe.filter((m) => {
+      if (!m.file_path) return false;
+      if (pending.fileTypeHint === 'voice') {
+        return effectiveMessageFileType(m) === 'voice';
+      }
+      return true;
+    });
     return withFile.length < pending.fileCount;
   }
 
@@ -1035,10 +1043,25 @@ export function ChatPanel({
       window.alert('Запись слишком короткая');
       return;
     }
+    const clientId = crypto.randomUUID();
+    const pendingVoice: PendingSend = {
+      clientId,
+      content: '',
+      previewUrls: [],
+      videoPreviewUrls: [],
+      fileCount: 1,
+      fileTypeHint: 'voice',
+      voiceDuration: result.duration,
+      created_at: new Date().toISOString(),
+      expectedIds: [],
+      baselineMessageIds: messages.map((m) => m.id),
+    };
+    setPendingSends((prev) => [...prev, pendingVoice]);
     setIsSendingVoice(true);
     try {
       await onSendVoice(result.blob, result.duration, result.mimeType);
     } catch (e) {
+      setPendingSends((prev) => prev.filter((p) => p.clientId !== clientId));
       window.alert(e instanceof Error ? e.message : 'Не удалось отправить голосовое');
     } finally {
       setIsSendingVoice(false);
@@ -1232,6 +1255,11 @@ export function ChatPanel({
   };
 
   const renderPendingBubble = (item: PendingFeedItem) => {
+    const isVoicePending =
+      item.fileTypeHint === 'voice' &&
+      item.previewUrls.length === 0 &&
+      item.videoPreviewUrls.length === 0;
+
     return (
       <div className="message-bubble my message-bubble--pending">
         {(item.previewUrls.length > 0 || item.videoPreviewUrls.length > 0) && (
@@ -1248,6 +1276,14 @@ export function ChatPanel({
                 <div className="attachment-preview-shimmer" aria-hidden="true" />
               </div>
             ))}
+          </div>
+        )}
+        {isVoicePending && (
+          <div className="msg-pending-voice" aria-label="Отправка голосового сообщения">
+            <span className="msg-pending-voice__wave" aria-hidden="true" />
+            <span className="msg-pending-voice__time">
+              {formatVoiceDuration(item.voiceDuration || 0)}
+            </span>
           </div>
         )}
         {item.content && <div className="msg-content">{item.content}</div>}

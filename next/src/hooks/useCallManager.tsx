@@ -154,6 +154,8 @@ export function CallProvider({ userId, children }: { userId: string; children: R
     payload: { sdp: RTCSessionDescriptionInit };
   } | null>(null);
   const incomingPollInFlightRef = useRef(false);
+  const outgoingPollInFlightRef = useRef(false);
+  const offerStartedForCallRef = useRef<number | null>(null);
 
   const syncStreams = useCallback(() => {
     const rtc = rtcRef.current;
@@ -175,16 +177,23 @@ export function CallProvider({ userId, children }: { userId: string; children: R
 
   const setupCallerPeer = useCallback(
     async (callId: number) => {
+      if (offerStartedForCallRef.current === callId) return;
+      offerStartedForCallRef.current = callId;
       const rtc = rtcRef.current;
-      await rtc.createPeer(() => syncStreams(), (candidate) => {
-        api(`/api/calls/${callId}/signal`, {
-          method: 'POST',
-          body: JSON.stringify({ type: 'ice', payload: { candidate } }),
-        }).catch(() => {});
-      });
-      rtc.bindIceToCall(callId);
-      await rtc.createOffer(callId);
-      setState((s) => ({ ...s, connectionState: 'connecting' }));
+      try {
+        await rtc.createPeer(() => syncStreams(), (candidate) => {
+          api(`/api/calls/${callId}/signal`, {
+            method: 'POST',
+            body: JSON.stringify({ type: 'ice', payload: { candidate } }),
+          }).catch(() => {});
+        });
+        rtc.bindIceToCall(callId);
+        await rtc.createOffer(callId);
+        setState((s) => ({ ...s, connectionState: 'connecting' }));
+      } catch {
+        offerStartedForCallRef.current = null;
+        throw new Error('CALLER_NEGOTIATION_FAILED');
+      }
     },
     [syncStreams],
   );
@@ -284,6 +293,59 @@ export function CallProvider({ userId, children }: { userId: string; children: R
     return () => window.clearInterval(timer);
   }, [syncIncomingCallFallback]);
 
+  const syncOutgoingCallFallback = useCallback(async () => {
+    if (outgoingPollInFlightRef.current) return;
+    const current = stateRef.current;
+    if (current.phase !== 'outgoing' || !current.call?.id) return;
+
+    outgoingPollInFlightRef.current = true;
+    try {
+      const calls = await api<
+        Array<{
+          id: number;
+          status: string;
+          direction: string;
+          room_id?: string;
+        }>
+      >('/api/calls');
+      const mine = calls.find((c) => c.id === current.call!.id);
+      if (!mine) return;
+
+      if (mine.status === 'active') {
+        setState((s) => ({
+          ...s,
+          roomId: mine.room_id ?? s.roomId,
+          connectionState: 'connecting',
+        }));
+        if (offerStartedForCallRef.current !== mine.id) {
+          await setupCallerPeer(mine.id);
+        }
+        return;
+      }
+
+      if (['rejected', 'missed', 'completed'].includes(mine.status)) {
+        stopRinging();
+        rtcRef.current.cleanup();
+        offerStartedForCallRef.current = null;
+        resetCallState();
+      }
+    } catch {
+      /* ignore transient fallback errors */
+    } finally {
+      outgoingPollInFlightRef.current = false;
+    }
+  }, [resetCallState, setupCallerPeer]);
+
+  useEffect(() => {
+    const tick = () => {
+      if (document.visibilityState !== 'visible') return;
+      void syncOutgoingCallFallback();
+    };
+    tick();
+    const timer = window.setInterval(tick, 2000);
+    return () => window.clearInterval(timer);
+  }, [syncOutgoingCallFallback]);
+
   const startCall = useCallback(
     async (receiverId: string, type: 'voice' | 'video' = 'voice', contactIds?: Set<string> | string[]) => {
       if (contactIds && !isContactId(contactIds, receiverId)) {
@@ -328,6 +390,7 @@ export function CallProvider({ userId, children }: { userId: string; children: R
     stopRinging();
     pendingOfferRef.current = null;
     acceptingRef.current = false;
+    offerStartedForCallRef.current = null;
     const callId = stateRef.current.call?.id || stateRef.current.incoming?.call_id;
     setState((s) => ({ ...s, phase: 'ending', connectionState: 'ended' }));
     if (callId) {

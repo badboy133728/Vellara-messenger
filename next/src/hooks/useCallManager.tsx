@@ -180,13 +180,68 @@ export function CallProvider({ userId, children }: { userId: string; children: R
     manager.retainAuthLifecycle();
     let disposed = false;
     let ch: ReturnType<typeof supabase.channel> | null = null;
+    let binding = false;
 
-    const bind = async () => {
-      const authOk = await manager.prepare(false);
-      if (!authOk || disposed) return;
+    const syncCurrentRingingIncoming = async () => {
+      if (stateRef.current.phase !== 'idle') return;
+      try {
+        const calls = await api<
+          Array<{
+            id: number;
+            room_id?: string;
+            type?: 'voice' | 'video';
+            status: string;
+            direction: string;
+            peer?: CallPeer | null;
+          }>
+        >('/api/calls');
+        const incomingRinging = calls.find(
+          (c) => c.direction === 'incoming' && c.status === 'ringing',
+        );
+        if (!incomingRinging) return;
+        if (stateRef.current.phase !== 'idle') return;
+        setState((s) => ({
+          ...s,
+          incoming: {
+            call_id: incomingRinging.id,
+            room_id: incomingRinging.room_id,
+            type: incomingRinging.type || 'voice',
+            caller: incomingRinging.peer ?? undefined,
+            call: {
+              id: incomingRinging.id,
+              peer: incomingRinging.peer ?? null,
+              room_id: incomingRinging.room_id,
+            },
+          },
+          roomId: incomingRinging.room_id ?? null,
+          phase: 'incoming',
+          connectionState: 'ringing',
+        }));
+        startRinging();
+      } catch {
+        /* ignore bootstrap sync errors */
+      }
+    };
 
-      ch = supabase
-        .channel(`call-logs:${userId}`)
+    const bind = async (hardReconnect = false) => {
+      if (disposed || binding) return;
+      binding = true;
+      try {
+        const authOk = await manager.prepare(hardReconnect);
+        if (!authOk) {
+          window.setTimeout(() => {
+            if (!disposed) void bind(true);
+          }, 1500);
+          return;
+        }
+        if (disposed) return;
+        if (ch) {
+          await supabase.removeChannel(ch);
+          ch = null;
+        }
+
+        ch = supabase
+          .channel(`call-logs:${userId}`)
         .on(
           'postgres_changes',
           {
@@ -269,10 +324,21 @@ export function CallProvider({ userId, children }: { userId: string; children: R
             }
           },
         )
-        .subscribe();
+        .subscribe((status) => {
+          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            window.setTimeout(() => {
+              if (!disposed) void bind(true);
+            }, 1500);
+          }
+        });
+
+        void syncCurrentRingingIncoming();
+      } finally {
+        binding = false;
+      }
     };
 
-    void bind();
+    void bind(false);
 
     return () => {
       disposed = true;

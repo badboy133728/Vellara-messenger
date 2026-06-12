@@ -402,6 +402,7 @@ export type ContactRequestPayload = {
   sender_id?: string;
   name?: string;
   last_name?: string;
+  conversation_id?: number;
 };
 
 export type UserRealtimeHandlers = {

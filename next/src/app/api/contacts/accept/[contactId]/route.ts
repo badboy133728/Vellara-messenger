@@ -1,5 +1,6 @@
 import { requireAuth } from '@/lib/auth';
 import { publishUserContactRequestAccepted } from '@/lib/realtime/publish';
+import { getOrCreatePrivateConversation } from '@/lib/chat/conversations';
 
 export async function POST(
   _request: Request,
@@ -57,9 +58,18 @@ export async function POST(
     }
   }
 
+  let conversationId: number | null = null;
+  try {
+    const conv = await getOrCreatePrivateConversation(supabase, user.id, senderId);
+    conversationId = conv.id;
+  } catch {
+    // Conversation will still be lazily created from /api/chat/start if needed.
+  }
+
   await publishUserContactRequestAccepted(senderId, {
     contact_id: user.id,
     name: profile.name,
+    conversation_id: conversationId ?? undefined,
   });
 
   return Response.json({ message: 'Контакт принят' });

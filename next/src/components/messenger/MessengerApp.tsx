@@ -380,7 +380,15 @@ function MessengerAppInner({ user }: { user: Profile }) {
   const onContactsChanged = useCallback(() => {
     setContactsRefreshKey((k) => k + 1);
     void refreshIncomingCount();
-  }, [refreshIncomingCount]);
+    // Contact accept can create a brand-new private conversation.
+    // Refresh chat list immediately so first message arrives in realtime.
+    void api<ConversationListItem[]>('/api/chat')
+      .then((data) => {
+        setConversations(data);
+        syncConversations(data);
+      })
+      .catch(() => {});
+  }, [refreshIncomingCount, syncConversations]);
 
   useEffect(() => {
     void refreshIncomingCount();

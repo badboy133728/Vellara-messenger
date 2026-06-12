@@ -53,6 +53,7 @@ export type ContactRequestSentPayload = {
 export type ContactRequestAcceptedPayload = {
   contact_id: string;
   name?: string;
+  conversation_id?: number;
 };
 
 export type ContactRequestRejectedPayload = {

@@ -576,7 +576,7 @@ export function ChatPanel({
   const showMessages = !messagesLoading;
   const chatReady = showMessages && (messages.length === 0 || scrollReady);
   const canComposeInChannel =
-    (isChannelAdmin && !inChannelCommentsView) ||
+    isChannelAdmin ||
     (inChannelCommentsView && allowChannelComments && !isChannelAdmin);
   const showComposerArea =
     showMessages && !selectionMode && (!isChannel || canComposeInChannel);
@@ -864,7 +864,12 @@ export function ChatPanel({
   const startReplyMessage = () => {
     const msg = msgMenu.message;
     if (!msg || msg.is_deleted) return;
-    if (isChannel && !msg.reply_to_id && allowChannelComments && !isChannelAdmin) {
+    if (
+      isChannel &&
+      !inChannelCommentsView &&
+      !msg.reply_to_id &&
+      (allowChannelComments || isChannelAdmin)
+    ) {
       closeMessageMenu();
       openChannelComments(msg);
       return;
@@ -1111,8 +1116,10 @@ export function ChatPanel({
     }
   };
 
-  const showGroupSenderAvatar = (m: FormattedMessage) =>
-    isGroup && m.user_id !== currentUserId && m.message_type !== 'system';
+  const showSenderAvatar = (m: FormattedMessage) =>
+    m.user_id !== currentUserId &&
+    m.message_type !== 'system' &&
+    (isGroup || (isChannel && !!m.reply_to_id));
 
   const renderStatus = (m: FormattedMessage, mine: boolean) => {
     if (!mine || m.message_type !== 'user' || m.is_deleted) return null;
@@ -1403,9 +1410,9 @@ export function ChatPanel({
           </span>
         )}
         <div
-          className={`message-row-body ${mine ? 'message-row-body--mine' : 'message-row-body--other'} ${isGroup ? 'message-row-body--group' : ''} ${isChannelPost ? 'message-row-body--channel-post' : ''}`}
+          className={`message-row-body ${mine ? 'message-row-body--mine' : 'message-row-body--other'} ${(isGroup || isChannelComment) ? 'message-row-body--group' : ''} ${isChannelPost ? 'message-row-body--channel-post' : ''}`}
         >
-          {showGroupSenderAvatar(m) && (
+          {showSenderAvatar(m) && (
             <button type="button" className="msg-avatar-btn" title="Профиль">
               <ContactAvatar
                 name={m.sender?.name ?? ''}
@@ -1827,7 +1834,7 @@ export function ChatPanel({
                   placeholder={
                     editingMessage
                       ? 'Редактирование…'
-                      : isChannel && !isChannelAdmin
+                      : inChannelCommentsView || (isChannel && !isChannelAdmin)
                         ? 'Комментарий…'
                         : 'Сообщение'
                   }
@@ -1878,10 +1885,11 @@ export function ChatPanel({
           !!msgMenu.message &&
           !msgMenu.message.is_deleted &&
           (!isChannel ||
-            (!inChannelCommentsView &&
-              allowChannelComments &&
-              !isChannelAdmin &&
-              !msgMenu.message.reply_to_id))
+            (isChannelAdmin
+              ? (inChannelCommentsView || !msgMenu.message.reply_to_id)
+              : (!inChannelCommentsView &&
+                allowChannelComments &&
+                !msgMenu.message.reply_to_id)))
         }
         canCopy={!!msgMenu.message && !!getMessageCopyText(msgMenu.message)}
         canEdit={msgMenu.canEdit}

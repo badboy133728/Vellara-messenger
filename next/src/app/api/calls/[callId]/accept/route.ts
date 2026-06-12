@@ -1,5 +1,6 @@
 import { requireAuth } from '@/lib/auth';
 import { publishUserCallSignaling } from '@/lib/realtime/publish';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export async function POST(
   _request: Request,
@@ -19,12 +20,18 @@ export async function POST(
   }
 
   const now = new Date().toISOString();
-  const { data: updated } = await supabase
+  const admin = createAdminClient();
+  const { data: updated, error: updateError } = await admin
     .from('call_logs')
     .update({ status: 'active', started_at: call.started_at ?? now })
     .eq('id', callId)
+    .eq('receiver_id', user.id)
+    .eq('status', 'ringing')
     .select('*')
     .single();
+  if (updateError || !updated) {
+    return Response.json({ message: updateError?.message ?? 'Не удалось принять звонок' }, { status: 409 });
+  }
 
   await publishUserCallSignaling(call.caller_id, {
     call_id: callId,

@@ -1929,9 +1929,19 @@ export function ChatPanel({
               </div>
             </div>
             {editingMessage ? (
-              <button type="button" className="composer-btn" title="Отменить" onClick={cancelEdit}>
-                <VellaraIcon name="close" size={20} />
-              </button>
+              <>
+                <button type="button" className="composer-btn" title="Отменить" onClick={cancelEdit}>
+                  <VellaraIcon name="close" size={20} />
+                </button>
+                <button
+                  type="submit"
+                  className="composer-btn composer-btn--send"
+                  title="Применить изменения"
+                  disabled={sending || !text.trim()}
+                >
+                  <VellaraIcon name="check" size={20} />
+                </button>
+              </>
             ) : canSendVoice && onSendVoice && !text.trim() && !hasAttachments ? (
               <button
                 type="button"

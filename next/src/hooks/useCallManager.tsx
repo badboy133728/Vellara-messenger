@@ -377,13 +377,15 @@ export function CallProvider({ userId, children }: { userId: string; children: R
         await rtc.acquireMedia(type === 'video');
         syncStreams();
         setState((s) => ({ ...s, videoEnabled: type === 'video' }));
+        // Start offer immediately; callee will apply it only after explicit accept.
+        await setupCallerPeer(res.call.id);
       } catch (e) {
         resetCallState();
         rtc.cleanup();
         throw e;
       }
     },
-    [resetCallState, syncStreams],
+    [resetCallState, syncStreams, setupCallerPeer],
   );
 
   const endCallInner = useCallback(async () => {
@@ -503,7 +505,7 @@ export function CallProvider({ userId, children }: { userId: string; children: R
         current.phase === 'outgoing' &&
         String(current.call?.id) === String(callId)
       ) {
-        await setupCallerPeer(callId);
+        setState((s) => ({ ...s, connectionState: 'connecting' }));
         return;
       }
 
@@ -524,6 +526,10 @@ export function CallProvider({ userId, children }: { userId: string; children: R
 
       if (signal === 'call:offer' && fromUserId !== myId) {
         const offerPayload = innerPayload as { sdp: RTCSessionDescriptionInit };
+        if (current.phase === 'incoming' && String(current.incoming?.call_id) === String(callId)) {
+          pendingOfferRef.current = { callId, payload: offerPayload };
+          return;
+        }
         if (acceptingRef.current) {
           pendingOfferRef.current = { callId, payload: offerPayload };
           return;
@@ -551,7 +557,7 @@ export function CallProvider({ userId, children }: { userId: string; children: R
         await rtc.handleIce(innerPayload as { candidate?: RTCIceCandidateInit });
       }
     },
-    [userId, resetCallState, setupCallerPeer, syncStreams, handleIncomingOffer],
+    [userId, resetCallState, syncStreams, handleIncomingOffer],
   );
 
   const toggleMute = useCallback(() => {

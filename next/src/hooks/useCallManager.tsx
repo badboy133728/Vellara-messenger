@@ -12,6 +12,7 @@ import {
 } from 'react';
 import { api } from '@/lib/api';
 import { createWebRTCManager } from '@/lib/webrtc/useWebRTC';
+import { getRealtimeManager } from '@/lib/realtime/manager';
 
 export type CallPhase = 'idle' | 'incoming' | 'outgoing' | 'active' | 'ending';
 
@@ -153,8 +154,6 @@ export function CallProvider({ userId, children }: { userId: string; children: R
     callId: number;
     payload: { sdp: RTCSessionDescriptionInit };
   } | null>(null);
-  const incomingPollInFlightRef = useRef(false);
-  const outgoingPollInFlightRef = useRef(false);
   const offerStartedForCallRef = useRef<number | null>(null);
 
   const syncStreams = useCallback(() => {
@@ -174,6 +173,113 @@ export function CallProvider({ userId, children }: { userId: string; children: R
   const resetCallState = useCallback(() => {
     setState(initialState);
   }, []);
+
+  useEffect(() => {
+    const manager = getRealtimeManager();
+    const supabase = manager.client;
+    manager.retainAuthLifecycle();
+    let disposed = false;
+    let ch: ReturnType<typeof supabase.channel> | null = null;
+
+    const bind = async () => {
+      const authOk = await manager.prepare(false);
+      if (!authOk || disposed) return;
+
+      ch = supabase
+        .channel(`call-logs:${userId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'call_logs',
+            filter: `receiver_id=eq.${userId}`,
+          },
+          (payload) => {
+            const row = (payload.new || payload.old || {}) as {
+              id?: number;
+              room_id?: string | null;
+              type?: 'voice' | 'video';
+              status?: string;
+            };
+            if (!row.id) return;
+            const current = stateRef.current;
+
+            if (row.status === 'ringing' && current.phase === 'idle') {
+              setState((s) => ({
+                ...s,
+                incoming: {
+                  call_id: row.id!,
+                  room_id: row.room_id ?? undefined,
+                  type: row.type || 'voice',
+                },
+                roomId: row.room_id ?? null,
+                phase: 'incoming',
+                connectionState: 'ringing',
+              }));
+              startRinging();
+              return;
+            }
+
+            if (['rejected', 'missed', 'completed'].includes(row.status || '')) {
+              if (
+                String(current.call?.id) === String(row.id) ||
+                String(current.incoming?.call_id) === String(row.id)
+              ) {
+                stopRinging();
+                rtcRef.current.cleanup();
+                offerStartedForCallRef.current = null;
+                resetCallState();
+              }
+            }
+          },
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'call_logs',
+            filter: `caller_id=eq.${userId}`,
+          },
+          (payload) => {
+            const row = (payload.new || payload.old || {}) as {
+              id?: number;
+              room_id?: string | null;
+              status?: string;
+            };
+            if (!row.id) return;
+            const current = stateRef.current;
+            if (String(current.call?.id) !== String(row.id)) return;
+
+            if (row.status === 'active') {
+              setState((s) => ({
+                ...s,
+                roomId: row.room_id ?? s.roomId,
+                connectionState: 'connecting',
+              }));
+              return;
+            }
+
+            if (['rejected', 'missed', 'completed'].includes(row.status || '')) {
+              stopRinging();
+              rtcRef.current.cleanup();
+              offerStartedForCallRef.current = null;
+              resetCallState();
+            }
+          },
+        )
+        .subscribe();
+    };
+
+    void bind();
+
+    return () => {
+      disposed = true;
+      manager.releaseAuthLifecycle();
+      if (ch) void supabase.removeChannel(ch);
+    };
+  }, [userId, resetCallState]);
 
   const setupCallerPeer = useCallback(
     async (callId: number) => {
@@ -234,117 +340,6 @@ export function CallProvider({ userId, children }: { userId: string; children: R
     const data = await api<{ id: string }[]>('/api/contacts/my');
     return new Set(data.map((c) => c.id));
   }, []);
-
-  const syncIncomingCallFallback = useCallback(async () => {
-    if (incomingPollInFlightRef.current) return;
-    const phase = stateRef.current.phase;
-    if (!['idle', 'incoming'].includes(phase)) return;
-
-    incomingPollInFlightRef.current = true;
-    try {
-      const calls = await api<
-        Array<{
-          id: number;
-          room_id?: string;
-          type?: 'voice' | 'video';
-          status: string;
-          direction: string;
-          peer?: CallPeer | null;
-        }>
-      >('/api/calls');
-      const incomingRinging = calls.find((c) => c.direction === 'incoming' && c.status === 'ringing');
-      if (!incomingRinging) return;
-
-      const current = stateRef.current;
-      if (current.phase === 'incoming' && current.incoming?.call_id === incomingRinging.id) return;
-
-      setState((s) => ({
-        ...s,
-        incoming: {
-          call_id: incomingRinging.id,
-          room_id: incomingRinging.room_id,
-          type: incomingRinging.type || 'voice',
-          caller: incomingRinging.peer ?? undefined,
-          call: {
-            id: incomingRinging.id,
-            peer: incomingRinging.peer ?? null,
-            room_id: incomingRinging.room_id,
-          },
-        },
-        roomId: incomingRinging.room_id ?? s.roomId,
-        phase: 'incoming',
-        connectionState: 'ringing',
-      }));
-      startRinging();
-    } catch {
-      /* ignore transient fallback errors */
-    } finally {
-      incomingPollInFlightRef.current = false;
-    }
-  }, []);
-
-  useEffect(() => {
-    const tick = () => {
-      if (document.visibilityState !== 'visible') return;
-      void syncIncomingCallFallback();
-    };
-    tick();
-    const timer = window.setInterval(tick, 2500);
-    return () => window.clearInterval(timer);
-  }, [syncIncomingCallFallback]);
-
-  const syncOutgoingCallFallback = useCallback(async () => {
-    if (outgoingPollInFlightRef.current) return;
-    const current = stateRef.current;
-    if (current.phase !== 'outgoing' || !current.call?.id) return;
-
-    outgoingPollInFlightRef.current = true;
-    try {
-      const calls = await api<
-        Array<{
-          id: number;
-          status: string;
-          direction: string;
-          room_id?: string;
-        }>
-      >('/api/calls');
-      const mine = calls.find((c) => c.id === current.call!.id);
-      if (!mine) return;
-
-      if (mine.status === 'active') {
-        setState((s) => ({
-          ...s,
-          roomId: mine.room_id ?? s.roomId,
-          connectionState: 'connecting',
-        }));
-        if (offerStartedForCallRef.current !== mine.id) {
-          await setupCallerPeer(mine.id);
-        }
-        return;
-      }
-
-      if (['rejected', 'missed', 'completed'].includes(mine.status)) {
-        stopRinging();
-        rtcRef.current.cleanup();
-        offerStartedForCallRef.current = null;
-        resetCallState();
-      }
-    } catch {
-      /* ignore transient fallback errors */
-    } finally {
-      outgoingPollInFlightRef.current = false;
-    }
-  }, [resetCallState, setupCallerPeer]);
-
-  useEffect(() => {
-    const tick = () => {
-      if (document.visibilityState !== 'visible') return;
-      void syncOutgoingCallFallback();
-    };
-    tick();
-    const timer = window.setInterval(tick, 2000);
-    return () => window.clearInterval(timer);
-  }, [syncOutgoingCallFallback]);
 
   const startCall = useCallback(
     async (receiverId: string, type: 'voice' | 'video' = 'voice', contactIds?: Set<string> | string[]) => {

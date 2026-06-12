@@ -93,6 +93,16 @@ export type RealtimeEnvelope<K extends RealtimeEventName> = {
   data: RealtimeEventPayload<K>;
 };
 
+function safePayloadFingerprint(value: unknown): string {
+  if (value == null) return 'none';
+  if (typeof value !== 'object') return String(value);
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return 'unserializable';
+  }
+}
+
 export function realtimeDedupKey<K extends RealtimeEventName>(
   event: K,
   payload: RealtimeEventPayload<K>,
@@ -124,7 +134,8 @@ export function realtimeDedupKey<K extends RealtimeEventName>(
     }
     case 'CallSignaling': {
       const p = payload as CallSignalingPayload;
-      return `call:${p.call_id}:${p.signal}`;
+      // Include payload fingerprint so successive ICE candidates are not dropped as duplicates.
+      return `call:${p.call_id}:${p.signal}:${safePayloadFingerprint(p.payload)}`;
     }
     case 'ContactRequestSent': {
       const p = payload as ContactRequestSentPayload;

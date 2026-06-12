@@ -901,6 +901,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
     activeIdRef,
     groupMembersRef,
     userRef,
+    conversationsRef,
   });
 
   useChatRealtime(realtimeConvIdsKey, {

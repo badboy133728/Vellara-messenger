@@ -34,6 +34,7 @@ type Options = {
   activeIdRef: MutableRefObject<number | null>;
   groupMembersRef: MutableRefObject<Map<string, SenderProfile>>;
   userRef: MutableRefObject<Profile>;
+  conversationsRef: MutableRefObject<ConversationListItem[]>;
 };
 
 /**
@@ -55,9 +56,35 @@ export function useRealtimeMessageReducer(options: Options) {
     activeIdRef,
     groupMembersRef,
     userRef,
+    conversationsRef,
   } = options;
 
   const deduperRef = useRef(new RealtimeDeduper(10_000, 700));
+  const syncingConversationsRef = useRef(new Set<number>());
+
+  const ensureConversationVisible = useCallback(
+    (convId: number) => {
+      if (syncingConversationsRef.current.has(convId)) return;
+      syncingConversationsRef.current.add(convId);
+      const delays = [0, 800, 2200, 5000];
+      void (async () => {
+        try {
+          for (const delayMs of delays) {
+            if (delayMs > 0) {
+              await new Promise((resolve) => window.setTimeout(resolve, delayMs));
+            }
+            await loadConversations().catch(() => null);
+            if (conversationsRef.current.some((c) => c.id === convId)) {
+              break;
+            }
+          }
+        } finally {
+          syncingConversationsRef.current.delete(convId);
+        }
+      })();
+    },
+    [loadConversations, conversationsRef],
+  );
 
   return useCallback(
     (msg: FormattedMessage, meta?: RealtimeMeta) => {
@@ -71,10 +98,15 @@ export function useRealtimeMessageReducer(options: Options) {
       const isSystem = (msg.message_type || 'user') === 'system';
       const viewing = isViewingConversation(convId);
       const previewMsg = enrichMessageSender(msg, groupMembersRef.current, userRef.current);
+      const hasConversation = conversationsRef.current.some((c) => c.id === convId);
+      if (!hasConversation) {
+        // New private chat can appear slightly later than the first realtime message.
+        // Retry list sync a few times to avoid "message appears only after manual refresh".
+        ensureConversationVisible(convId);
+      }
 
       setConversations((prev) => {
         if (!prev.some((c) => c.id === convId)) {
-          loadConversations().catch(() => {});
           return prev;
         }
         return patchConversationFromMessage(prev, convId, previewMsg, {
@@ -137,7 +169,6 @@ export function useRealtimeMessageReducer(options: Options) {
     [
       userId,
       isViewingConversation,
-      loadConversations,
       notifyIncomingMessage,
       setConversationReadLocal,
       decryptConvMessages,
@@ -148,6 +179,8 @@ export function useRealtimeMessageReducer(options: Options) {
       activeIdRef,
       groupMembersRef,
       userRef,
+      conversationsRef,
+      ensureConversationVisible,
     ],
   );
 }

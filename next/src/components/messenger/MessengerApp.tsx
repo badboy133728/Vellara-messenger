@@ -1429,9 +1429,11 @@ function MessengerAppInner({ user }: { user: Profile }) {
       return;
     }
 
-    if (!window.confirm('Удалить чат из списка? История сохранится и чат появится снова при новом сообщении.')) {
-      return;
-    }
+    const isPrivate = conv.type === 'private';
+    const confirmText = isPrivate
+      ? 'Удалить приватный чат у обоих пользователей безвозвратно? Это действие нельзя отменить.'
+      : 'Удалить чат из списка? История сохранится и чат появится снова при новом сообщении.';
+    if (!window.confirm(confirmText)) return;
     try {
       await api(`/api/chat/${conv.id}`, { method: 'DELETE' });
       setConversations((prev) => prev.filter((c) => c.id !== conv.id));

@@ -153,6 +153,7 @@ export function CallProvider({ userId, children }: { userId: string; children: R
     callId: number;
     payload: { sdp: RTCSessionDescriptionInit };
   } | null>(null);
+  const incomingPollInFlightRef = useRef(false);
 
   const syncStreams = useCallback(() => {
     const rtc = rtcRef.current;
@@ -224,6 +225,64 @@ export function CallProvider({ userId, children }: { userId: string; children: R
     const data = await api<{ id: string }[]>('/api/contacts/my');
     return new Set(data.map((c) => c.id));
   }, []);
+
+  const syncIncomingCallFallback = useCallback(async () => {
+    if (incomingPollInFlightRef.current) return;
+    const phase = stateRef.current.phase;
+    if (!['idle', 'incoming'].includes(phase)) return;
+
+    incomingPollInFlightRef.current = true;
+    try {
+      const calls = await api<
+        Array<{
+          id: number;
+          room_id?: string;
+          type?: 'voice' | 'video';
+          status: string;
+          direction: string;
+          peer?: CallPeer | null;
+        }>
+      >('/api/calls');
+      const incomingRinging = calls.find((c) => c.direction === 'incoming' && c.status === 'ringing');
+      if (!incomingRinging) return;
+
+      const current = stateRef.current;
+      if (current.phase === 'incoming' && current.incoming?.call_id === incomingRinging.id) return;
+
+      setState((s) => ({
+        ...s,
+        incoming: {
+          call_id: incomingRinging.id,
+          room_id: incomingRinging.room_id,
+          type: incomingRinging.type || 'voice',
+          caller: incomingRinging.peer ?? undefined,
+          call: {
+            id: incomingRinging.id,
+            peer: incomingRinging.peer ?? null,
+            room_id: incomingRinging.room_id,
+          },
+        },
+        roomId: incomingRinging.room_id ?? s.roomId,
+        phase: 'incoming',
+        connectionState: 'ringing',
+      }));
+      startRinging();
+    } catch {
+      /* ignore transient fallback errors */
+    } finally {
+      incomingPollInFlightRef.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    const tick = () => {
+      if (document.visibilityState !== 'visible') return;
+      void syncIncomingCallFallback();
+    };
+    tick();
+    const timer = window.setInterval(tick, 2500);
+    return () => window.clearInterval(timer);
+  }, [syncIncomingCallFallback]);
 
   const startCall = useCallback(
     async (receiverId: string, type: 'voice' | 'video' = 'voice', contactIds?: Set<string> | string[]) => {

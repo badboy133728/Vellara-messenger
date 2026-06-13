@@ -1256,6 +1256,25 @@
   overflow-wrap: anywhere;
 }
 
+.channel-preview-post__media {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  border-radius: 10px;
+  border: 1px solid rgba(201, 168, 133, 0.16);
+  margin: 0 0 8px;
+  background: #000;
+}
+
+.channel-preview-post__media--image {
+  max-height: 320px;
+  object-fit: cover;
+}
+
+.channel-preview-post__media--video {
+  max-height: 320px;
+}
+
 .channel-preview-modal__actions {
   padding: 12px 14px;
   border-top: 1px solid var(--vellara-border-subtle, #2e2e2e);

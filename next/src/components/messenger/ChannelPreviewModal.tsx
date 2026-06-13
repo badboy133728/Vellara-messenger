@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { effectiveMessageFileType } from '@/lib/chat/attachmentTypes';
 import { displayMessageContent } from '@/lib/e2e/messageCrypto';
+import { storageDisplayUrl } from '@/lib/storage';
 import type { FormattedMessage } from '@/lib/types';
 import { VellaraIcon } from '@/components/icons/VellaraIcon';
 
@@ -32,6 +33,11 @@ function postBodyPreview(post: FormattedMessage) {
   if (text && fileLabel) return `${fileLabel} · ${text}`;
   if (text) return text;
   return fileLabel || 'Пост';
+}
+
+function previewMediaUrl(post: FormattedMessage): string | null {
+  if (!post.file_path) return null;
+  return storageDisplayUrl(post.file_path);
 }
 
 export function ChannelPreviewModal({
@@ -118,24 +124,45 @@ export function ChannelPreviewModal({
             )}
             {posts.length ? (
               <div className="channel-preview-posts">
-                {posts.map((post) => (
-                  <article key={post.id} className="channel-preview-post">
-                    <header className="channel-preview-post__head">
-                      <strong>
-                        {post.sender?.name} {post.sender?.last_name}
-                      </strong>
-                      <time dateTime={post.created_at}>
-                        {new Date(post.created_at).toLocaleString('ru-RU', {
-                          day: '2-digit',
-                          month: '2-digit',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </time>
-                    </header>
-                    <p className="channel-preview-post__body">{postBodyPreview(post)}</p>
-                  </article>
-                ))}
+                {posts.map((post) => {
+                  const fileType = effectiveMessageFileType(post);
+                  const mediaUrl = previewMediaUrl(post);
+                  return (
+                    <article key={post.id} className="channel-preview-post">
+                      <header className="channel-preview-post__head">
+                        <strong>
+                          {post.sender?.name} {post.sender?.last_name}
+                        </strong>
+                        <time dateTime={post.created_at}>
+                          {new Date(post.created_at).toLocaleString('ru-RU', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </time>
+                      </header>
+                      {fileType === 'image' && mediaUrl && (
+                        <img
+                          src={mediaUrl}
+                          alt="Фото из поста"
+                          className="channel-preview-post__media channel-preview-post__media--image"
+                          loading="lazy"
+                        />
+                      )}
+                      {fileType === 'video' && mediaUrl && (
+                        <video
+                          className="channel-preview-post__media channel-preview-post__media--video"
+                          src={mediaUrl}
+                          controls
+                          playsInline
+                          preload="metadata"
+                        />
+                      )}
+                      <p className="channel-preview-post__body">{postBodyPreview(post)}</p>
+                    </article>
+                  );
+                })}
               </div>
             ) : (
               <p className="channel-preview-modal__empty">В канале пока нет постов</p>

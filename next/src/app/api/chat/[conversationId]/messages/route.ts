@@ -13,8 +13,50 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import type { MessageRow, Profile } from '@/lib/types';
 import { unhideConversationForRecipients } from '@/lib/chat/unhideMembers';
 import { applyGroupReadStatuses, type MemberRead } from '@/utils/groupReadStatus';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 export const maxDuration = 60;
+
+async function loadChannelThreadMessages(
+  supabase: SupabaseClient,
+  convId: number,
+  seedMessages: MessageRow[],
+): Promise<MessageRow[]> {
+  const rootPostIds = seedMessages
+    .filter((m) => (m.message_type || 'user') === 'user' && !m.reply_to_id)
+    .map((m) => m.id);
+  if (!rootPostIds.length) return [];
+
+  const seen = new Set(seedMessages.map((m) => m.id));
+  const collected: MessageRow[] = [];
+  let frontier = [...new Set(rootPostIds)];
+  let depth = 0;
+
+  // Recursively load nested comments for posts returned in this page slice.
+  while (frontier.length && depth < 12) {
+    const { data: level } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('conversation_id', convId)
+      .in('reply_to_id', frontier)
+      .order('created_at', { ascending: true });
+
+    const rows = (level ?? []) as MessageRow[];
+    if (!rows.length) break;
+
+    const nextFrontier: number[] = [];
+    for (const row of rows) {
+      if (seen.has(row.id)) continue;
+      seen.add(row.id);
+      collected.push(row);
+      nextFrontier.push(row.id);
+    }
+    frontier = nextFrontier;
+    depth += 1;
+  }
+
+  return collected;
+}
 
 export async function GET(
   request: Request,
@@ -53,7 +95,22 @@ export async function GET(
 
   const { data: recent } = await query.order('created_at', { ascending: false }).limit(limit);
 
-  const messageRows = [...(recent ?? [])].reverse() as MessageRow[];
+  let messageRows = [...(recent ?? [])].reverse() as MessageRow[];
+  const { data: conv } = await supabase
+    .from('conversations')
+    .select('type')
+    .eq('id', convId)
+    .single();
+
+  if (conv?.type === 'channel' && messageRows.length) {
+    const threadRows = await loadChannelThreadMessages(supabase, convId, messageRows);
+    if (threadRows.length) {
+      messageRows = [...messageRows, ...threadRows].sort((a, b) =>
+        a.created_at.localeCompare(b.created_at),
+      );
+    }
+  }
+
   const userIds = [...new Set(messageRows.map((m) => m.user_id))];
   const admin = createAdminClient();
   const { data: profiles } = userIds.length
@@ -62,12 +119,6 @@ export async function GET(
 
   const profileMap = new Map((profiles ?? []).map((p) => [p.id, p as Profile]));
   const formatted = await formatMessagesWithReplies(messageRows, profileMap, admin);
-
-  const { data: conv } = await supabase
-    .from('conversations')
-    .select('type')
-    .eq('id', convId)
-    .single();
 
   let membersRead: MemberRead[] = [];
   if (conv?.type === 'group' || conv?.type === 'channel') {

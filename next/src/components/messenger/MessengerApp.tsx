@@ -37,6 +37,7 @@ import {
   patchConversationFromMessage,
   sortConversations,
 } from '@/utils/conversationList';
+import { enrichConversationListPreviews } from '@/utils/conversationPreview';
 import { displayFullName } from '@/utils/formatName';
 import { ConversationActionsMenu } from './ConversationActionsMenu';
 import { useMessageNotifications } from '@/hooks/useMessageNotifications';
@@ -433,13 +434,6 @@ function MessengerAppInner({ user }: { user: Profile }) {
 
   const unreadBadge = totalUnread > 99 ? '99+' : totalUnread > 0 ? String(totalUnread) : '';
 
-  const loadConversations = useCallback(async () => {
-    const data = await api<ConversationListItem[]>('/api/chat');
-    setConversations(data);
-    syncConversations(data);
-    return data;
-  }, [syncConversations]);
-
   const loadSavedIds = useCallback(async () => {
     try {
       const data = await api<{ ids: number[] }>('/api/chat/messages/saved/ids');
@@ -622,6 +616,30 @@ function MessengerAppInner({ user }: { user: Profile }) {
     [getE2EContext, user.id],
   );
 
+  const loadConversations = useCallback(async () => {
+    const data = await api<ConversationListItem[]>('/api/chat');
+    setConversations(data);
+    syncConversations(data);
+
+    await ensureIdentityKeys(user.id).catch(() => {});
+    const enriched = await enrichConversationListPreviews(data, user.id, async (conv) => {
+      if (conv.type === 'channel' || conv.type === 'saved') return null;
+      if (conv.type === 'private' && conv.other_user?.id) {
+        return buildE2EContextFromConversation(
+          conv.id,
+          'private',
+          [user.id, conv.other_user.id],
+          user.id,
+          conv.other_user.id,
+        );
+      }
+      return resolveE2EContextForConv(conv.id);
+    });
+    setConversations(enriched);
+    syncConversations(enriched);
+    return enriched;
+  }, [syncConversations, user.id, resolveE2EContextForConv]);
+
   const decryptConvMessages = useCallback(
     async (convId: number, list: FormattedMessage[]) => {
       if (!list.length) return list;
@@ -656,6 +674,7 @@ function MessengerAppInner({ user }: { user: Profile }) {
             has_more?: boolean;
           }>(`/api/chat/${convId}/messages`),
         ]);
+        if (activeIdRef.current !== convId) return;
         const readState =
           (conv?.type === 'group' || conv?.type === 'channel') && groupMembersRef.current.size
             ? [...groupMembersRef.current.keys()].map((userId) => {
@@ -667,8 +686,10 @@ function MessengerAppInner({ user }: { user: Profile }) {
         const enriched = enrichMessageSenders(data.messages ?? [], groupMembersRef.current, userRef.current);
         let nextMessages = applyGroupReadStatuses(enriched, readState, userRef.current.id);
         nextMessages = await decryptConvMessages(convId, nextMessages);
+        if (activeIdRef.current !== convId) return;
         setHasMoreOlder(data.has_more ?? (nextMessages.length >= 50));
         setMessages((prev) => {
+          if (activeIdRef.current !== convId) return prev;
           if (!opts?.silent || prev.length === 0) return nextMessages;
           const prevLast = prev[prev.length - 1]?.id ?? 0;
           const nextLast = nextMessages[nextMessages.length - 1]?.id ?? 0;
@@ -768,6 +789,9 @@ function MessengerAppInner({ user }: { user: Profile }) {
       }
       return;
     }
+    setMessages([]);
+    setMembersRead([]);
+    setHasMoreOlder(false);
     const cached = readCachedMessages(user.id, activeId);
     if (cached.length) {
       setMessages(cached);
@@ -778,8 +802,6 @@ function MessengerAppInner({ user }: { user: Profile }) {
       api(`/api/chat/${activeId}/messages/read`, { method: 'POST' }).catch(() => {});
       void loadMessagesRef.current(activeId, { silent: true, fromCache: true });
     } else {
-      setMessages([]);
-      setHasMoreOlder(false);
       setMessagesLoading(true);
       void loadMessagesRef.current(activeId);
     }

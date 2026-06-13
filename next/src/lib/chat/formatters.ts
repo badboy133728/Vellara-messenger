@@ -1,3 +1,4 @@
+import { containsE2EContent, isE2EContent } from '@/lib/crypto/message';
 import { isOnline } from '@/lib/presence';
 import { capitalizeNamePart } from '@/utils/formatName';
 import type {
@@ -34,7 +35,12 @@ function buildReplyPreview(
   };
 }
 
-export function messagePreview(msg: MessageRow, viewerId: string, albumCount = 1): string {
+export function messagePreview(
+  msg: MessageRow,
+  viewerId: string,
+  albumCount = 1,
+  convType?: string,
+): string {
   if (msg.deleted_at) return 'Сообщение удалено';
   if (msg.file_type === 'voice') return 'Голосовое сообщение';
   if (msg.file_type === 'image') {
@@ -44,7 +50,11 @@ export function messagePreview(msg: MessageRow, viewerId: string, albumCount = 1
   if (msg.file_type === 'document') return msg.file_original_name || 'Файл';
   const text = (msg.content || '').trim();
   if (!text) return 'Сообщение';
-  const prefix = msg.user_id === viewerId ? 'Вы: ' : '';
+  if (isE2EContent(text) || containsE2EContent(text)) {
+    return '🔒 Сообщение';
+  }
+  const isChannel = convType === 'channel';
+  const prefix = !isChannel && msg.user_id === viewerId ? 'Вы: ' : '';
   return prefix + (text.length > 60 ? text.slice(0, 60) + '…' : text);
 }
 
@@ -219,7 +229,7 @@ export function formatConversationForList(
         }
       : null,
     last_message_preview: lastMsg
-      ? messagePreview(lastMsg, userId, albumCount)
+      ? messagePreview(lastMsg, userId, albumCount, conv.type)
       : '',
     unread_count: count,
     has_unread: count > 0,

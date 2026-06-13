@@ -199,6 +199,68 @@ export function ConversationSidebar({
     openActionsMenu(touchEvent, touchEvent.payload as ConversationListItem);
   });
 
+  const listSections = useMemo(() => {
+    if (activeTab !== 'all') {
+      return [{ key: 'main', title: null as string | null, items: filtered }];
+    }
+    const chats = filtered.filter((c) => c.type !== 'channel');
+    const channels = filtered.filter((c) => c.type === 'channel');
+    const sections: Array<{ key: string; title: string | null; items: ConversationListItem[] }> = [];
+    if (chats.length) sections.push({ key: 'chats', title: 'Чаты', items: chats });
+    if (channels.length) sections.push({ key: 'channels', title: 'Каналы', items: channels });
+    return sections.length ? sections : [{ key: 'main', title: null, items: filtered }];
+  }, [activeTab, filtered]);
+
+  const renderConversationItem = (c: ConversationListItem) => {
+    const av = convAvatar(c);
+    const time =
+      c.last_message && typeof c.last_message === 'object' && 'created_at' in c.last_message
+        ? formatConvTime(String((c.last_message as { created_at: string }).created_at))
+        : formatConvTime(c.updated_at);
+    return (
+      <button
+        key={c.id}
+        type="button"
+        className={`conv-item ${activeId === c.id ? 'active' : ''} ${c.has_unread ? 'unread' : ''} ${c.is_pinned ? 'conv-item--pinned' : ''}`}
+        onClick={() => onSelect(c.id)}
+        onContextMenu={(e) => openActionsMenu(e, c)}
+        onTouchStart={(e) => longPress.onTouchStart(e, c)}
+        onTouchMove={longPress.onTouchMove}
+        onTouchEnd={longPress.onTouchEnd}
+        onTouchCancel={longPress.onTouchCancel}
+      >
+        <div
+          className={`avatar-small ${c.type === 'group' ? 'avatar-small--group' : ''} ${c.type === 'channel' ? 'avatar-small--channel' : ''}`}
+        >
+          {av.type === 'image' ? (
+            <img src={av.value} alt="" className="avatar-img" />
+          ) : (
+            <span className="avatar-letter">{av.value}</span>
+          )}
+        </div>
+        <div className="conv-info">
+          <div className="conv-row">
+            <div className="conv-name">
+              {c.is_pinned && (
+                <VellaraIcon name="pin" size={12} className="conv-item__pin-icon" />
+              )}
+              {conversationTitle(c)}
+            </div>
+            <span className="conv-time">{time}</span>
+          </div>
+          <div className={`conv-preview ${c.unread_count > 0 ? 'conv-preview--unread' : ''}`}>
+            {c.last_message_preview}
+          </div>
+        </div>
+        {c.unread_count > 0 && (
+          <span className="conv-unread-badge">
+            {c.unread_count > 99 ? '99+' : c.unread_count}
+          </span>
+        )}
+      </button>
+    );
+  };
+
   const closeActionsMenu = () => {
     if (Date.now() < menuCloseLockRef.current) return;
     setActionsMenu(null);
@@ -281,55 +343,14 @@ export function ConversationSidebar({
         </p>
       ) : (
         <div className="conversation-list">
-          {filtered.map((c) => {
-            const av = convAvatar(c);
-            const time =
-              c.last_message && typeof c.last_message === 'object' && 'created_at' in c.last_message
-                ? formatConvTime(String((c.last_message as { created_at: string }).created_at))
-                : formatConvTime(c.updated_at);
-            return (
-              <button
-                key={c.id}
-                type="button"
-                className={`conv-item ${activeId === c.id ? 'active' : ''} ${c.has_unread ? 'unread' : ''} ${c.is_pinned ? 'conv-item--pinned' : ''}`}
-                onClick={() => onSelect(c.id)}
-                onContextMenu={(e) => openActionsMenu(e, c)}
-                onTouchStart={(e) => longPress.onTouchStart(e, c)}
-                onTouchMove={longPress.onTouchMove}
-                onTouchEnd={longPress.onTouchEnd}
-                onTouchCancel={longPress.onTouchCancel}
-              >
-                <div
-                  className={`avatar-small ${c.type === 'group' ? 'avatar-small--group' : ''} ${c.type === 'channel' ? 'avatar-small--channel' : ''}`}
-                >
-                  {av.type === 'image' ? (
-                    <img src={av.value} alt="" className="avatar-img" />
-                  ) : (
-                    <span className="avatar-letter">{av.value}</span>
-                  )}
-                </div>
-                <div className="conv-info">
-                  <div className="conv-row">
-                    <div className="conv-name">
-                      {c.is_pinned && (
-                        <VellaraIcon name="pin" size={12} className="conv-item__pin-icon" />
-                      )}
-                      {conversationTitle(c)}
-                    </div>
-                    <span className="conv-time">{time}</span>
-                  </div>
-                  <div className={`conv-preview ${c.unread_count > 0 ? 'conv-preview--unread' : ''}`}>
-                    {c.last_message_preview}
-                  </div>
-                </div>
-                {c.unread_count > 0 && (
-                  <span className="conv-unread-badge">
-                    {c.unread_count > 99 ? '99+' : c.unread_count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+          {listSections.map((section) => (
+            <div key={section.key} className="conversation-list__section">
+              {section.title && (
+                <p className="conversation-list__section-title">{section.title}</p>
+              )}
+              {section.items.map((c) => renderConversationItem(c))}
+            </div>
+          ))}
           {activeTab === 'channels' && searchQuery.trim().length >= 2 && (
             <>
               <p className="conv-discover-title">Все каналы</p>

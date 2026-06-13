@@ -32,6 +32,26 @@ describe('messagePreview', () => {
     } as MessageRow;
     expect(messagePreview(msg, 'b')).toBe('Видео');
   });
+
+  it('masks encrypted text until client decrypts', () => {
+    const msg = {
+      content: 'e2e:v1:abc123',
+      user_id: 'a',
+      file_type: null,
+      deleted_at: null,
+    } as MessageRow;
+    expect(messagePreview(msg, 'a')).toBe('🔒 Сообщение');
+  });
+
+  it('does not prefix channel posts with Вы', () => {
+    const msg = {
+      content: 'Новый пост',
+      user_id: 'me',
+      file_type: null,
+      deleted_at: null,
+    } as MessageRow;
+    expect(messagePreview(msg, 'me', 1, 'channel')).toBe('Новый пост');
+  });
 });
 
 describe('resolveFileType', () => {

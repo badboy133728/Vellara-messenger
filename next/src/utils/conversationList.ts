@@ -30,8 +30,10 @@ export function conversationPreviewFromMessage(
     | 'e2e_file_name'
   >,
   viewerId: string,
+  convType?: string,
 ): string {
   const base = formatIncomingMessagePreview(msg);
+  if (convType === 'channel') return base;
   if (msg.user_id === viewerId) return `Вы: ${base}`;
   return base;
 }
@@ -70,7 +72,7 @@ export function patchConversationFromMessage(
   const isChannelComment = item.type === 'channel' && !!msg.reply_to_id;
   const preview = isChannelComment
     ? item.last_message_preview
-    : conversationPreviewFromMessage(msg, options.currentUserId);
+    : conversationPreviewFromMessage(msg, options.currentUserId, item.type);
   const updated: ConversationListItem = {
     ...item,
     last_message: isChannelComment

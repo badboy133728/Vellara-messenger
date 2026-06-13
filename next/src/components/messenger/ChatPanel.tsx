@@ -695,9 +695,14 @@ export function ChatPanel({
 
   const canDeleteMsg = (msg: FormattedMessage) => {
     if (!msg || msg.is_deleted || msg.message_type === 'system') return false;
+    if (isChannel) {
+      const isPost = !msg.reply_to_id;
+      if (isChannelAdmin) return true;
+      if (isPost) return false;
+      return msg.user_id === currentUserId;
+    }
     if (msg.user_id === currentUserId) return true;
     if (isGroup && isGroupAdmin) return true;
-    if (isChannel && isChannelAdmin && !!msg.reply_to_id) return true;
     return false;
   };
 

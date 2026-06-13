@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import { ensureMember } from '@/lib/chat/conversations';
+import { assertCanPostToConversation } from '@/lib/chat/channelAccess';
 import { unhideConversationForRecipients } from '@/lib/chat/unhideMembers';
 import { formatMessagesWithReplies } from '@/lib/chat/messageList';
 import { canManageGroup } from '@/lib/chat/permissions';
@@ -114,6 +115,16 @@ export async function forwardMessageToConversations(
   const trimmedCaption = caption?.trim() ?? '';
 
   for (const targetConvId of targets) {
+    const channelError = await assertCanPostToConversation(
+      supabase,
+      targetConvId,
+      user.id,
+      null,
+    );
+    if (channelError) {
+      throw new Error('FORBIDDEN_TARGET');
+    }
+
     let albumGroupId: string | null = null;
     const isMultiImageAlbum =
       sources.length > 1 && sources.every((m) => m.file_type === 'image' && m.album_group_id);

@@ -1,7 +1,8 @@
 import { requireAuth } from '@/lib/auth';
 import { ensureMember } from '@/lib/chat/conversations';
 import { formatMessage } from '@/lib/chat/formatters';
-import { canManageChannel, canManageGroup } from '@/lib/chat/permissions';
+import { resolveCanDeleteMessage, resolveCanEditMessage } from '@/lib/chat/messagePermissions';
+import { createAdminClient } from '@/lib/supabase/admin';
 import type { MessageRow } from '@/lib/types';
 
 export async function PATCH(
@@ -34,36 +35,13 @@ export async function PATCH(
     return Response.json({ message: 'Нет доступа' }, { status: 403 });
   }
 
-  let canDelete = message.user_id === user.id;
-  if (!canDelete) {
-    const [{ data: conv }, { data: actor }] = await Promise.all([
-      supabase.from('conversations').select('type').eq('id', message.conversation_id).single(),
-      supabase
-        .from('conversation_members')
-        .select('role')
-        .eq('conversation_id', message.conversation_id)
-        .eq('user_id', user.id)
-        .single(),
-    ]);
-    const role = actor?.role ?? 'member';
-    if (conv?.type === 'group' && canManageGroup(role)) {
-      canDelete = true;
-    }
-    if (conv?.type === 'channel' && canManageChannel(role) && !!message.reply_to_id) {
-      canDelete = true;
-    }
-  }
-
-  if (!canDelete) {
-    return Response.json({ message: 'Нет доступа' }, { status: 403 });
-  }
-
-  if (!(await ensureMember(supabase, message.conversation_id, user.id))) {
+  if (!(await resolveCanEditMessage(supabase, user.id, message as MessageRow))) {
     return Response.json({ message: 'Нет доступа' }, { status: 403 });
   }
 
   const now = new Date().toISOString();
-  const { data: updated } = await supabase
+  const editClient = message.user_id === user.id ? supabase : createAdminClient();
+  const { data: updated } = await editClient
     .from('messages')
     .update({ content, is_edited: true, edited_at: now })
     .eq('id', id)
@@ -89,12 +67,21 @@ export async function DELETE(
     .eq('id', id)
     .single();
 
-  if (!message || message.user_id !== user.id) {
+  if (!message) {
+    return Response.json({ message: 'Сообщение не найдено' }, { status: 404 });
+  }
+
+  if (!(await ensureMember(supabase, message.conversation_id, user.id))) {
+    return Response.json({ message: 'Нет доступа' }, { status: 403 });
+  }
+
+  if (!(await resolveCanDeleteMessage(supabase, user.id, message as MessageRow))) {
     return Response.json({ message: 'Нет доступа' }, { status: 403 });
   }
 
   const now = new Date().toISOString();
-  const { data: updated } = await supabase
+  const deleteClient = message.user_id === user.id ? supabase : createAdminClient();
+  const { data: updated } = await deleteClient
     .from('messages')
     .update({ deleted_at: now, content: '' })
     .eq('id', id)

@@ -56,6 +56,10 @@ export function EmojiPicker({
       onClick={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
     >
+      <header className="emoji-picker__head">
+        <span className="emoji-picker__title">{current.label}</span>
+        <span className="emoji-picker__count">{current.emojis.length}</span>
+      </header>
       <div className="emoji-picker__grid" ref={gridRef} role="listbox" aria-label="Смайлики">
         {current.emojis.map((emoji, index) => (
           <button
@@ -80,12 +84,14 @@ export function EmojiPicker({
             type="button"
             role="tab"
             aria-selected={activeCategory === cat.id}
+            aria-label={cat.label}
             className={`emoji-tab ${activeCategory === cat.id ? 'active' : ''}`}
             title={cat.label}
             onMouseDown={(e) => e.preventDefault()}
+            onTouchStart={(e) => e.preventDefault()}
             onClick={() => setActiveCategory(cat.id)}
           >
-            {cat.icon}
+            <span className="emoji-tab__icon">{cat.icon}</span>
           </button>
         ))}
       </div>

@@ -147,6 +147,7 @@ export function FavoritesPanel({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const emojiBtnRef = useRef<HTMLButtonElement>(null);
+  const emojiCaretRef = useRef<number | null>(null);
   const composerRef = useRef<HTMLDivElement>(null);
   const attachmentUrlsRef = useRef<Set<string>>(new Set());
 
@@ -361,25 +362,43 @@ export function FavoritesPanel({
     });
   };
 
+  const syncEmojiCaret = () => {
+    const el = textareaRef.current;
+    if (!el) return;
+    emojiCaretRef.current = el.selectionStart ?? text.length;
+  };
+
   const insertEmoji = (emoji: string) => {
     const input = textareaRef.current;
-    const start = input?.selectionStart ?? text.length;
-    const end = input?.selectionEnd ?? text.length;
+    const pickerOnly = isMobile && showEmojiPicker;
+    const start = pickerOnly
+      ? (emojiCaretRef.current ?? text.length)
+      : (input?.selectionStart ?? text.length);
+    const end = pickerOnly
+      ? (emojiCaretRef.current ?? text.length)
+      : (input?.selectionEnd ?? text.length);
     const next = text.slice(0, start) + emoji + text.slice(end);
+    const pos = start + emoji.length;
+    emojiCaretRef.current = pos;
     setText(next);
-    window.setTimeout(() => {
-      if (!input) return;
-      const pos = start + emoji.length;
-      input.focus();
-      input.setSelectionRange(pos, pos);
-    }, 0);
+    if (!pickerOnly) {
+      window.setTimeout(() => {
+        if (!input) return;
+        input.focus();
+        input.setSelectionRange(pos, pos);
+      }, 0);
+    }
   };
 
   const toggleEmojiPicker = () => {
     setShowEmojiPicker((open) => {
       const next = !open;
-      if (next && isMobile) textareaRef.current?.blur();
-      else if (!next) window.setTimeout(() => textareaRef.current?.focus(), 0);
+      if (next) {
+        syncEmojiCaret();
+        if (isMobile) textareaRef.current?.blur();
+      } else {
+        window.setTimeout(() => textareaRef.current?.focus(), 0);
+      }
       return next;
     });
   };
@@ -394,7 +413,6 @@ export function FavoritesPanel({
     setSending(true);
     setText('');
     clearAttachments();
-    setShowEmojiPicker(false);
 
     try {
       const preparedFiles = await Promise.all(
@@ -437,6 +455,9 @@ export function FavoritesPanel({
       window.alert(err instanceof Error ? err.message : 'Не удалось сохранить');
     } finally {
       setSending(false);
+      if (isMobile) {
+        window.requestAnimationFrame(() => textareaRef.current?.focus());
+      }
     }
   };
 
@@ -667,7 +688,13 @@ export function FavoritesPanel({
                 className="msg-input"
                 rows={1}
                 value={text}
-                onChange={(e) => setText(e.target.value)}
+                onChange={(e) => {
+                  setText(e.target.value);
+                  syncEmojiCaret();
+                }}
+                onSelect={syncEmojiCaret}
+                onClick={syncEmojiCaret}
+                onKeyUp={syncEmojiCaret}
                 onFocus={() => {
                   if (showEmojiPicker) setShowEmojiPicker(false);
                 }}
@@ -687,6 +714,7 @@ export function FavoritesPanel({
             className="composer-btn composer-btn--send"
             title="Сохранить"
             disabled={sending || (!text.trim() && !pendingAttachments.length)}
+            onPointerDown={(e) => e.preventDefault()}
           >
             <VellaraIcon name="send" size={20} />
           </button>

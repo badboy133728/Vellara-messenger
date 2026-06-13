@@ -234,6 +234,7 @@ export function ChatPanel({
   const composerDockRef = useRef<HTMLDivElement>(null);
   const chatAreaRef = useRef<HTMLElement | null>(null);
   const emojiBtnRef = useRef<HTMLButtonElement>(null);
+  const emojiCaretRef = useRef<number | null>(null);
 
   const {
     isRecording,
@@ -523,10 +524,17 @@ export function ChatPanel({
     return () => document.removeEventListener('pointerdown', onDocPointerDown);
   }, [showEmojiPicker]);
 
+  const syncEmojiCaret = () => {
+    const el = textareaRef.current;
+    if (!el) return;
+    emojiCaretRef.current = el.selectionStart ?? text.length;
+  };
+
   const toggleEmojiPicker = () => {
     setShowEmojiPicker((open) => {
       const next = !open;
       if (next) {
+        syncEmojiCaret();
         if (isMobile) textareaRef.current?.blur();
         stickToBottomRef.current = true;
         requestAnimationFrame(() => scrollToBottom('instant'));
@@ -1025,17 +1033,25 @@ export function ChatPanel({
 
   const insertEmoji = (emoji: string) => {
     const input = textareaRef.current;
-    const start = input?.selectionStart ?? text.length;
-    const end = input?.selectionEnd ?? text.length;
+    const pickerOnly = isMobile && showEmojiPicker;
+    const start = pickerOnly
+      ? (emojiCaretRef.current ?? text.length)
+      : (input?.selectionStart ?? text.length);
+    const end = pickerOnly
+      ? (emojiCaretRef.current ?? text.length)
+      : (input?.selectionEnd ?? text.length);
     const next = text.slice(0, start) + emoji + text.slice(end);
+    const pos = start + emoji.length;
+    emojiCaretRef.current = pos;
     setText(next);
     onTyping();
-    window.setTimeout(() => {
-      if (!input) return;
-      const pos = start + emoji.length;
-      input.focus();
-      input.setSelectionRange(pos, pos);
-    }, 0);
+    if (!pickerOnly) {
+      window.setTimeout(() => {
+        if (!input) return;
+        input.focus();
+        input.setSelectionRange(pos, pos);
+      }, 0);
+    }
   };
 
   const startVoiceRecord = async () => {
@@ -1119,6 +1135,9 @@ export function ChatPanel({
         window.alert(err instanceof Error ? err.message : 'Не удалось сохранить');
       } finally {
         setSending(false);
+        if (isMobile) {
+          window.requestAnimationFrame(() => textareaRef.current?.focus());
+        }
       }
       return;
     }
@@ -1200,6 +1219,9 @@ export function ChatPanel({
       window.alert(err instanceof Error ? err.message : 'Не удалось отправить сообщение');
     } finally {
       setSending(false);
+      if (isMobile) {
+        window.requestAnimationFrame(() => textareaRef.current?.focus());
+      }
     }
   };
 
@@ -1927,8 +1949,12 @@ export function ChatPanel({
                   value={text}
                   onChange={(e) => {
                     setText(e.target.value);
+                    syncEmojiCaret();
                     onTyping();
                   }}
+                  onSelect={syncEmojiCaret}
+                  onClick={syncEmojiCaret}
+                  onKeyUp={syncEmojiCaret}
                   onFocus={() => {
                     if (showEmojiPicker) setShowEmojiPicker(false);
                   }}
@@ -1959,6 +1985,7 @@ export function ChatPanel({
                   className="composer-btn composer-btn--send"
                   title="Применить изменения"
                   disabled={sending || !text.trim()}
+                  onPointerDown={(e) => e.preventDefault()}
                 >
                   <VellaraIcon name="check" size={20} />
                 </button>
@@ -1978,6 +2005,7 @@ export function ChatPanel({
                 className="composer-btn composer-btn--send"
                 title="Отправить"
                 disabled={sending || (!editingMessage && !text.trim() && !hasAttachments)}
+                onPointerDown={(e) => e.preventDefault()}
               >
                 <VellaraIcon name="send" size={20} />
               </button>

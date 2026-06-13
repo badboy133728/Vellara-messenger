@@ -25,6 +25,7 @@ export function CreateChannelModal({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [allowComments, setAllowComments] = useState(false);
+  const [isPublic, setIsPublic] = useState(true);
   const [filter, setFilter] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
@@ -68,6 +69,7 @@ export function CreateChannelModal({
           title: title.trim(),
           description: description.trim(),
           allow_comments: allowComments,
+          is_public: isPublic,
           subscriber_ids: [...selected],
         }),
       });
@@ -88,7 +90,7 @@ export function CreateChannelModal({
         role="dialog"
         aria-labelledby="create-channel-title"
       >
-        <header className="modal-card__head">
+        <header className="modal-card__head modal-card__head--channel">
           <h2 id="create-channel-title">
             <VellaraIcon name="channel" size={20} className="modal-card__head-icon" />
             Новый канал
@@ -98,93 +100,139 @@ export function CreateChannelModal({
           </button>
         </header>
 
-        <form onSubmit={(e) => void submit(e)} className="modal-form modal-form--create-group">
-          <label className="modal-field">
-            <span>Название канала</span>
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              maxLength={100}
-              placeholder="Например: Новости Vellara"
-              autoFocus
-            />
-          </label>
+        <form onSubmit={(e) => void submit(e)} className="modal-form modal-form--create-group modal-form--channel">
+          <div className="channel-create-scroll">
+            <section className="channel-create-section">
+              <h3 className="channel-create-section__title">Основное</h3>
+              <label className="modal-field modal-field--compact">
+                <span>Название канала</span>
+                <input
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  maxLength={100}
+                  placeholder="Например: Новости Vellara"
+                  autoFocus
+                />
+              </label>
+              <label className="modal-field modal-field--compact">
+                <span>Описание</span>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  maxLength={500}
+                  rows={3}
+                  placeholder="О чём этот канал — увидят подписчики в профиле канала"
+                />
+              </label>
+            </section>
 
-          <label className="modal-field">
-            <span>Описание (необязательно)</span>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              maxLength={500}
-              rows={2}
-              placeholder="О чём этот канал"
-            />
-          </label>
-
-          <label className="modal-field modal-field--checkbox">
-            <input
-              type="checkbox"
-              checked={allowComments}
-              onChange={(e) => setAllowComments(e.target.checked)}
-            />
-            <span>Разрешить комментарии к постам</span>
-          </label>
-
-          <p className="modal-hint">
-            Вы — администратор канала и единственный, кто может публиковать посты. Подписчики
-            смогут только читать{allowComments ? ' и комментировать посты' : ''}.
-          </p>
-
-          <input
-            className="search-input search-input--modal"
-            type="search"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            placeholder="Добавить подписчиков из контактов…"
-          />
-
-          <div className="modal-member-list">
-            {!filteredContacts.length ? (
-              <p className="modal-hint">Нет контактов для добавления</p>
-            ) : (
-              filteredContacts.map((c) => {
-                const isSelected = selected.has(c.id);
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    className={`conv-item conv-item--pick ${isSelected ? 'active' : ''}`}
-                    onClick={() => toggle(c.id)}
-                  >
-                    <ContactAvatar
-                      name={c.name}
-                      lastName={c.last_name}
-                      avatar={c.avatar}
-                      size="sm"
+            <section className="channel-create-section">
+              <h3 className="channel-create-section__title">Настройки</h3>
+              <div className="channel-create-toggles">
+                <label className="group-settings-toggle">
+                  <span className="group-settings-toggle__text">
+                    <strong>Комментарии к постам</strong>
+                    <small>Подписчики смогут обсуждать публикации</small>
+                  </span>
+                  <span className="group-settings-toggle__switch">
+                    <input
+                      type="checkbox"
+                      className="group-settings-toggle__input"
+                      checked={allowComments}
+                      onChange={(e) => setAllowComments(e.target.checked)}
                     />
-                    <div className="conv-info">
-                      <div className="conv-name">
-                        {c.name} {c.last_name}
-                      </div>
-                    </div>
-                    {isSelected && (
-                      <span className="conv-pick-check" aria-hidden="true">
-                        <VellaraIcon name="check" size={16} />
-                      </span>
-                    )}
-                  </button>
-                );
-              })
-            )}
+                    <span className="group-settings-toggle__track" aria-hidden="true" />
+                  </span>
+                </label>
+                <label className="group-settings-toggle">
+                  <span className="group-settings-toggle__text">
+                    <strong>Публичный канал</strong>
+                    <small>Будет виден в общем поиске по каналам</small>
+                  </span>
+                  <span className="group-settings-toggle__switch">
+                    <input
+                      type="checkbox"
+                      className="group-settings-toggle__input"
+                      checked={isPublic}
+                      onChange={(e) => setIsPublic(e.target.checked)}
+                    />
+                    <span className="group-settings-toggle__track" aria-hidden="true" />
+                  </span>
+                </label>
+              </div>
+              <div className="channel-create-callout">
+                <VellaraIcon name="channel" size={16} className="channel-create-callout__icon" />
+                <p>
+                  Вы станете администратором и единственным автором постов. Подписчики смогут только
+                  читать{allowComments ? ' и комментировать' : ''}.
+                </p>
+              </div>
+            </section>
+
+            <section className="channel-create-section channel-create-section--members">
+              <div className="channel-create-section__row">
+                <h3 className="channel-create-section__title">Подписчики</h3>
+                {selected.size > 0 && <span className="channel-create-badge">{selected.size}</span>}
+              </div>
+              <p className="channel-create-section__hint">Необязательно — можно добавить позже</p>
+              <input
+                className="search-input search-input--modal search-input--channel"
+                type="search"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                placeholder="Поиск по контактам…"
+              />
+              <div className="modal-member-list modal-member-list--channel">
+                {!filteredContacts.length ? (
+                  <p className="modal-hint modal-hint--inline">
+                    {contacts.length ? 'Ничего не найдено' : 'Нет контактов для добавления'}
+                  </p>
+                ) : (
+                  filteredContacts.map((c) => {
+                    const isSelected = selected.has(c.id);
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        className={`conv-item conv-item--pick ${isSelected ? 'active' : ''}`}
+                        onClick={() => toggle(c.id)}
+                      >
+                        <ContactAvatar
+                          name={c.name}
+                          lastName={c.last_name}
+                          avatar={c.avatar}
+                          size="sm"
+                        />
+                        <div className="conv-info">
+                          <div className="conv-name">
+                            {c.name} {c.last_name}
+                          </div>
+                          {c.email && <div className="conv-preview">{c.email}</div>}
+                        </div>
+                        {isSelected && (
+                          <span className="conv-pick-check conv-pick-check--channel" aria-hidden="true">
+                            <VellaraIcon name="check" size={16} />
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </section>
+
+            {error && <p className="auth-error modal-error">{error}</p>}
           </div>
 
-          {error && <p className="auth-error modal-error">{error}</p>}
-
-          <footer className="modal-card__foot">
+          <footer className="modal-card__foot modal-card__foot--channel">
             <button type="button" className="profile-btn profile-btn--outline" onClick={onClose}>
               Отмена
             </button>
-            <button type="submit" className="profile-btn profile-btn--gold" disabled={loading}>
+            <button
+              type="submit"
+              className="profile-btn profile-btn--channel"
+              disabled={loading || title.trim().length < 2}
+            >
               {loading ? 'Создание…' : 'Создать канал'}
             </button>
           </footer>

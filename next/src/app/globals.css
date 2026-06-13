@@ -447,6 +447,30 @@ a {
   color: #7eb8e8;
 }
 
+.modal-backdrop {
+  animation: group-ui-fade-in 0.2s ease;
+}
+
+.modal.modal--create-group {
+  animation: group-settings-pop 0.22s ease;
+}
+
+@keyframes group-ui-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes group-settings-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
 .modal-field--checkbox {
   flex-direction: row;
   align-items: flex-start;

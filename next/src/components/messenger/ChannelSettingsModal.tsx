@@ -20,6 +20,7 @@ export function ChannelSettingsModal({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [saved, setSaved] = useState(false);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -33,6 +34,7 @@ export function ChannelSettingsModal({
 
   useEffect(() => {
     setLoading(true);
+    setError('');
     api<{ allow_comments: boolean; is_public: boolean }>(`/api/chat/channels/${conversationId}`)
       .then((data) => {
         setAllowComments(!!data.allow_comments);
@@ -45,6 +47,7 @@ export function ChannelSettingsModal({
   const save = async (patch: { allow_comments?: boolean; is_public?: boolean }) => {
     setSaving(true);
     setError('');
+    setSaved(false);
     const prevComments = allowComments;
     const prevIsPublic = isPublic;
     if (typeof patch.allow_comments === 'boolean') setAllowComments(patch.allow_comments);
@@ -62,6 +65,8 @@ export function ChannelSettingsModal({
       setAllowComments(next);
       setIsPublic(nextPublic);
       onSaved?.({ allow_comments: next, is_public: nextPublic });
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 2000);
     } catch (e) {
       setAllowComments(prevComments);
       setIsPublic(prevIsPublic);
@@ -84,7 +89,7 @@ export function ChannelSettingsModal({
     <div className="group-settings-backdrop" onClick={onClose} role="presentation">
       <div
         ref={sheetDismiss.bindRef}
-        className="group-settings-sheet"
+        className="group-settings-card group-settings-card--channel"
         onClick={(e) => e.stopPropagation()}
         onTouchStart={(e) => {
           sheetDismiss.handlers.onTouchStart(e);
@@ -105,47 +110,83 @@ export function ChannelSettingsModal({
         role="dialog"
         aria-labelledby="channel-settings-title"
       >
-        <div className="group-settings-sheet__handle" aria-hidden="true" />
-        <header className="group-settings-sheet__head">
-          <h2 id="channel-settings-title">Настройки канала</h2>
-          <button type="button" className="modal-close" onClick={onClose} aria-label="Закрыть">
+        <div className="group-settings-card__grab" aria-hidden="true" />
+        <header className="group-settings-card__head">
+          <h2 id="channel-settings-title">
+            <VellaraIcon name="channel" size={18} className="group-settings-card__head-icon" />
+            Настройки канала
+          </h2>
+          <button type="button" className="group-settings-close" aria-label="Закрыть" onClick={onClose}>
             <VellaraIcon name="close" size={18} />
           </button>
         </header>
 
-        {loading ? (
-          <p className="modal-hint">Загрузка…</p>
-        ) : (
-          <div className="group-settings-sheet__body">
-            <label className="group-settings-toggle">
-              <div>
-                <strong>Комментарии</strong>
-                <p className="modal-hint">Подписчики смогут отвечать на посты канала</p>
-              </div>
-              <input
-                type="checkbox"
-                checked={allowComments}
-                disabled={saving}
-                onChange={(e) => void save({ allow_comments: e.target.checked })}
-              />
-            </label>
-            <label className="group-settings-toggle">
-              <div>
-                <strong>Публичный канал</strong>
-                <p className="modal-hint">
-                  Публичные каналы видны в общем поиске, приватные — только по приглашению администратора
-                </p>
-              </div>
-              <input
-                type="checkbox"
-                checked={isPublic}
-                disabled={saving}
-                onChange={(e) => void save({ is_public: e.target.checked })}
-              />
-            </label>
-            {error && <p className="auth-error modal-error">{error}</p>}
-          </div>
-        )}
+        <div className="group-settings-card__body">
+          {loading ? (
+            <p className="group-settings-card__hint">Загрузка…</p>
+          ) : (
+            <>
+              <p className="group-settings-card__intro">
+                Управляйте видимостью канала и возможностью комментировать посты.
+              </p>
+
+              <label className="group-settings-toggle">
+                <span className="group-settings-toggle__text">
+                  <strong>Комментарии</strong>
+                  <small>
+                    {allowComments
+                      ? 'Подписчики могут отвечать на посты канала'
+                      : 'Только администратор публикует контент, без обсуждений'}
+                  </small>
+                </span>
+                <span className="group-settings-toggle__switch">
+                  <input
+                    type="checkbox"
+                    className="group-settings-toggle__input"
+                    checked={allowComments}
+                    disabled={saving}
+                    onChange={(e) => void save({ allow_comments: e.target.checked })}
+                  />
+                  <span className="group-settings-toggle__track" aria-hidden="true" />
+                </span>
+              </label>
+
+              <label className="group-settings-toggle">
+                <span className="group-settings-toggle__text">
+                  <strong>Публичный канал</strong>
+                  <small>
+                    {isPublic
+                      ? 'Канал виден в общем поиске, любой может подписаться'
+                      : 'Канал скрыт из поиска, только по приглашению администратора'}
+                  </small>
+                </span>
+                <span className="group-settings-toggle__switch">
+                  <input
+                    type="checkbox"
+                    className="group-settings-toggle__input"
+                    checked={isPublic}
+                    disabled={saving}
+                    onChange={(e) => void save({ is_public: e.target.checked })}
+                  />
+                  <span className="group-settings-toggle__track" aria-hidden="true" />
+                </span>
+              </label>
+
+              {error && <p className="profile-alert profile-alert--error">{error}</p>}
+              {saved && <p className="profile-alert profile-alert--success">Сохранено</p>}
+            </>
+          )}
+        </div>
+
+        <footer className="group-settings-card__foot">
+          <button
+            type="button"
+            className="profile-btn profile-btn--channel profile-btn--full"
+            onClick={onClose}
+          >
+            Готово
+          </button>
+        </footer>
       </div>
     </div>,
     document.body,

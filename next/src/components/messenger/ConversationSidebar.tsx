@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { api } from '@/lib/api';
 import { storageDisplayUrl } from '@/lib/storage';
 import { VellaraIcon } from '@/components/icons/VellaraIcon';
 import { useLongPress } from '@/hooks/useLongPress';
@@ -8,7 +9,15 @@ import type { ConversationListItem } from '@/lib/types';
 import { conversationTitle, sortConversations } from '@/utils/conversationList';
 import { ConversationActionsMenu } from './ConversationActionsMenu';
 
-type Tab = 'all' | 'unread' | 'archive';
+type Tab = 'all' | 'unread' | 'archive' | 'channels';
+type SortMode = 'activity' | 'name';
+type ChannelSearchItem = {
+  id: number;
+  title: string;
+  description: string | null;
+  members_count: number;
+  is_subscribed: boolean;
+};
 
 function convAvatar(c: ConversationListItem): { type: 'image' | 'letter'; value: string } {
   if (c.type === 'group') {
@@ -64,6 +73,10 @@ export function ConversationSidebar({
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<Tab>('all');
+  const [sortMode, setSortMode] = useState<SortMode>('activity');
+  const [channelSearchItems, setChannelSearchItems] = useState<ChannelSearchItem[]>([]);
+  const [isSearchingChannels, setIsSearchingChannels] = useState(false);
+  const [subscribingChannelId, setSubscribingChannelId] = useState<number | null>(null);
   const [actionsMenu, setActionsMenu] = useState<{
     conv: ConversationListItem;
     x: number;
@@ -74,10 +87,47 @@ export function ConversationSidebar({
   const pinnedCount = conversations.filter((c) => c.is_pinned && !c.is_archived).length;
   const unreadCount = conversations.filter((c) => c.has_unread && !c.is_archived).length;
 
+  useEffect(() => {
+    if (activeTab !== 'channels') {
+      setChannelSearchItems([]);
+      setIsSearchingChannels(false);
+      return;
+    }
+    const query = searchQuery.trim();
+    if (query.length < 2) {
+      setChannelSearchItems([]);
+      setIsSearchingChannels(false);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      setIsSearchingChannels(true);
+      api<ChannelSearchItem[]>(`/api/chat/channels?query=${encodeURIComponent(query)}`)
+        .then((rows) => {
+          if (cancelled) return;
+          setChannelSearchItems(rows ?? []);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setChannelSearchItems([]);
+        })
+        .finally(() => {
+          if (!cancelled) setIsSearchingChannels(false);
+        });
+    }, 280);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [activeTab, searchQuery]);
+
   const filtered = useMemo(() => {
     let list = conversations;
     if (activeTab === 'unread') list = list.filter((c) => c.has_unread && !c.is_archived);
     if (activeTab === 'archive') list = list.filter((c) => c.is_archived);
+    else if (activeTab === 'channels') list = list.filter((c) => c.type === 'channel' && !c.is_archived);
     else if (activeTab === 'all') list = list.filter((c) => !c.is_archived);
 
     const q = searchQuery.trim().toLowerCase();
@@ -88,8 +138,34 @@ export function ConversationSidebar({
         return title.includes(q) || preview.includes(q);
       });
     }
+    if (sortMode === 'name') {
+      return [...list].sort((a, b) =>
+        conversationTitle(a).localeCompare(conversationTitle(b), 'ru', { sensitivity: 'base' }),
+      );
+    }
     return sortConversations(list);
-  }, [conversations, activeTab, searchQuery]);
+  }, [conversations, activeTab, searchQuery, sortMode]);
+
+  const discoveredChannels = useMemo(() => {
+    if (activeTab !== 'channels') return [];
+    const query = searchQuery.trim();
+    if (query.length < 2) return [];
+    const existingIds = new Set(filtered.map((c) => c.id));
+    return channelSearchItems.filter((item) => !existingIds.has(item.id));
+  }, [activeTab, channelSearchItems, filtered, searchQuery]);
+
+  const subscribeToChannel = async (channelId: number) => {
+    setSubscribingChannelId(channelId);
+    try {
+      await api(`/api/chat/channels/${channelId}/subscribe`, { method: 'POST' });
+      await Promise.resolve(onRefresh());
+      onSelect(channelId);
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : 'Не удалось подписаться на канал');
+    } finally {
+      setSubscribingChannelId(null);
+    }
+  };
 
   const openActionsMenu = (
     event: { clientX?: number; clientY?: number; preventDefault?: () => void },
@@ -145,7 +221,11 @@ export function ConversationSidebar({
 
       <input
         className="search-input"
-        placeholder="Поиск по имени или сообщению..."
+        placeholder={
+          activeTab === 'channels'
+            ? 'Поиск среди всех каналов...'
+            : 'Поиск по имени или сообщению...'
+        }
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
       />
@@ -161,12 +241,33 @@ export function ConversationSidebar({
         <button type="button" className={activeTab === 'archive' ? 'active' : ''} onClick={() => setActiveTab('archive')}>
           Архив
         </button>
+        <button type="button" className={activeTab === 'channels' ? 'active' : ''} onClick={() => setActiveTab('channels')}>
+          Каналы
+        </button>
+      </div>
+
+      <div className="sidebar-sort">
+        <span className="sidebar-sort__label">Сортировка</span>
+        <select
+          className="sidebar-sort__select"
+          value={sortMode}
+          onChange={(e) => setSortMode(e.target.value as SortMode)}
+        >
+          <option value="activity">По активности</option>
+          <option value="name">По названию</option>
+        </select>
       </div>
 
       {loading ? (
         <p className="loader">Загрузка...</p>
-      ) : filtered.length === 0 ? (
-        <p className="empty">{searchQuery ? 'Ничего не найдено' : 'Нет диалогов'}</p>
+      ) : filtered.length === 0 && discoveredChannels.length === 0 ? (
+        <p className="empty">
+          {activeTab === 'channels' && searchQuery.trim().length < 2
+            ? 'Введите минимум 2 символа для поиска каналов'
+            : searchQuery
+              ? 'Ничего не найдено'
+              : 'Нет диалогов'}
+        </p>
       ) : (
         <div className="conversation-list">
           {filtered.map((c) => {
@@ -218,6 +319,62 @@ export function ConversationSidebar({
               </button>
             );
           })}
+          {activeTab === 'channels' && searchQuery.trim().length >= 2 && (
+            <>
+              <p className="conv-discover-title">Все каналы</p>
+              {isSearchingChannels && (
+                <p className="loader conv-discover-loader">Поиск каналов...</p>
+              )}
+              {discoveredChannels.map((channel) => (
+                <div key={`discover-${channel.id}`} className="conv-item conv-item--discover">
+                  <div
+                    className={`avatar-small avatar-small--channel ${channel.is_subscribed ? '' : 'avatar-small--ghost-channel'}`}
+                  >
+                    <span className="avatar-letter">
+                      {(channel.title?.[0] || 'C').toUpperCase()}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="conv-item__main"
+                    onClick={() => {
+                      if (!channel.is_subscribed) return;
+                      void Promise.resolve(onRefresh()).then(() => onSelect(channel.id));
+                    }}
+                    disabled={!channel.is_subscribed}
+                    title={channel.is_subscribed ? 'Открыть канал' : 'Сначала подпишитесь'}
+                  >
+                    <div className="conv-info">
+                      <div className="conv-row">
+                        <div className="conv-name">{channel.title || 'Канал'}</div>
+                      </div>
+                      <div className="conv-preview">
+                        {channel.description?.trim() || `${channel.members_count} подписчиков`}
+                      </div>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    className={`conv-item__subscribe ${channel.is_subscribed ? 'conv-item__subscribe--open' : ''}`}
+                    onClick={() => {
+                      if (channel.is_subscribed) {
+                        void Promise.resolve(onRefresh()).then(() => onSelect(channel.id));
+                        return;
+                      }
+                      void subscribeToChannel(channel.id);
+                    }}
+                    disabled={subscribingChannelId === channel.id}
+                  >
+                    {subscribingChannelId === channel.id
+                      ? '...'
+                      : channel.is_subscribed
+                        ? 'Открыть'
+                        : 'Подписаться'}
+                  </button>
+                </div>
+              ))}
+            </>
+          )}
         </div>
       )}
 

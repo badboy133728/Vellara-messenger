@@ -1012,6 +1012,36 @@
   font-weight: 600;
 }
 
+.sidebar-sort {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px 10px;
+  border-bottom: 1px solid var(--vellara-border-subtle, #2e2e2e);
+}
+
+.sidebar-sort__label {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--vellara-text-muted, #94a3b8);
+}
+
+.sidebar-sort__select {
+  width: 100%;
+  min-width: 0;
+  border-radius: 8px;
+  border: 1px solid var(--vellara-border-subtle, #2e2e2e);
+  background: var(--vellara-panel-2, #222);
+  color: var(--vellara-text, #f1f5f9);
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
+.sidebar-sort__select:focus {
+  outline: none;
+  border-color: var(--vellara-gold, #c9a885);
+}
+
 .badge {
   background: #ef4444;
   color: #fff;
@@ -1042,6 +1072,75 @@
 .conv-item:hover { background: var(--vellara-panel-2, #222); }
 .conv-item.active { background: var(--vellara-bubble-other, #2a2a2a); border-left-color: var(--vellara-gold, #c9a885); }
 .conv-item.unread .conv-name { color: var(--vellara-text, #f1f5f9); font-weight: 600; }
+
+.conv-item--discover {
+  padding: 10px 12px;
+  gap: 10px;
+}
+
+.conv-item__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 2px 0;
+  cursor: pointer;
+}
+
+.conv-item__main:disabled {
+  cursor: default;
+}
+
+.conv-item__subscribe {
+  flex-shrink: 0;
+  align-self: center;
+  border: 1px solid rgba(201, 168, 133, 0.35);
+  background: rgba(201, 168, 133, 0.12);
+  color: var(--vellara-gold, #c9a885);
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.conv-item__subscribe:hover:not(:disabled) {
+  background: rgba(201, 168, 133, 0.22);
+}
+
+.conv-item__subscribe:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.conv-item__subscribe--open {
+  border-color: rgba(126, 184, 232, 0.45);
+  background: rgba(91, 155, 213, 0.16);
+  color: #7eb8e8;
+}
+
+.avatar-small--ghost-channel {
+  opacity: 0.85;
+  filter: saturate(0.85);
+}
+
+.conv-discover-title {
+  margin: 10px 18px 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--vellara-text-muted, #94a3b8);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.conv-discover-loader {
+  padding-top: 4px;
+  padding-bottom: 8px;
+}
 
 .conv-item--pinned .conv-name {
   display: inline-flex;

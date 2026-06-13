@@ -8,6 +8,7 @@ import { useLongPress } from '@/hooks/useLongPress';
 import type { ConversationListItem } from '@/lib/types';
 import { conversationTitle, sortConversations } from '@/utils/conversationList';
 import { ConversationActionsMenu } from './ConversationActionsMenu';
+import { ChannelPreviewModal } from './ChannelPreviewModal';
 
 type Tab = 'all' | 'unread' | 'archive' | 'channels';
 type SortMode = 'activity' | 'name';
@@ -77,6 +78,7 @@ export function ConversationSidebar({
   const [channelSearchItems, setChannelSearchItems] = useState<ChannelSearchItem[]>([]);
   const [isSearchingChannels, setIsSearchingChannels] = useState(false);
   const [subscribingChannelId, setSubscribingChannelId] = useState<number | null>(null);
+  const [previewChannelId, setPreviewChannelId] = useState<number | null>(null);
   const [actionsMenu, setActionsMenu] = useState<{
     conv: ConversationListItem;
     x: number;
@@ -338,11 +340,13 @@ export function ConversationSidebar({
                     type="button"
                     className="conv-item__main"
                     onClick={() => {
-                      if (!channel.is_subscribed) return;
+                      if (!channel.is_subscribed) {
+                        setPreviewChannelId(channel.id);
+                        return;
+                      }
                       void Promise.resolve(onRefresh()).then(() => onSelect(channel.id));
                     }}
-                    disabled={!channel.is_subscribed}
-                    title={channel.is_subscribed ? 'Открыть канал' : 'Сначала подпишитесь'}
+                    title={channel.is_subscribed ? 'Открыть канал' : 'Предпросмотр канала'}
                   >
                     <div className="conv-info">
                       <div className="conv-row">
@@ -398,6 +402,21 @@ export function ConversationSidebar({
             void onDeleteConversation(actionsMenu.conv);
           }}
           onClose={closeActionsMenu}
+        />
+      )}
+      {previewChannelId && (
+        <ChannelPreviewModal
+          channelId={previewChannelId}
+          onClose={() => setPreviewChannelId(null)}
+          onOpenChannel={(channelId) => {
+            setPreviewChannelId(null);
+            void Promise.resolve(onRefresh()).then(() => onSelect(channelId));
+          }}
+          onSubscribed={async (channelId) => {
+            setPreviewChannelId(null);
+            await Promise.resolve(onRefresh());
+            onSelect(channelId);
+          }}
         />
       )}
     </aside>

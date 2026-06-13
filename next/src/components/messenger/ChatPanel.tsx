@@ -381,8 +381,11 @@ export function ChatPanel({
     if (!channelCommentsPost) return;
     setReplyTo(channelCommentsPost);
     stickToBottomRef.current = true;
-    scrollReadyRef.current = false;
-    setScrollReady(false);
+    // Keep desktop thread visible when switching into comments view.
+    scrollReadyRef.current = true;
+    setScrollReady(true);
+    const el = messagesContainerRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [channelCommentsPost]);
 
   const closeChannelComments = () => {
@@ -391,6 +394,8 @@ export function ChatPanel({
     setText('');
     setEditingMessage(null);
     stickToBottomRef.current = true;
+    scrollReadyRef.current = true;
+    setScrollReady(true);
   };
 
   const openChannelComments = (post: FormattedMessage) => {
@@ -1710,7 +1715,7 @@ export function ChatPanel({
       )}
 
       <div
-        className={`messages-container${showMessages && messages.length && !scrollReady && !isMobile ? ' messages-container--preparing' : ''}`}
+        className={`messages-container${showMessages && visibleMessages.length && !scrollReady && !isMobile ? ' messages-container--preparing' : ''}`}
         ref={bindMessagesContainerRef}
       >
         {!showMessages ? (

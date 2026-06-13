@@ -220,6 +220,10 @@
   border-color: var(--vellara-border, rgba(201, 168, 133, 0.38));
 }
 
+.btn-back-chat--comments {
+  display: inline-flex;
+}
+
 .chat-header__actions {
   display: flex;
   align-items: center;

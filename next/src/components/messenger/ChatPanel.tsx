@@ -1336,12 +1336,19 @@ export function ChatPanel({
               </div>
             )}
             {m.reply_to && (
-              <div className="msg-reply-quote">
-                <span className="msg-reply-quote__author">
-                  {senderDisplayName(m.reply_to.sender)}
-                </span>
-                <span className="msg-reply-quote__text">{replyPreviewText(m.reply_to)}</span>
-              </div>
+              !(
+                isChannel &&
+                inChannelCommentsView &&
+                !!channelCommentsPost &&
+                m.reply_to_id === channelCommentsPost.id
+              ) && (
+                <div className="msg-reply-quote">
+                  <span className="msg-reply-quote__author">
+                    {senderDisplayName(m.reply_to.sender)}
+                  </span>
+                  <span className="msg-reply-quote__text">{replyPreviewText(m.reply_to)}</span>
+                </div>
+              )
             )}
             {albumMessages && albumMessages.length > 1
               ? renderAlbumGrid(albumMessages)
@@ -1617,7 +1624,7 @@ export function ChatPanel({
         <header className="chat-header chat-header--channel-comments" ref={headerRef}>
           <button
             type="button"
-            className="btn-back-chat"
+            className="btn-back-chat btn-back-chat--comments"
             aria-label="Назад к каналу"
             onClick={closeChannelComments}
           >

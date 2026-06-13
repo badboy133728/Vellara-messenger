@@ -1,6 +1,7 @@
 import { requireAuth, isOnline } from '@/lib/auth';
 import { ensureMember } from '@/lib/chat/conversations';
 import { canManageChannel } from '@/lib/chat/permissions';
+import { uploadConversationAvatar } from '@/lib/storage-server';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 async function loadChannel(
@@ -37,6 +38,7 @@ async function loadChannel(
     id: conv.id,
     type: 'channel',
     title: conv.title,
+    avatar: conv.avatar ?? null,
     description: conv.description ?? null,
     my_role: myRole,
     allow_comments: !!conv.allow_comments,
@@ -86,19 +88,50 @@ export async function PATCH(
     return Response.json({ message: 'Только администратор канала' }, { status: 403 });
   }
 
-  const body = await request.json().catch(() => ({}));
+  const contentType = request.headers.get('content-type') ?? '';
   const patch: Record<string, unknown> = {};
+  if (contentType.includes('multipart/form-data')) {
+    const formData = await request.formData();
+    const titleEntry = formData.get('title');
+    const descriptionEntry = formData.get('description');
+    const clearAvatar = formData.get('clear_avatar') === '1';
+    const avatarEntry = formData.get('avatar');
+    const avatarFile = avatarEntry instanceof File && avatarEntry.size > 0 ? avatarEntry : null;
 
-  if (typeof body.title === 'string') {
-    const title = body.title.trim();
-    if (title.length < 2 || title.length > 100) {
-      return Response.json({ message: 'Некорректное название' }, { status: 422 });
+    if (typeof titleEntry === 'string') {
+      const title = titleEntry.trim();
+      if (title.length < 2 || title.length > 100) {
+        return Response.json({ message: 'Некорректное название' }, { status: 422 });
+      }
+      patch.title = title;
     }
-    patch.title = title;
-  }
-
-  if (typeof body.description === 'string') {
-    patch.description = body.description.trim().slice(0, 500) || null;
+    if (typeof descriptionEntry === 'string') {
+      patch.description = descriptionEntry.trim().slice(0, 500) || null;
+    }
+    if (clearAvatar) patch.avatar = null;
+    if (avatarFile) {
+      try {
+        patch.avatar = await uploadConversationAvatar(convId, avatarFile);
+      } catch (e) {
+        const message = e instanceof Error ? e.message : 'Ошибка загрузки аватара';
+        return Response.json({ message }, { status: 500 });
+      }
+    }
+  } else {
+    const body = await request.json().catch(() => ({}));
+    if (typeof body.title === 'string') {
+      const title = body.title.trim();
+      if (title.length < 2 || title.length > 100) {
+        return Response.json({ message: 'Некорректное название' }, { status: 422 });
+      }
+      patch.title = title;
+    }
+    if (typeof body.description === 'string') {
+      patch.description = body.description.trim().slice(0, 500) || null;
+    }
+    if (body.clear_avatar === true) {
+      patch.avatar = null;
+    }
   }
 
   if (!Object.keys(patch).length) {
@@ -120,6 +153,7 @@ export async function PATCH(
     message: 'Канал обновлён',
     title: patch.title ?? detail.title,
     description: patch.description ?? detail.description,
+    avatar: patch.avatar ?? detail.avatar ?? null,
   });
 }
 

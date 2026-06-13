@@ -31,6 +31,7 @@ create table if not exists public.conversations (
   id bigserial primary key,
   type text not null default 'private',
   title text,
+  avatar text,
   created_by uuid references public.profiles (id) on delete set null,
   allow_voice_messages boolean not null default true,
   created_at timestamptz not null default now(),
@@ -489,3 +490,7 @@ end $$;
 -- ========== 019_channel_visibility.sql ==========
 alter table public.conversations
   add column if not exists is_public boolean not null default true;
+
+-- ========== 020_conversation_avatar.sql ==========
+alter table public.conversations
+  add column if not exists avatar text;

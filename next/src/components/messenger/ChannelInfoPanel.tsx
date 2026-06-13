@@ -16,6 +16,7 @@ type ChannelMember = {
 type ChannelDetail = {
   id: number;
   title: string | null;
+  avatar: string | null;
   description: string | null;
   my_role: string;
   allow_comments: boolean;
@@ -53,7 +54,9 @@ export function ChannelInfoPanel({
   const [searching, setSearching] = useState(false);
   const [pickedIds, setPickedIds] = useState<string[]>([]);
   const [transferringAdminId, setTransferringAdminId] = useState<string | null>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
   const searchTimerRef = useRef<number | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const isAdmin = channel?.my_role === 'admin';
 
@@ -204,6 +207,45 @@ export function ChannelInfoPanel({
     }
   };
 
+  const uploadAvatar = async (file: File) => {
+    setAvatarUploading(true);
+    setError('');
+    try {
+      const formData = new FormData();
+      formData.set('avatar', file);
+      await api(`/api/chat/channels/${conversationId}`, {
+        method: 'PATCH',
+        body: formData,
+      });
+      await load();
+      onUpdated?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Ошибка');
+    } finally {
+      setAvatarUploading(false);
+      if (avatarInputRef.current) avatarInputRef.current.value = '';
+    }
+  };
+
+  const clearAvatar = async () => {
+    setAvatarUploading(true);
+    setError('');
+    try {
+      const formData = new FormData();
+      formData.set('clear_avatar', '1');
+      await api(`/api/chat/channels/${conversationId}`, {
+        method: 'PATCH',
+        body: formData,
+      });
+      await load();
+      onUpdated?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Ошибка');
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
   const deleteChannel = async () => {
     if (
       !window.confirm(
@@ -252,6 +294,50 @@ export function ChannelInfoPanel({
             <>
               {channel.description && !isAdmin && (
                 <p className="group-panel__description">{channel.description}</p>
+              )}
+
+              {isAdmin && (
+                <div className="group-panel__section">
+                  <h3>Аватар канала</h3>
+                  <div className="group-panel__avatar-editor">
+                    <ContactAvatar
+                      name={channel.title || 'Канал'}
+                      lastName=""
+                      avatar={channel.avatar}
+                      size="lg"
+                    />
+                    <div className="group-panel__avatar-actions">
+                      <input
+                        ref={avatarInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="composer-file-input"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) void uploadAvatar(file);
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="profile-btn profile-btn--outline"
+                        disabled={avatarUploading}
+                        onClick={() => avatarInputRef.current?.click()}
+                      >
+                        {avatarUploading ? 'Загрузка…' : 'Изменить фото'}
+                      </button>
+                      {!!channel.avatar && (
+                        <button
+                          type="button"
+                          className="profile-btn profile-btn--outline"
+                          disabled={avatarUploading}
+                          onClick={() => void clearAvatar()}
+                        >
+                          Удалить фото
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
               )}
 
               {isAdmin && (

@@ -15,9 +15,17 @@ function convTitle(c: ConversationListItem) {
 
 function convAvatar(c: ConversationListItem): { type: 'image' | 'letter'; value: string } {
   if (c.type === 'group') {
+    if (c.avatar) {
+      const url = storageDisplayUrl(c.avatar);
+      if (url) return { type: 'image', value: url };
+    }
     return { type: 'letter', value: (c.title?.[0] || 'G').toUpperCase() };
   }
   if (c.type === 'channel') {
+    if (c.avatar) {
+      const url = storageDisplayUrl(c.avatar);
+      if (url) return { type: 'image', value: url };
+    }
     return { type: 'letter', value: (c.title?.[0] || 'C').toUpperCase() };
   }
   if (c.other_user?.avatar) {

@@ -16,16 +16,25 @@ type ChannelSearchItem = {
   id: number;
   title: string;
   description: string | null;
+  avatar: string | null;
   members_count: number;
   is_subscribed: boolean;
 };
 
 function convAvatar(c: ConversationListItem): { type: 'image' | 'letter'; value: string } {
   if (c.type === 'group') {
+    if (c.avatar) {
+      const url = storageDisplayUrl(c.avatar);
+      if (url) return { type: 'image', value: url };
+    }
     const letter = (c.title?.[0] || 'G').toUpperCase();
     return { type: 'letter', value: letter };
   }
   if (c.type === 'channel') {
+    if (c.avatar) {
+      const url = storageDisplayUrl(c.avatar);
+      if (url) return { type: 'image', value: url };
+    }
     const letter = (c.title?.[0] || 'C').toUpperCase();
     return { type: 'letter', value: letter };
   }
@@ -327,56 +336,63 @@ export function ConversationSidebar({
               {isSearchingChannels && (
                 <p className="loader conv-discover-loader">Поиск каналов...</p>
               )}
-              {discoveredChannels.map((channel) => (
-                <div key={`discover-${channel.id}`} className="conv-item conv-item--discover">
-                  <div
-                    className={`avatar-small avatar-small--channel ${channel.is_subscribed ? '' : 'avatar-small--ghost-channel'}`}
-                  >
-                    <span className="avatar-letter">
-                      {(channel.title?.[0] || 'C').toUpperCase()}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    className="conv-item__main"
-                    onClick={() => {
-                      if (!channel.is_subscribed) {
-                        setPreviewChannelId(channel.id);
-                        return;
-                      }
-                      void Promise.resolve(onRefresh()).then(() => onSelect(channel.id));
-                    }}
-                    title={channel.is_subscribed ? 'Открыть канал' : 'Предпросмотр канала'}
-                  >
-                    <div className="conv-info">
-                      <div className="conv-row">
-                        <div className="conv-name">{channel.title || 'Канал'}</div>
-                      </div>
-                      <div className="conv-preview">
-                        {channel.description?.trim() || `${channel.members_count} подписчиков`}
-                      </div>
+              {discoveredChannels.map((channel) => {
+                const avatarUrl = channel.avatar ? storageDisplayUrl(channel.avatar) : null;
+                return (
+                  <div key={`discover-${channel.id}`} className="conv-item conv-item--discover">
+                    <div
+                      className={`avatar-small avatar-small--channel ${channel.is_subscribed ? '' : 'avatar-small--ghost-channel'}`}
+                    >
+                      {avatarUrl ? (
+                        <img src={avatarUrl} alt="" className="avatar-img" />
+                      ) : (
+                        <span className="avatar-letter">
+                          {(channel.title?.[0] || 'C').toUpperCase()}
+                        </span>
+                      )}
                     </div>
-                  </button>
-                  <button
-                    type="button"
-                    className={`conv-item__subscribe ${channel.is_subscribed ? 'conv-item__subscribe--open' : ''}`}
-                    onClick={() => {
-                      if (channel.is_subscribed) {
+                    <button
+                      type="button"
+                      className="conv-item__main"
+                      onClick={() => {
+                        if (!channel.is_subscribed) {
+                          setPreviewChannelId(channel.id);
+                          return;
+                        }
                         void Promise.resolve(onRefresh()).then(() => onSelect(channel.id));
-                        return;
-                      }
-                      void subscribeToChannel(channel.id);
-                    }}
-                    disabled={subscribingChannelId === channel.id}
-                  >
-                    {subscribingChannelId === channel.id
-                      ? '...'
-                      : channel.is_subscribed
-                        ? 'Открыть'
-                        : 'Подписаться'}
-                  </button>
-                </div>
-              ))}
+                      }}
+                      title={channel.is_subscribed ? 'Открыть канал' : 'Предпросмотр канала'}
+                    >
+                      <div className="conv-info">
+                        <div className="conv-row">
+                          <div className="conv-name">{channel.title || 'Канал'}</div>
+                        </div>
+                        <div className="conv-preview">
+                          {channel.description?.trim() || `${channel.members_count} подписчиков`}
+                        </div>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      className={`conv-item__subscribe ${channel.is_subscribed ? 'conv-item__subscribe--open' : ''}`}
+                      onClick={() => {
+                        if (channel.is_subscribed) {
+                          void Promise.resolve(onRefresh()).then(() => onSelect(channel.id));
+                          return;
+                        }
+                        void subscribeToChannel(channel.id);
+                      }}
+                      disabled={subscribingChannelId === channel.id}
+                    >
+                      {subscribingChannelId === channel.id
+                        ? '...'
+                        : channel.is_subscribed
+                          ? 'Открыть'
+                          : 'Подписаться'}
+                    </button>
+                  </div>
+                );
+              })}
             </>
           )}
         </div>

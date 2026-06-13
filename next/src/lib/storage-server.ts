@@ -37,6 +37,31 @@ export async function uploadProfileImage(
   return `${bucket}/${key}`;
 }
 
+export async function uploadConversationAvatar(
+  conversationId: number,
+  file: File,
+): Promise<string> {
+  const fileName = file instanceof File ? file.name : 'avatar.jpg';
+  const ext = fileName.split('.').pop()?.toLowerCase() || 'jpg';
+  const safeExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext) ? ext : 'jpg';
+  const key = `conversations/${conversationId}/${Date.now()}.${safeExt === 'jpeg' ? 'jpg' : safeExt}`;
+  const contentType = file.type || 'image/jpeg';
+  const body = Buffer.from(await file.arrayBuffer());
+
+  if (!body.byteLength) {
+    throw new Error('Пустой файл изображения');
+  }
+
+  const admin = createAdminClient();
+  const { error } = await admin.storage.from(BUCKET_AVATARS).upload(key, body, {
+    contentType,
+    upsert: false,
+  });
+
+  if (error) throw new Error(error.message);
+  return `${BUCKET_AVATARS}/${key}`;
+}
+
 export async function uploadMessageFile(
   userId: string,
   file: File,

@@ -1,4 +1,3 @@
-import { isE2EContent } from '@/lib/crypto/message';
 import { isOnline } from '@/lib/presence';
 import { capitalizeNamePart } from '@/utils/formatName';
 import type {
@@ -46,7 +45,6 @@ export function messagePreview(msg: MessageRow, viewerId: string, albumCount = 1
   const text = (msg.content || '').trim();
   if (!text) return 'Сообщение';
   const prefix = msg.user_id === viewerId ? 'Вы: ' : '';
-  if (isE2EContent(text)) return `${prefix}🔒 Сообщение`;
   return prefix + (text.length > 60 ? text.slice(0, 60) + '…' : text);
 }
 
@@ -160,6 +158,7 @@ export function formatConversationForList(
     id: number;
     type: string;
     title: string | null;
+    avatar?: string | null;
     allow_voice_messages: boolean;
     allow_comments?: boolean;
     is_public?: boolean;
@@ -173,7 +172,11 @@ export function formatConversationForList(
   const isGroup = conv.type === 'group';
   const isChannel = conv.type === 'channel';
   const isMultiParty = isGroup || isChannel;
-  const lastMsg = messages[0] ?? null;
+  const lastMsg = isChannel
+    ? messages.find((m) => (m.message_type || 'user') === 'user' && !m.reply_to_id) ??
+      messages[0] ??
+      null
+    : messages[0] ?? null;
   const albumCount = lastMsg?.album_group_id
     ? messages.filter((m) => m.album_group_id === lastMsg.album_group_id).length
     : 1;
@@ -184,6 +187,7 @@ export function formatConversationForList(
     id: conv.id,
     type: conv.type || 'private',
     title: isMultiParty ? conv.title : null,
+    avatar: isMultiParty ? conv.avatar ?? null : null,
     members_count: isMultiParty ? members.length : null,
     my_role: selfMember?.role || 'member',
     allow_voice_messages: isGroup ? conv.allow_voice_messages : null,

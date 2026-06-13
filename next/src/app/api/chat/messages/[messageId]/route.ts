@@ -1,6 +1,7 @@
 import { requireAuth } from '@/lib/auth';
 import { ensureMember } from '@/lib/chat/conversations';
 import { formatMessage } from '@/lib/chat/formatters';
+import { canManageChannel, canManageGroup } from '@/lib/chat/permissions';
 import type { MessageRow } from '@/lib/types';
 
 export async function PATCH(
@@ -25,7 +26,35 @@ export async function PATCH(
     .eq('id', id)
     .single();
 
-  if (!message || message.user_id !== user.id) {
+  if (!message) {
+    return Response.json({ message: 'Сообщение не найдено' }, { status: 404 });
+  }
+
+  if (!(await ensureMember(supabase, message.conversation_id, user.id))) {
+    return Response.json({ message: 'Нет доступа' }, { status: 403 });
+  }
+
+  let canDelete = message.user_id === user.id;
+  if (!canDelete) {
+    const [{ data: conv }, { data: actor }] = await Promise.all([
+      supabase.from('conversations').select('type').eq('id', message.conversation_id).single(),
+      supabase
+        .from('conversation_members')
+        .select('role')
+        .eq('conversation_id', message.conversation_id)
+        .eq('user_id', user.id)
+        .single(),
+    ]);
+    const role = actor?.role ?? 'member';
+    if (conv?.type === 'group' && canManageGroup(role)) {
+      canDelete = true;
+    }
+    if (conv?.type === 'channel' && canManageChannel(role) && !!message.reply_to_id) {
+      canDelete = true;
+    }
+  }
+
+  if (!canDelete) {
     return Response.json({ message: 'Нет доступа' }, { status: 403 });
   }
 

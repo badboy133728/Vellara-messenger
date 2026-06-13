@@ -16,6 +16,7 @@ type GroupMember = {
 type GroupDetail = {
   id: number;
   title: string | null;
+  avatar: string | null;
   my_role: string;
   members: GroupMember[];
 };
@@ -43,6 +44,7 @@ export function GroupInfoPanel({
   const [savingTitle, setSavingTitle] = useState(false);
   const [adding, setAdding] = useState(false);
   const [roleBusy, setRoleBusy] = useState<string | null>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
   const [contacts, setContacts] = useState<ContactRow[]>([]);
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -50,6 +52,7 @@ export function GroupInfoPanel({
   const [searching, setSearching] = useState(false);
   const [pickedIds, setPickedIds] = useState<string[]>([]);
   const searchTimerRef = useRef<number | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const isAdmin = group?.my_role === 'admin';
 
@@ -198,6 +201,45 @@ export function GroupInfoPanel({
     }
   };
 
+  const uploadAvatar = async (file: File) => {
+    setAvatarUploading(true);
+    setError('');
+    try {
+      const formData = new FormData();
+      formData.set('avatar', file);
+      await api(`/api/chat/groups/${conversationId}`, {
+        method: 'PATCH',
+        body: formData,
+      });
+      await load();
+      onUpdated?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Ошибка');
+    } finally {
+      setAvatarUploading(false);
+      if (avatarInputRef.current) avatarInputRef.current.value = '';
+    }
+  };
+
+  const clearAvatar = async () => {
+    setAvatarUploading(true);
+    setError('');
+    try {
+      const formData = new FormData();
+      formData.set('clear_avatar', '1');
+      await api(`/api/chat/groups/${conversationId}`, {
+        method: 'PATCH',
+        body: formData,
+      });
+      await load();
+      onUpdated?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Ошибка');
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
   const deleteGroup = async () => {
     if (
       !window.confirm(
@@ -236,6 +278,50 @@ export function GroupInfoPanel({
           <p className="group-panel__hint">Загрузка…</p>
         ) : group ? (
           <>
+            {isAdmin && (
+              <div className="group-panel__section">
+                <h3>Аватар группы</h3>
+                <div className="group-panel__avatar-editor">
+                  <ContactAvatar
+                    name={group.title || 'Группа'}
+                    lastName=""
+                    avatar={group.avatar}
+                    size="lg"
+                  />
+                  <div className="group-panel__avatar-actions">
+                    <input
+                      ref={avatarInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="composer-file-input"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) void uploadAvatar(file);
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="profile-btn profile-btn--outline"
+                      disabled={avatarUploading}
+                      onClick={() => avatarInputRef.current?.click()}
+                    >
+                      {avatarUploading ? 'Загрузка…' : 'Изменить фото'}
+                    </button>
+                    {!!group.avatar && (
+                      <button
+                        type="button"
+                        className="profile-btn profile-btn--outline"
+                        disabled={avatarUploading}
+                        onClick={() => void clearAvatar()}
+                      >
+                        Удалить фото
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {isAdmin && (
               <div className="group-panel__section">
                 <label className="group-panel__field">

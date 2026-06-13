@@ -14,7 +14,7 @@ export async function GET(request: Request) {
   const admin = createAdminClient();
   const { data: channels, error: channelsError } = await admin
     .from('conversations')
-    .select('id, title, description, updated_at, is_public')
+    .select('id, title, description, avatar, updated_at, is_public')
     .eq('type', 'channel')
     .eq('is_public', true)
     .or(`title.ilike.%${query}%,description.ilike.%${query}%`)
@@ -58,6 +58,7 @@ export async function GET(request: Request) {
       id: ch.id,
       title: ch.title ?? 'Канал',
       description: ch.description ?? null,
+      avatar: ch.avatar ?? null,
       updated_at: ch.updated_at,
       members_count: membersCountByConv.get(ch.id) ?? 0,
       is_subscribed: activeMembership.has(ch.id),

@@ -67,21 +67,26 @@ export function patchConversationFromMessage(
   if (idx === -1) return conversations;
 
   const item = conversations[idx];
-  const preview = conversationPreviewFromMessage(msg, options.currentUserId);
+  const isChannelComment = item.type === 'channel' && !!msg.reply_to_id;
+  const preview = isChannelComment
+    ? item.last_message_preview
+    : conversationPreviewFromMessage(msg, options.currentUserId);
   const updated: ConversationListItem = {
     ...item,
-    last_message: {
-      id: msg.id,
-      content: msg.content,
-      user_id: msg.user_id,
-      created_at: msg.created_at,
-      file_path: msg.file_path,
-      file_type: msg.file_type,
-      file_original_name: msg.file_original_name,
-      voice_duration: msg.voice_duration,
-      album_group_id: msg.album_group_id,
-      is_deleted: msg.is_deleted,
-    },
+    last_message: isChannelComment
+      ? item.last_message
+      : {
+          id: msg.id,
+          content: msg.content,
+          user_id: msg.user_id,
+          created_at: msg.created_at,
+          file_path: msg.file_path,
+          file_type: msg.file_type,
+          file_original_name: msg.file_original_name,
+          voice_duration: msg.voice_duration,
+          album_group_id: msg.album_group_id,
+          is_deleted: msg.is_deleted,
+        },
     last_message_preview: preview,
     updated_at: msg.created_at,
     unread_count: options.incrementUnread

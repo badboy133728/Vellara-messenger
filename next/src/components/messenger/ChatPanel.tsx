@@ -696,7 +696,9 @@ export function ChatPanel({
   const canDeleteMsg = (msg: FormattedMessage) => {
     if (!msg || msg.is_deleted || msg.message_type === 'system') return false;
     if (msg.user_id === currentUserId) return true;
-    return !!isGroup && isGroupAdmin;
+    if (isGroup && isGroupAdmin) return true;
+    if (isChannel && isChannelAdmin && !!msg.reply_to_id) return true;
+    return false;
   };
 
   const canSelectMsg = (msg: FormattedMessage) =>
@@ -1090,7 +1092,9 @@ export function ChatPanel({
       ? (conversation.title?.[0] || 'G').toUpperCase()
       : `${partner?.name?.[0] || ''}${partner?.last_name?.[0] || ''}`.toUpperCase() || '?';
   const headerAvatar =
-    !isBroadcast && partner?.avatar ? storageDisplayUrl(partner.avatar) : null;
+    isBroadcast
+      ? (conversation.avatar ? storageDisplayUrl(conversation.avatar) : null)
+      : (partner?.avatar ? storageDisplayUrl(partner.avatar) : null);
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();

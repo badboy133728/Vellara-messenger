@@ -61,6 +61,34 @@ export async function GET() {
     }
   }
 
+  const channelIdsNeedingPostPreview = (conversations ?? [])
+    .filter((conv) => conv.type === 'channel')
+    .map((conv) => conv.id as number)
+    .filter((convId) => {
+      const list = messagesByConv.get(convId) ?? [];
+      return !list.some((m) => (m.message_type || 'user') === 'user' && !m.reply_to_id);
+    });
+
+  if (channelIdsNeedingPostPreview.length) {
+    await Promise.all(
+      channelIdsNeedingPostPreview.map(async (convId) => {
+        const { data: lastPost } = await supabase
+          .from('messages')
+          .select('*')
+          .eq('conversation_id', convId)
+          .eq('message_type', 'user')
+          .is('reply_to_id', null)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (!lastPost) return;
+        const list = messagesByConv.get(convId) ?? [];
+        list.push(lastPost as MessageRow);
+        messagesByConv.set(convId, list);
+      }),
+    );
+  }
+
   const result = sortConversations(
     (conversations ?? [])
       .filter((conv) => conv.type !== 'saved')

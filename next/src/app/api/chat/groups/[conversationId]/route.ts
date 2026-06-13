@@ -1,6 +1,7 @@
 import { requireAuth, isOnline } from '@/lib/auth';
 import { ensureMember } from '@/lib/chat/conversations';
 import { canManageGroup } from '@/lib/chat/permissions';
+import { uploadConversationAvatar } from '@/lib/storage-server';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 async function loadGroup(supabase: Awaited<ReturnType<typeof import('@/lib/supabase/server').createClient>>, convId: number, userId: string) {
@@ -33,6 +34,7 @@ async function loadGroup(supabase: Awaited<ReturnType<typeof import('@/lib/supab
     id: conv.id,
     type: 'group',
     title: conv.title,
+    avatar: conv.avatar ?? null,
     my_role: myRole,
     allow_voice_messages: conv.allow_voice_messages,
     members_count: members?.length ?? 0,
@@ -80,20 +82,61 @@ export async function PATCH(
     return Response.json({ message: 'Только администратор' }, { status: 403 });
   }
 
-  const { title } = await request.json();
-  if (!title || title.length < 2) {
-    return Response.json({ message: 'Некорректное название' }, { status: 422 });
+  const contentType = request.headers.get('content-type') ?? '';
+  let title: string | undefined;
+  let clearAvatar = false;
+  let avatarFile: File | null = null;
+
+  if (contentType.includes('multipart/form-data')) {
+    const formData = await request.formData();
+    const titleEntry = formData.get('title');
+    if (typeof titleEntry === 'string') title = titleEntry.trim();
+    clearAvatar = formData.get('clear_avatar') === '1';
+    const avatarEntry = formData.get('avatar');
+    avatarFile = avatarEntry instanceof File && avatarEntry.size > 0 ? avatarEntry : null;
+  } else {
+    const body = await request.json().catch(() => ({}));
+    if (typeof body.title === 'string') title = body.title.trim();
+    clearAvatar = body.clear_avatar === true;
   }
 
-  await supabase.from('conversations').update({ title }).eq('id', convId);
-  await supabase.from('messages').insert({
-    conversation_id: convId,
-    user_id: user.id,
-    message_type: 'system',
-    content: `${profile.name} изменил(а) название группы на «${title}»`,
-  });
+  const patch: Record<string, unknown> = {};
+  if (typeof title === 'string') {
+    if (title.length < 2 || title.length > 100) {
+      return Response.json({ message: 'Некорректное название' }, { status: 422 });
+    }
+    patch.title = title;
+  }
+  if (clearAvatar) {
+    patch.avatar = null;
+  }
+  if (avatarFile) {
+    try {
+      patch.avatar = await uploadConversationAvatar(convId, avatarFile);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Ошибка загрузки аватара';
+      return Response.json({ message }, { status: 500 });
+    }
+  }
+  if (!Object.keys(patch).length) {
+    return Response.json({ message: 'Нечего обновлять' }, { status: 422 });
+  }
 
-  return Response.json({ message: 'Название обновлено', title });
+  await supabase.from('conversations').update(patch).eq('id', convId);
+  if (typeof patch.title === 'string' && patch.title !== detail.title) {
+    await supabase.from('messages').insert({
+      conversation_id: convId,
+      user_id: user.id,
+      message_type: 'system',
+      content: `${profile.name} изменил(а) название группы на «${patch.title}»`,
+    });
+  }
+
+  return Response.json({
+    message: 'Группа обновлена',
+    title: patch.title ?? detail.title,
+    avatar: patch.avatar ?? detail.avatar ?? null,
+  });
 }
 
 export async function DELETE(

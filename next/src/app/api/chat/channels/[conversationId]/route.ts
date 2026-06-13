@@ -40,6 +40,7 @@ async function loadChannel(
     description: conv.description ?? null,
     my_role: myRole,
     allow_comments: !!conv.allow_comments,
+    is_public: conv.is_public !== false,
     members_count: members?.length ?? 0,
     members: (members ?? []).map((m) => {
       const p = profileMap.get(m.user_id);

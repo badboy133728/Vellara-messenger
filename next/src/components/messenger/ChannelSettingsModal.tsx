@@ -13,9 +13,10 @@ export function ChannelSettingsModal({
 }: {
   conversationId: number;
   onClose: () => void;
-  onSaved?: (payload: { allow_comments: boolean }) => void;
+  onSaved?: (payload: { allow_comments: boolean; is_public: boolean }) => void;
 }) {
   const [allowComments, setAllowComments] = useState(false);
+  const [isPublic, setIsPublic] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -32,30 +33,38 @@ export function ChannelSettingsModal({
 
   useEffect(() => {
     setLoading(true);
-    api<{ allow_comments: boolean }>(`/api/chat/channels/${conversationId}`)
-      .then((data) => setAllowComments(!!data.allow_comments))
+    api<{ allow_comments: boolean; is_public: boolean }>(`/api/chat/channels/${conversationId}`)
+      .then((data) => {
+        setAllowComments(!!data.allow_comments);
+        setIsPublic(data.is_public !== false);
+      })
       .catch((e) => setError(e instanceof Error ? e.message : 'Не удалось загрузить'))
       .finally(() => setLoading(false));
   }, [conversationId]);
 
-  const save = async (value: boolean) => {
+  const save = async (patch: { allow_comments?: boolean; is_public?: boolean }) => {
     setSaving(true);
     setError('');
-    const prev = allowComments;
-    setAllowComments(value);
+    const prevComments = allowComments;
+    const prevIsPublic = isPublic;
+    if (typeof patch.allow_comments === 'boolean') setAllowComments(patch.allow_comments);
+    if (typeof patch.is_public === 'boolean') setIsPublic(patch.is_public);
     try {
-      const data = await api<{ allow_comments: boolean }>(
+      const data = await api<{ allow_comments: boolean; is_public: boolean }>(
         `/api/chat/channels/${conversationId}/settings`,
         {
           method: 'PATCH',
-          body: JSON.stringify({ allow_comments: value }),
+          body: JSON.stringify(patch),
         },
       );
       const next = !!data.allow_comments;
+      const nextPublic = data.is_public !== false;
       setAllowComments(next);
-      onSaved?.({ allow_comments: next });
+      setIsPublic(nextPublic);
+      onSaved?.({ allow_comments: next, is_public: nextPublic });
     } catch (e) {
-      setAllowComments(prev);
+      setAllowComments(prevComments);
+      setIsPublic(prevIsPublic);
       setError(e instanceof Error ? e.message : 'Ошибка сохранения');
     } finally {
       setSaving(false);
@@ -117,7 +126,21 @@ export function ChannelSettingsModal({
                 type="checkbox"
                 checked={allowComments}
                 disabled={saving}
-                onChange={(e) => void save(e.target.checked)}
+                onChange={(e) => void save({ allow_comments: e.target.checked })}
+              />
+            </label>
+            <label className="group-settings-toggle">
+              <div>
+                <strong>Публичный канал</strong>
+                <p className="modal-hint">
+                  Публичные каналы видны в общем поиске, приватные — только по приглашению администратора
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={isPublic}
+                disabled={saving}
+                onChange={(e) => void save({ is_public: e.target.checked })}
               />
             </label>
             {error && <p className="auth-error modal-error">{error}</p>}

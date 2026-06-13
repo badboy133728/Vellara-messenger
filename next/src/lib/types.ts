@@ -64,6 +64,7 @@ export type ConversationRow = {
   title: string | null;
   created_by: string | null;
   allow_voice_messages: boolean;
+  is_public?: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -123,6 +124,7 @@ export type ConversationListItem = {
   my_role: string;
   allow_voice_messages: boolean | null;
   allow_comments: boolean | null;
+  is_public: boolean | null;
   other_user: {
     id: string;
     name: string;

@@ -1817,9 +1817,9 @@ function MessengerAppInner({ user }: { user: Profile }) {
         <ChannelSettingsModal
           conversationId={activeId}
           onClose={() => goBack()}
-          onSaved={({ allow_comments }) => {
+          onSaved={({ allow_comments, is_public }) => {
             setConversations((prev) =>
-              prev.map((c) => (c.id === activeId ? { ...c, allow_comments } : c)),
+              prev.map((c) => (c.id === activeId ? { ...c, allow_comments, is_public } : c)),
             );
           }}
         />

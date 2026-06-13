@@ -28,6 +28,17 @@ export async function DELETE(
     return Response.json({ message: 'Канал не найден' }, { status: 404 });
   }
 
+  const { data: targetMember } = await supabase
+    .from('conversation_members')
+    .select('role')
+    .eq('conversation_id', convId)
+    .eq('user_id', targetId)
+    .single();
+
+  if (!targetMember) {
+    return Response.json({ message: 'Подписчик не найден' }, { status: 404 });
+  }
+
   if (!isSelfLeave) {
     const { data: myMember } = await supabase
       .from('conversation_members')
@@ -39,15 +50,14 @@ export async function DELETE(
     if (!canManageChannel(myMember?.role ?? 'member')) {
       return Response.json({ message: 'Недостаточно прав' }, { status: 403 });
     }
+    if (targetMember.role === 'admin') {
+      return Response.json(
+        { message: 'Нельзя удалить администратора. Сначала передайте права.' },
+        { status: 422 },
+      );
+    }
   } else if (canManageChannel(
-    (
-      await supabase
-        .from('conversation_members')
-        .select('role')
-        .eq('conversation_id', convId)
-        .eq('user_id', user.id)
-        .single()
-    ).data?.role ?? 'member',
+    targetMember.role,
   )) {
     return Response.json(
       { message: 'Создатель канала не может отписаться. Удалите канал или передайте права.' },

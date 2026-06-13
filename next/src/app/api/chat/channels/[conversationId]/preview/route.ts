@@ -19,7 +19,7 @@ export async function GET(
   const admin = createAdminClient();
   const { data: channel } = await admin
     .from('conversations')
-    .select('id, title, description, allow_comments, updated_at')
+    .select('id, title, description, allow_comments, is_public, updated_at')
     .eq('id', convId)
     .eq('type', 'channel')
     .maybeSingle();
@@ -75,11 +75,19 @@ export async function GET(
     !myMembership.is_archived
   );
 
+  if (channel.is_public === false && !myMembership) {
+    return Response.json(
+      { message: 'Этот канал приватный и доступен только по приглашению администратора' },
+      { status: 403 },
+    );
+  }
+
   return Response.json({
     id: channel.id,
     title: channel.title ?? 'Канал',
     description: channel.description ?? null,
     allow_comments: !!channel.allow_comments,
+    is_public: channel.is_public !== false,
     updated_at: channel.updated_at,
     members_count: activeMembersCount,
     is_subscribed: isSubscribed,

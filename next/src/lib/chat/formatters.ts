@@ -162,6 +162,7 @@ export function formatConversationForList(
     title: string | null;
     allow_voice_messages: boolean;
     allow_comments?: boolean;
+    is_public?: boolean;
     updated_at: string;
   },
   members: (MemberRow & { profiles: Profile })[],
@@ -187,6 +188,7 @@ export function formatConversationForList(
     my_role: selfMember?.role || 'member',
     allow_voice_messages: isGroup ? conv.allow_voice_messages : null,
     allow_comments: isChannel ? !!conv.allow_comments : null,
+    is_public: isChannel ? conv.is_public !== false : null,
     other_user: other
       ? {
           id: other.id,

@@ -14,8 +14,9 @@ export async function GET(request: Request) {
   const admin = createAdminClient();
   const { data: channels, error: channelsError } = await admin
     .from('conversations')
-    .select('id, title, description, updated_at')
+    .select('id, title, description, updated_at, is_public')
     .eq('type', 'channel')
+    .eq('is_public', true)
     .or(`title.ilike.%${query}%,description.ilike.%${query}%`)
     .order('updated_at', { ascending: false })
     .limit(30);
@@ -74,6 +75,7 @@ export async function POST(request: Request) {
   const description =
     typeof body.description === 'string' ? body.description.trim().slice(0, 500) : '';
   const allowComments = !!body.allow_comments;
+  const isPublic = typeof body.is_public === 'boolean' ? body.is_public : true;
   const subscriberIds = Array.isArray(body.subscriber_ids)
     ? [...new Set((body.subscriber_ids as string[]).filter((id) => id && id !== user.id))]
     : [];
@@ -90,6 +92,7 @@ export async function POST(request: Request) {
       title,
       description: description || null,
       allow_comments: allowComments,
+      is_public: isPublic,
       created_by: user.id,
     })
     .select('*')

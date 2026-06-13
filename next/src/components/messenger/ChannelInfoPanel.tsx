@@ -19,6 +19,7 @@ type ChannelDetail = {
   description: string | null;
   my_role: string;
   allow_comments: boolean;
+  is_public: boolean;
   members: ChannelMember[];
 };
 
@@ -51,6 +52,7 @@ export function ChannelInfoPanel({
   const [searchResults, setSearchResults] = useState<ContactRow[]>([]);
   const [searching, setSearching] = useState(false);
   const [pickedIds, setPickedIds] = useState<string[]>([]);
+  const [transferringAdminId, setTransferringAdminId] = useState<string | null>(null);
   const searchTimerRef = useRef<number | null>(null);
 
   const isAdmin = channel?.my_role === 'admin';
@@ -170,6 +172,24 @@ export function ChannelInfoPanel({
     }
   };
 
+  const transferAdmin = async (targetUserId: string) => {
+    if (!window.confirm('Передать права администратора этому пользователю?')) return;
+    setError('');
+    setTransferringAdminId(targetUserId);
+    try {
+      await api(`/api/chat/channels/${conversationId}/transfer-admin`, {
+        method: 'POST',
+        body: JSON.stringify({ target_user_id: targetUserId }),
+      });
+      await load();
+      onUpdated?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Ошибка');
+    } finally {
+      setTransferringAdminId(null);
+    }
+  };
+
   const leaveChannel = async () => {
     if (!window.confirm('Отписаться от канала?')) return;
     setError('');
@@ -273,6 +293,9 @@ export function ChannelInfoPanel({
                   {channel.allow_comments && (
                     <span className="group-panel__badge">комментарии включены</span>
                   )}
+                  <span className="group-panel__badge">
+                    {channel.is_public ? 'публичный' : 'приватный'}
+                  </span>
                 </h3>
                 <ul className="group-members">
                   {channel.members.map((m) => (
@@ -291,15 +314,30 @@ export function ChannelInfoPanel({
                           {m.role === 'admin' ? 'Администратор' : 'Подписчик'}
                         </span>
                       </div>
-                      {isAdmin && m.id !== currentUserId && m.role !== 'admin' && (
-                        <button
-                          type="button"
-                          className="group-member__btn"
-                          title="Удалить подписчика"
-                          onClick={() => removeSubscriber(m.id)}
-                        >
-                          <VellaraIcon name="close" size={16} />
-                        </button>
+                      {isAdmin && m.id !== currentUserId && (
+                        <div className="group-member__actions">
+                          {m.role !== 'admin' && (
+                            <button
+                              type="button"
+                              className="group-member__btn group-member__btn--promote"
+                              title="Передать права администратора"
+                              disabled={transferringAdminId === m.id}
+                              onClick={() => void transferAdmin(m.id)}
+                            >
+                              <VellaraIcon name="star" size={15} />
+                            </button>
+                          )}
+                          {m.role !== 'admin' && (
+                            <button
+                              type="button"
+                              className="group-member__btn"
+                              title="Удалить подписчика"
+                              onClick={() => removeSubscriber(m.id)}
+                            >
+                              <VellaraIcon name="close" size={16} />
+                            </button>
+                          )}
+                        </div>
                       )}
                     </li>
                   ))}

@@ -38,15 +38,31 @@ export async function PATCH(
   }
 
   const body = await request.json().catch(() => ({}));
-  const allowComments = !!body.allow_comments;
+  const patch: { allow_comments?: boolean; is_public?: boolean } = {};
+  if (typeof body.allow_comments === 'boolean') {
+    patch.allow_comments = body.allow_comments;
+  }
+  if (typeof body.is_public === 'boolean') {
+    patch.is_public = body.is_public;
+  }
+  if (!Object.keys(patch).length) {
+    return Response.json({ message: 'Нет настроек для сохранения' }, { status: 422 });
+  }
 
   await supabase
     .from('conversations')
-    .update({ allow_comments: allowComments })
+    .update(patch)
     .eq('id', convId);
+
+  const { data: updated } = await supabase
+    .from('conversations')
+    .select('allow_comments, is_public')
+    .eq('id', convId)
+    .single();
 
   return Response.json({
     message: 'Настройки сохранены',
-    allow_comments: allowComments,
+    allow_comments: !!updated?.allow_comments,
+    is_public: updated?.is_public !== false,
   });
 }

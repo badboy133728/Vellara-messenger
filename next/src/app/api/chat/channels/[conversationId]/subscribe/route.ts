@@ -17,7 +17,7 @@ export async function POST(
   const admin = createAdminClient();
   const { data: channel } = await admin
     .from('conversations')
-    .select('id')
+    .select('id, is_public')
     .eq('id', convId)
     .eq('type', 'channel')
     .maybeSingle();
@@ -52,6 +52,13 @@ export async function POST(
     }
 
     return Response.json({ subscribed: true, restored: true });
+  }
+
+  if (channel.is_public === false) {
+    return Response.json(
+      { message: 'Приватный канал доступен только по приглашению администратора' },
+      { status: 403 },
+    );
   }
 
   const { error: insertError } = await admin.from('conversation_members').insert({

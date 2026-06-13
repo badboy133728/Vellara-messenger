@@ -343,6 +343,18 @@
   background: rgba(201, 168, 133, 0.08);
 }
 
+.group-member__btn--promote {
+  border-color: rgba(91, 155, 213, 0.35);
+  color: #7eb8e8;
+  background: rgba(91, 155, 213, 0.12);
+}
+
+.group-member__btn--promote:hover:not(:disabled) {
+  border-color: rgba(126, 184, 232, 0.55);
+  color: #9fd0f7;
+  background: rgba(91, 155, 213, 0.2);
+}
+
 .group-member__btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;

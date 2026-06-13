@@ -485,3 +485,7 @@ begin
   alter publication supabase_realtime add table public.user_contacts;
 exception when duplicate_object then null;
 end $$;
+
+-- ========== 019_channel_visibility.sql ==========
+alter table public.conversations
+  add column if not exists is_public boolean not null default true;
